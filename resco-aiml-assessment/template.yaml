@@ -11,12 +11,15 @@ Resources:
     Properties:
       DefinitionUri: statemachine/resco_assessments.asl.json
       DefinitionSubstitutions:
+        CleanupBucketFunction: !GetAtt CleanupBucketFunction.Arn
         IAMPermissionCachingFunction: !GetAtt IAMPermissionCachingFunction.Arn
         BedrockSecurityAssessmentFunction: !GetAtt BedrockSecurityAssessmentFunction.Arn
         SagemakerSecurityAssessmentFunction: !GetAtt SagemakerSecurityAssessmentFunction.Arn
         GenerateConsolidatedReportFunction: !GetAtt GenerateConsolidatedReportFunction.Arn
         AIMLAssessmentBucketName: !Ref AIMLAssessmentBucket
       Policies: # Find out more about SAM policy templates: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-policy-templates.html
+        - LambdaInvokePolicy:
+            FunctionName: !Ref CleanupBucketFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref BedrockSecurityAssessmentFunction
         - LambdaInvokePolicy:
@@ -29,10 +32,26 @@ Resources:
         - S3CrudPolicy:
             BucketName: !Ref AIMLAssessmentBucket
 
+  CleanupBucketFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/security/cleanup_bucket/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref AIMLAssessmentBucket
+
   IAMPermissionCachingFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-resource-function.html
     Properties:
-      FunctionName: IAMPermissionCachingFunction
       CodeUri: functions/security/iam_permission_caching/
       Handler: app.lambda_handler
       Runtime: python3.12
@@ -67,7 +86,6 @@ Resources:
   GenerateConsolidatedReportFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-resource-function.html
     Properties:
-      FunctionName: GenerateConsolidatedReportFunction
       CodeUri: functions/security/generate_consolidated_report/
       Handler: app.lambda_handler
       Runtime: python3.12
@@ -84,7 +102,6 @@ Resources:
   BedrockSecurityAssessmentFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-resource-function.html
     Properties:
-      FunctionName: BedrockSecurityAssessment
       CodeUri: functions/security/bedrock_assessments/
       Handler: app.lambda_handler
       Runtime: python3.12
@@ -157,7 +174,6 @@ Resources:
   SagemakerSecurityAssessmentFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: SagemakerSecurityAssessment
       CodeUri: functions/security/sagemaker_assessments/
       Handler: app.lambda_handler
       Runtime: python3.12
@@ -245,7 +261,6 @@ Resources:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     Properties:
-      BucketName: !Sub ${AWS::StackName}-aiml-assessment-bucket-${AWS::AccountId}
       VersioningConfiguration:
         Status: Enabled
       PublicAccessBlockConfiguration:
