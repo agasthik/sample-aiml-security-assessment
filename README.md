@@ -43,7 +43,7 @@ This repo focus on performing security assessment for your workloads using [Amaz
 
 ## Multi-Account Deployment
 
-### Prerequisites
+### Prerequisite
 - AWS Organizations setup with management account access or delegated administrator member account.
 
 ### The deployment follows a two-step approach:
