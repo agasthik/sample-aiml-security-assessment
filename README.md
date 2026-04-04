@@ -56,28 +56,36 @@ This repo focus on performing security assessment for your workloads using [Amaz
 
 ### Step 1: Deploy Member Roles (StackSets)
 
-Deploy [1-resco-member-roles.yaml](deployment/1-resco-member-roles.yaml) to all target accounts using CloudFormation StackSets.
+Deploy [1-resco-member-roles.yaml](deployment/1-resco-member-roles.yaml) to all target accounts using CloudFormation StackSets with service-managed permissions.
 
 #### AWS Console Deployment
 
-1. Navigate to **CloudFormation** > **StackSets**
-2. Create StackSet with [1-resco-member-roles.yaml](deployment/1-resco-member-roles.yaml)
-3. Set `ReSCOAccountID` parameter to your management account ID
-4. Deploy to target organizational units or accounts
+1. Navigate to **CloudFormation** > **StackSets** in the management account
+2. Click **Create StackSet**
+3. Select **Upload a template file** and upload [1-resco-member-roles.yaml](deployment/1-resco-member-roles.yaml)
+4. Enter a StackSet name (e.g., `resco-aiml-member-roles`)
+5. Set `ReSCOAccountID` parameter to your management account ID
+6. Under **Permissions**, select **Service-managed permissions**
+7. Under **Deployment targets**, select the Organizational Units (OUs) containing your target accounts
+8. Select **us-east-1** (or your target region) under **Specify regions**
+9. Review and click **Submit**
+
+This uses AWS Organizations to deploy the member role to all accounts in the selected OUs. New accounts added to those OUs will automatically receive the role.
 
 ### Step 2: Deploy Central Infrastructure
 
-Deploy [2-resco-assessment-codebuild.yaml](deployment/2-resco-assessment-codebuild.yaml) in your central management account or delegated administrator member account..
+Deploy [2-resco-assessment-codebuild.yaml](deployment/2-resco-assessment-codebuild.yaml) in your central management account or delegated administrator member account.
 
 #### AWS Console Deployment
 
 1. Navigate to [AWS CloudFormation](https://console.aws.amazon.com/cloudformation/home#/stacks/create/template?stackName=resco-aiml-multi-account)
 2. Select **Upload a template file** and upload [2-resco-assessment-codebuild.yaml](deployment/2-resco-assessment-codebuild.yaml) file.
-3. Select `MultiAccountScan` parameter as true
-4. Provide your email address in `EmailAddress` parameter.
+3. Set `MultiAccountScan` parameter to `true`
+4. Optionally provide your email address in `EmailAddress` parameter for completion notifications.
 5. Leave rest of the parameters as default.
-6. Click **Next** and configure the parameters
-7. Stack creation automatically triggers CodeBuild
+6. Navigate to the next page, read and acknowledge the notice, and click **Next**.
+7. Review the information and click on **Submit**.
+8. Stack creation automatically triggers CodeBuild, which will deploy the assessment to each account and run it.
 
 ## How It Works
 
@@ -237,6 +245,12 @@ Adjust `ConcurrentAccountScans` parameter based on your organization size and co
 2. **Cross-Account Role Assumption**: Verify trust relationships and account IDs
 3. **SAM Deployment Failures**: Check CodeBuild logs for specific errors
 4. **Step Functions Execution**: Monitor state machine executions in each account
+5. **EarlyValidation::ResourceExistenceCheck**: CloudFormation blocks stack creation when a resource with the same physical name already exists outside of CloudFormation management. This typically happens when a previous deployment failed and left behind an orphaned S3 bucket. To fix:
+   - Find the orphaned bucket: `aws s3 ls | grep resco-aiml-security`
+   - Empty it: `aws s3 rm s3://<bucket-name> --recursive`
+   - Delete version markers if versioned: `aws s3api delete-objects --bucket <bucket-name> --delete "$(aws s3api list-object-versions --bucket <bucket-name> --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}')"`
+   - Delete the bucket: `aws s3 rb s3://<bucket-name>`
+   - Re-run the CodeBuild project
 
 ### Debugging
 
