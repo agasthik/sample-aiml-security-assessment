@@ -527,9 +527,13 @@ Resources:
 
 Outputs:
   AccountID:
-    Description: AWS Account ID where ReSCO is deployed
+    Description: AWS Account ID where the AI-ML Security Assessment is executed from
     Value: !Ref AWS::AccountId
 
   AssessmentBucket:
     Description: S3 bucket containing assessment results (HTML reports and CSV data)
     Value: !Ref ReSCOAssessmentBucket
+
+  CodeBuildProjectName:
+    Description: CodeBuild project name for running assessments
+    Value: !Ref ReSCOMultiAccountCodeBuild

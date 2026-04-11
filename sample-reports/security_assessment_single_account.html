@@ -148,7 +148,7 @@
         <div class="header-right">
             <div class="header-meta">
                 <div>Account: 111111111111</div>
-                <div>2026-04-09T12:13:49.843363</div>
+                <div>2026-04-11T16:28:16.011381</div>
             </div>
             <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
                 <span class="theme-toggle-icon">
@@ -163,22 +163,26 @@
         <section class="exec-summary">
             <div class="exec-summary-header"><h2>Executive Summary</h2></div>
             <div class="metrics-grid">
-                <div class="metric-card total"><div class="metric-value">18</div><div class="metric-label">Total Findings</div></div>
+                <div class="metric-card total"><div class="metric-value">35</div><div class="metric-label">Total Findings</div></div>
                 <div class="metric-card high"><div class="metric-value">3</div><div class="metric-label">High Severity</div></div>
-                <div class="metric-card medium"><div class="metric-value">2</div><div class="metric-label">Medium Severity</div></div>
-                <div class="metric-card low"><div class="metric-value">0</div><div class="metric-label">Low Severity</div></div>
-                <div class="metric-card passed"><div class="metric-value">7</div><div class="metric-label">Passed Checks</div></div>
+                <div class="metric-card medium"><div class="metric-value">4</div><div class="metric-label">Medium Severity</div></div>
+                <div class="metric-card low"><div class="metric-value">1</div><div class="metric-label">Low Severity</div></div>
+                <div class="metric-card passed"><div class="metric-value">16</div><div class="metric-label">Passed Checks</div></div>
             </div>
             <div class="breakdown-section">
                 <div class="breakdown-card">
                     <h3>Findings by Service</h3>
-                    <div class="service-row"><span class="service-name"><span class="service-icon">B</span>Amazon Bedrock</span><div class="service-stats"><span class="stat-badge failed">3 Failed</span><span class="stat-badge passed">3 Passed</span></div></div>
-                    <div class="service-row"><span class="service-name"><span class="service-icon">S</span>Amazon SageMaker</span><div class="service-stats"><span class="stat-badge failed">0 Failed</span><span class="stat-badge passed">4 Passed</span></div></div>
-                    <div class="service-row"><span class="service-name"><span class="service-icon">A</span>AgentCore</span><div class="service-stats"><span class="stat-badge failed">2 Failed</span><span class="stat-badge passed">0 Passed</span></div></div>
+                    <div class="service-row"><span class="service-name"><span class="service-icon">B</span>Amazon Bedrock</span><div class="service-stats"><span class="stat-badge failed">3 Failed</span><span class="stat-badge passed">4 Passed</span></div></div>
+                    <div class="service-row"><span class="service-name"><span class="service-icon">S</span>Amazon SageMaker</span><div class="service-stats"><span class="stat-badge failed">0 Failed</span><span class="stat-badge passed">12 Passed</span></div></div>
+                    <div class="service-row"><span class="service-name"><span class="service-icon">A</span>AgentCore</span><div class="service-stats"><span class="stat-badge failed">4 Failed</span><span class="stat-badge passed">0 Passed</span></div></div>
                 </div>
                 <div class="breakdown-card"><h3>Priority Recommendations</h3><ul class="recommendations-list"><li><span class="priority-indicator high"></span><span>Enable CloudTrail logging for Bedrock by :
 1. Configuring an advanced event selector for Bedrock events 
-2. Enabling management events logging in a multi-region trail</span></li><li><span class="priority-indicator high"></span><span>Scope permissions to specific AgentCore resources using resource ARNs</span></li><li><span class="priority-indicator high"></span><span>Ensure Lambda execution role has iam:GenerateServiceLastAccessedDetails and iam:GetServiceLastAccessedDetails permissions</span></li><li><span class="priority-indicator medium"></span><span>Enable model invocation logging to collect invocation logs, model input data, and model output data. Configure logging to deliver to Amazon S3, CloudWatch Logs, or both for comprehensive monitoring.</span></li><li><span class="priority-indicator medium"></span><span>Configure Bedrock Guardrails to implement safeguards such as:
+2. Enabling management events logging in a multi-region trail</span></li><li><span class="priority-indicator high"></span><span>Scope permissions to specific AgentCore resources using resource ARNs</span></li><li><span class="priority-indicator high"></span><span>Create VPC interface endpoints for AgentCore services:
+1. com.amazonaws.region.bedrock-agentcore
+2. com.amazonaws.region.bedrock-agentcore-control
+3. com.amazonaws.region.bedrock-agentcore-runtime
+This enables private connectivity via AWS PrivateLink</span></li><li><span class="priority-indicator medium"></span><span>Enable model invocation logging to collect invocation logs, model input data, and model output data. Configure logging to deliver to Amazon S3, CloudWatch Logs, or both for comprehensive monitoring.</span></li><li><span class="priority-indicator medium"></span><span>Configure Bedrock Guardrails to implement safeguards such as:
 - Content filters to block harmful content
 - Denied topics to prevent undesirable discussions
 - Sensitive information filters to protect PII
@@ -260,6 +264,42 @@
                         </tr>
 <tr>
                             <td>111111111111</td>
+                            <td>Bedrock Guardrail IAM Enforcement Check</td>
+                            <td class="finding-details">No guardrails configured - IAM enforcement check not applicable</td>
+                            <td class="resolution-text">Configure Bedrock Guardrails first, then enforce their use via IAM policies</td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-permissions-id.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-permissions-id.html">View Docs</a></td>
+                            <td><span class="severity-badge na">N/A</span></td>
+                            <td><span class="status-badge failed">N/A</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
+                            <td>Bedrock Custom Model Encryption Check</td>
+                            <td class="finding-details">No custom/fine-tuned models found in the account</td>
+                            <td class="resolution-text">No action required</td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/bedrock/latest/userguide/custom-models-security.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/bedrock/latest/userguide/custom-models-security.html">View Docs</a></td>
+                            <td><span class="severity-badge na">N/A</span></td>
+                            <td><span class="status-badge passed">Passed</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
+                            <td>Bedrock Invocation Log Encryption Check</td>
+                            <td class="finding-details">Model invocation logging to S3 is not configured</td>
+                            <td class="resolution-text">If logging is enabled to CloudWatch only, ensure CloudWatch log group uses CMK encryption</td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html">View Docs</a></td>
+                            <td><span class="severity-badge na">N/A</span></td>
+                            <td><span class="status-badge failed">N/A</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
+                            <td>Bedrock Flows Guardrails Check</td>
+                            <td class="finding-details">Unable to check flows: An error occurred (AccessDeniedException) when calling the ListFlows operation: User: arn:aws:sts::111111111111:assumed-role/aiml-sec-111111111111-BedrockSecurityAssessmentFunc-8fZ5sbUe4uD8/resco-aiml-aiml-sec-111111111111-BedrockAssessment is not authorized to perform: bedrock:ListFlows on resource: arn:aws:bedrock:us-east-1:111111111111:flow/* because no identity-based policy allows the bedrock:ListFlows action</td>
+                            <td class="resolution-text">Verify permissions to access Bedrock Flows</td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/bedrock/latest/userguide/flows-guardrails.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/bedrock/latest/userguide/flows-guardrails.html">View Docs</a></td>
+                            <td><span class="severity-badge low">Low</span></td>
+                            <td><span class="status-badge failed">N/A</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
                             <td>SageMaker Internet Access Check</td>
                             <td class="finding-details">All SageMaker resources are properly configured to use VPC connectivity</td>
                             <td class="resolution-text"></td>
@@ -296,6 +336,78 @@
                         </tr>
 <tr>
                             <td>111111111111</td>
+                            <td>SageMaker Notebook Root Access Check</td>
+                            <td class="finding-details">No notebook instances found</td>
+                            <td class="resolution-text"></td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/sagemaker/latest/dg/nbi-root-access.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/sagemaker/latest/dg/nbi-root-access.html">View Docs</a></td>
+                            <td><span class="severity-badge na">N/A</span></td>
+                            <td><span class="status-badge passed">Passed</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
+                            <td>SageMaker Notebook VPC Deployment Check</td>
+                            <td class="finding-details">No notebook instances found</td>
+                            <td class="resolution-text"></td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/sagemaker/latest/dg/appendix-notebook-and-internet-access.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/sagemaker/latest/dg/appendix-notebook-and-internet-access.html">View Docs</a></td>
+                            <td><span class="severity-badge na">N/A</span></td>
+                            <td><span class="status-badge passed">Passed</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
+                            <td>SageMaker Model Network Isolation Check</td>
+                            <td class="finding-details">No models found</td>
+                            <td class="resolution-text"></td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/sagemaker/latest/dg/mkt-algo-model-internet-free.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/sagemaker/latest/dg/mkt-algo-model-internet-free.html">View Docs</a></td>
+                            <td><span class="severity-badge na">N/A</span></td>
+                            <td><span class="status-badge passed">Passed</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
+                            <td>SageMaker Endpoint Instance Count Check</td>
+                            <td class="finding-details">No InService endpoints found</td>
+                            <td class="resolution-text"></td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-scaling.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/sagemaker/latest/dg/endpoint-scaling.html">View Docs</a></td>
+                            <td><span class="severity-badge na">N/A</span></td>
+                            <td><span class="status-badge passed">Passed</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
+                            <td>SageMaker Monitoring Network Isolation Check</td>
+                            <td class="finding-details">No monitoring schedules found</td>
+                            <td class="resolution-text"></td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-network-isolation.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-network-isolation.html">View Docs</a></td>
+                            <td><span class="severity-badge na">N/A</span></td>
+                            <td><span class="status-badge passed">Passed</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
+                            <td>SageMaker Model Repository Access Check</td>
+                            <td class="finding-details">No models found or all use default Platform access</td>
+                            <td class="resolution-text"></td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/sagemaker/latest/dg/model-container-repositories.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/sagemaker/latest/dg/model-container-repositories.html">View Docs</a></td>
+                            <td><span class="severity-badge na">N/A</span></td>
+                            <td><span class="status-badge passed">Passed</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
+                            <td>SageMaker Feature Store Encryption Check</td>
+                            <td class="finding-details">No feature groups with offline stores found</td>
+                            <td class="resolution-text"></td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/sagemaker/latest/dg/feature-store-security.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/sagemaker/latest/dg/feature-store-security.html">View Docs</a></td>
+                            <td><span class="severity-badge na">N/A</span></td>
+                            <td><span class="status-badge passed">Passed</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
+                            <td>SageMaker Data Quality Job Encryption Check</td>
+                            <td class="finding-details">No data quality job definitions found</td>
+                            <td class="resolution-text"></td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-data-quality.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/sagemaker/latest/dg/model-monitor-data-quality.html">View Docs</a></td>
+                            <td><span class="severity-badge na">N/A</span></td>
+                            <td><span class="status-badge passed">Passed</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
                             <td>AgentCore VPC Configuration Check</td>
                             <td class="finding-details">No AgentCore resources found or all resources have proper VPC configuration</td>
                             <td class="resolution-text">N/A</td>
@@ -306,7 +418,7 @@
 <tr>
                             <td>111111111111</td>
                             <td>AgentCore IAM Wildcard Permissions</td>
-                            <td class="finding-details">The following roles have wildcard AgentCore permissions on all resources: resco-aiml-security-mgmt-AgentCoreSecurityAssessmen-yfZeA3tfPS7n</td>
+                            <td class="finding-details">The following roles have wildcard AgentCore permissions on all resources: resco-aiml-security-00756-AgentCoreSecurityAssessme-kIT72FntzYo1</td>
                             <td class="resolution-text">Scope permissions to specific AgentCore resources using resource ARNs</td>
                             <td class="reference-cell"><a href="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html">View Docs</a></td>
                             <td><span class="severity-badge high">High</span></td>
@@ -314,11 +426,11 @@
                         </tr>
 <tr>
                             <td>111111111111</td>
-                            <td>AgentCore Stale Access Check</td>
-                            <td class="finding-details">Access denied when checking service last accessed for role resco-aiml-security-mgmt-AgentCoreSecurityAssessmen-yfZeA3tfPS7n</td>
-                            <td class="resolution-text">Ensure Lambda execution role has iam:GenerateServiceLastAccessedDetails and iam:GetServiceLastAccessedDetails permissions</td>
+                            <td>AgentCore Unused Permissions</td>
+                            <td class="finding-details">The following principals have AgentCore permissions but have never accessed the service: role 'ReSCOAIMLMemberRole'</td>
+                            <td class="resolution-text">Review and remove unused AgentCore permissions following least privilege principle</td>
                             <td class="reference-cell"><a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html">View Docs</a></td>
-                            <td><span class="severity-badge high">High</span></td>
+                            <td><span class="severity-badge medium">Medium</span></td>
                             <td><span class="status-badge failed">Failed</span></td>
                         </tr>
 <tr>
@@ -363,6 +475,55 @@
                             <td class="finding-details">No Gateway resources found</td>
                             <td class="resolution-text">N/A</td>
                             <td class="reference-cell"><a href="https://aws.github.io/bedrock-agentcore-starter-toolkit/user-guide/gateway/" target="_blank" class="reference-btn" title="https://aws.github.io/bedrock-agentcore-starter-toolkit/user-guide/gateway/">View Docs</a></td>
+                            <td><span class="severity-badge na">N/A</span></td>
+                            <td><span class="status-badge failed">N/A</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
+                            <td>AgentCore VPC Endpoints Missing</td>
+                            <td class="finding-details">No AgentCore VPC endpoints found in 4 VPCs. AgentCore API traffic traverses public internet, exposing it to interception.</td>
+                            <td class="resolution-text">Create VPC interface endpoints for AgentCore services:
+1. com.amazonaws.region.bedrock-agentcore
+2. com.amazonaws.region.bedrock-agentcore-control
+3. com.amazonaws.region.bedrock-agentcore-runtime
+This enables private connectivity via AWS PrivateLink</td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/vpc.html">View Docs</a></td>
+                            <td><span class="severity-badge high">High</span></td>
+                            <td><span class="status-badge failed">Failed</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
+                            <td>AgentCore Service-Linked Role Missing</td>
+                            <td class="finding-details">Service-linked role 'AWSServiceRoleForBedrockAgentCoreNetwork' does not exist. VPC configuration for AgentCore Runtimes will fail without this role.</td>
+                            <td class="resolution-text">The service-linked role is automatically created when you configure VPC for an AgentCore Runtime. Ensure IAM permissions allow service-linked role creation.</td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-vpc.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-vpc.html">View Docs</a></td>
+                            <td><span class="severity-badge medium">Medium</span></td>
+                            <td><span class="status-badge failed">Failed</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
+                            <td>AgentCore Resource-Based Policies Check</td>
+                            <td class="finding-details">No AgentCore resources found to check for resource-based policies</td>
+                            <td class="resolution-text">N/A</td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security_iam_service-with-iam.html">View Docs</a></td>
+                            <td><span class="severity-badge na">N/A</span></td>
+                            <td><span class="status-badge failed">N/A</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
+                            <td>AgentCore Policy Engine Encryption Check</td>
+                            <td class="finding-details">No Policy Engines found</td>
+                            <td class="resolution-text">N/A</td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-encryption.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/policy-encryption.html">View Docs</a></td>
+                            <td><span class="severity-badge na">N/A</span></td>
+                            <td><span class="status-badge failed">N/A</span></td>
+                        </tr>
+<tr>
+                            <td>111111111111</td>
+                            <td>AgentCore Gateway Encryption Check</td>
+                            <td class="finding-details">No Gateways found</td>
+                            <td class="resolution-text">N/A</td>
+                            <td class="reference-cell"><a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/data-encryption.html" target="_blank" class="reference-btn" title="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/data-encryption.html">View Docs</a></td>
                             <td><span class="severity-badge na">N/A</span></td>
                             <td><span class="status-badge failed">N/A</span></td>
                         </tr></tbody>

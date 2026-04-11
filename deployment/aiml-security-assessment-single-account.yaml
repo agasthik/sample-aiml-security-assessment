@@ -458,8 +458,8 @@ Resources:
               "You can view your results in the <bucket> bucket."
 
 Outputs:
-  CodeBuildProject:
-    Description: CodeBuild project for running assessments
+  CodeBuildProjectName:
+    Description: CodeBuild project name for running assessments
     Value: !Ref ReSCOCodeBuild
 
   AssessmentBucket:

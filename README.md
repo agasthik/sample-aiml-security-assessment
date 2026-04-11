@@ -211,7 +211,7 @@ The assessment generates professional HTML reports with interactive features inc
 **Example reports are available in the [`sample-reports/`](sample-reports/) folder:**
 
 - [Single Account Report](sample-reports/security_assessment_single_account.html) - Assessment for one AWS account
-- [Multi-Account Report](sample-reports/multi_account_report.html) - Consolidated view across multiple accounts
+- [Multi-Account Report](sample-reports/security_assessment_multi_account.html) - Consolidated view across multiple accounts
 
 The reports include:
 
