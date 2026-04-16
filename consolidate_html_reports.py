@@ -77,17 +77,26 @@ def consolidate_html_reports():
 
                         all_findings.append(finding)
 
-                        # Categorize by service
-                        finding_name = finding['finding'].lower()
+                        # Categorize by service using Check ID prefix (most reliable)
+                        check_id = finding.get('check_id', '').upper()
                         status = finding['status'].lower()
-                        if 'bedrock' in finding_name or 'guardrail' in finding_name:
+                        if check_id.startswith('BR-'):
                             service = 'bedrock'
-                        elif 'sagemaker' in finding_name or 'domain' in finding_name:
+                        elif check_id.startswith('SM-'):
                             service = 'sagemaker'
-                        elif 'agentcore' in finding_name or 'runtime' in finding_name:
+                        elif check_id.startswith('AC-'):
                             service = 'agentcore'
                         else:
-                            service = 'bedrock'  # default
+                            # Fallback to finding name keyword matching
+                            finding_name = finding['finding'].lower()
+                            if 'bedrock' in finding_name or 'guardrail' in finding_name:
+                                service = 'bedrock'
+                            elif 'sagemaker' in finding_name or 'domain' in finding_name:
+                                service = 'sagemaker'
+                            elif 'agentcore' in finding_name:
+                                service = 'agentcore'
+                            else:
+                                service = 'bedrock'  # default
 
                         if status == 'passed':
                             service_stats[service]['passed'] += 1
@@ -123,7 +132,12 @@ def consolidate_html_reports():
             severity = f['severity'].lower()
             severity_class = severity if severity in ['high', 'medium', 'low'] else 'na'
             status = f['status'].lower()
-            status_class = 'passed' if status == 'passed' else 'failed'
+            if status == 'passed':
+                status_class = 'passed'
+            elif status == 'n/a':
+                status_class = 'na'
+            else:
+                status_class = 'failed'
 
             # Build reference buttons
             refs = f.get('reference', [])
@@ -277,6 +291,7 @@ def consolidate_html_reports():
         .status-badge {{ display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }}
         .status-badge.passed {{ background: #ecfdf5; color: var(--status-passed); }}
         .status-badge.failed {{ background: #fef2f2; color: var(--status-failed); }}
+        .status-badge.na {{ background: #f3f4f6; color: var(--severity-na); }}
         .status-badge::before {{ content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }}
         .reference-btn {{ display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; background: var(--accent-light); color: var(--accent); text-decoration: none; border-radius: 6px; font-size: 11px; font-weight: 600; border: 1px solid var(--border-color); transition: all 0.15s ease; margin: 2px 0; }}
         .reference-btn:hover {{ background: var(--accent); color: white; border-color: var(--accent); }}
