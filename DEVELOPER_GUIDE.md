@@ -245,9 +245,34 @@ botocore>=1.29.0
 4. **Create Schema File**:
 ```python
 # schema.py
-def create_finding(finding_name, finding_details, resolution, reference, severity, status):
-    """Create standardized finding format"""
+from enum import Enum
+
+class SeverityEnum(str, Enum):
+    HIGH = "High"
+    MEDIUM = "Medium"
+    LOW = "Low"
+    INFORMATIONAL = "Informational"
+    NA = "N/A"
+
+class StatusEnum(str, Enum):
+    FAILED = "Failed"
+    PASSED = "Passed"
+    NA = "N/A"
+
+def create_finding(check_id, finding_name, finding_details, resolution, reference, severity, status):
+    """Create standardized finding format
+    
+    Args:
+        check_id: Unique check identifier (e.g., SM-01, BR-01, AC-01)
+        finding_name: Name of the finding
+        finding_details: Detailed description
+        resolution: Steps to resolve (empty string for N/A status)
+        reference: Documentation URL
+        severity: SeverityEnum value
+        status: StatusEnum value (Failed, Passed, or N/A)
+    """
     return {
+        'Check_ID': check_id,
         'Finding': finding_name,
         'Finding_Details': finding_details,
         'Resolution': resolution,
@@ -365,6 +390,17 @@ Add required permissions to both member role templates:
 - **Handle Exceptions**: Implement proper error handling and logging
 - **Follow Least Privilege**: Only request necessary permissions
 - **Standardize Findings**: Use the `create_finding()` function for consistent output
+- **Check ID Convention**: Use service prefixes for check IDs (BR-XX for Bedrock, SM-XX for SageMaker, AC-XX for AgentCore)
+- **Status Semantics**: Use correct status values:
+  - `Failed`: Resources were checked and found non-compliant
+  - `Passed`: Resources were checked and found compliant
+  - `N/A`: No resources exist to check (e.g., "No notebooks found", "No guardrails configured")
+- **Severity Values**: Use appropriate severity levels:
+  - `High`: Critical security issues requiring immediate attention
+  - `Medium`: Important security improvements recommended
+  - `Low`: Minor optimizations suggested
+  - `Informational`: Advisory information, no action required
+  - `N/A`: Check not applicable (typically paired with N/A status)
 
 ### 2. Performance Optimization
 - **Batch API Calls**: Use pagination and batch operations where possible

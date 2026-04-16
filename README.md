@@ -226,13 +226,21 @@ The reports include:
 | **High** | Critical security issues requiring immediate attention |
 | **Medium** | Important security improvements recommended |
 | **Low** | Minor optimizations suggested |
-| **N/A** | Check passed or not applicable |
+| **Informational** | Advisory information, no action required |
+| **N/A** | Check not applicable (no resources to assess) |
 
 | Status | Description |
 |--------|-------------|
-| **Failed** | Security issue identified |
-| **Passed** | No issues found |
-| **N/A** | Check not applicable to current configuration |
+| **Failed** | Security issue identified that requires remediation |
+| **Passed** | Resources were checked and found compliant |
+| **N/A** | No resources exist to check (e.g., no notebooks, no guardrails configured) |
+
+### Check ID Convention
+
+Each security check has a unique identifier with a service prefix:
+- **BR-XX**: Amazon Bedrock checks (e.g., BR-01, BR-14)
+- **SM-XX**: Amazon SageMaker checks (e.g., SM-01, SM-16)
+- **AC-XX**: Amazon Bedrock AgentCore checks (e.g., AC-01, AC-13)
 
 ## Customization
 
