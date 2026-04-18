@@ -450,6 +450,41 @@ logger.debug(f"Found {len(resources)} resources to assess")
 - Results are consolidated at the module level
 - Buildspec orchestrates module deployment across accounts
 
+## Report Generation Architecture
+
+### Shared Template Module
+
+Report generation uses a single shared template (`report_template.py`) for both deployment modes:
+
+```
+resco-aiml-assessment/functions/security/generate_consolidated_report/
+├── app.py              # Lambda handler (single-account)
+├── report_template.py  # Shared HTML/CSS/JS template
+└── ...
+
+consolidate_html_reports.py  # CodeBuild script (multi-account)
+```
+
+### How It Works
+
+| Component | Mode | Description |
+|-----------|------|-------------|
+| `app.py` (Lambda) | `mode='single'` | Generates per-account HTML reports during Step Functions execution |
+| `consolidate_html_reports.py` | `mode='multi'` | Consolidates all account reports in CodeBuild post-build phase |
+
+Both call `generate_html_report()` from `report_template.py` with different parameters.
+
+### Modifying the Report Template
+
+To update report styling, layout, or features:
+
+1. Edit `report_template.py` only - changes apply to both single and multi-account reports
+2. Run tests: `python test_generate_report.py`
+3. Key functions:
+   - `get_html_template()` - HTML/CSS/JS structure
+   - `generate_table_rows()` - Finding row generation
+   - `generate_html_report()` - Main entry point with `mode` parameter ('single' or 'multi')
+
 ## Support and Resources
 
 ### Documentation

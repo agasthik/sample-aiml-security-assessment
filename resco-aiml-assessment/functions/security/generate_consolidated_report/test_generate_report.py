@@ -3,6 +3,7 @@ import unittest
 import os
 import webbrowser
 from app import generate_html_report
+from report_template import generate_html_report as generate_report_direct
 
 class TestHtmlReportGeneration(unittest.TestCase):
     def setUp(self):
@@ -138,6 +139,55 @@ class TestHtmlReportGeneration(unittest.TestCase):
             self.assertIn("sidebar", content)
             self.assertIn("service-badge", content)
             self.assertIn("theme-toggle", content)
+
+            # Verify new features from consolidation
+            self.assertIn("Methodology", content)
+            self.assertIn("Severity Legend", content)
+            self.assertIn("sortable", content)
+
+    def test_generate_multi_account_report(self):
+        """Test multi-account report generation using shared template directly"""
+        # Create test data in multi-account format
+        all_findings = [
+            {'account_id': '111122223333', 'check_id': 'BR-01', 'finding': 'Test Finding 1', 'details': 'Details 1', 'resolution': 'Fix it', 'reference': 'https://example.com', 'severity': 'High', 'status': 'Failed', '_service': 'bedrock'},
+            {'account_id': '444455556666', 'check_id': 'SM-01', 'finding': 'Test Finding 2', 'details': 'Details 2', 'resolution': 'Fix it', 'reference': 'https://example.com', 'severity': 'Medium', 'status': 'Failed', '_service': 'sagemaker'},
+            {'account_id': '111122223333', 'check_id': 'AC-01', 'finding': 'Test Finding 3', 'details': 'Details 3', 'resolution': 'N/A', 'reference': 'https://example.com', 'severity': 'Low', 'status': 'Passed', '_service': 'agentcore'},
+        ]
+        service_findings = {
+            'bedrock': [all_findings[0]],
+            'sagemaker': [all_findings[1]],
+            'agentcore': [all_findings[2]]
+        }
+        service_stats = {
+            'bedrock': {'passed': 0, 'failed': 1},
+            'sagemaker': {'passed': 0, 'failed': 1},
+            'agentcore': {'passed': 1, 'failed': 0}
+        }
+
+        html_content = generate_report_direct(
+            all_findings=all_findings,
+            service_findings=service_findings,
+            service_stats=service_stats,
+            mode='multi',
+            account_ids=['111122223333', '444455556666']
+        )
+
+        report_path = os.path.join(self.test_dir, "multi_account_report.html")
+        with open(report_path, "w") as f:
+            f.write(html_content)
+
+        print(f"\nMulti-account report generated at: {os.path.abspath(report_path)}")
+
+        self.assertTrue(os.path.exists(report_path))
+
+        with open(report_path, 'r') as f:
+            content = f.read()
+            # Multi-account specific
+            self.assertIn("Multi-Account", content)
+            self.assertIn("2 Accounts", content)
+            self.assertIn("accountFilter", content)
+            self.assertIn("111122223333", content)
+            self.assertIn("444455556666", content)
 
     def test_missing_data_fields(self):
         """Test handling of assessment results with missing fields"""
