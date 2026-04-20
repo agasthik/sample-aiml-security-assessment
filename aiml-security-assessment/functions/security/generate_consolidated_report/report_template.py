@@ -211,16 +211,16 @@ def get_html_template() -> str:
         .reference-btn svg {{ width: 14px; height: 14px; }}
         .finding-details {{ color: var(--text-2); font-size: 12px; line-height: 1.6; word-break: break-word; overflow-wrap: break-word; hyphens: auto; }}
         .resolution-text {{ color: var(--text-2); font-size: 12px; line-height: 1.6; word-break: break-word; overflow-wrap: break-word; hyphens: auto; }}
-        .pagination {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-top: 1px solid var(--border); background: var(--surface); }}
+        .pagination {{ display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-top: 1px solid var(--border); background: var(--surface); flex-wrap: wrap; gap: 12px; }}
         .pagination-info {{ font-size: 13px; color: var(--text-2); }}
-        .pagination-controls {{ display: flex; align-items: center; gap: 8px; }}
+        .pagination-controls {{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }}
         .pagination-controls select {{ padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: inherit; background: var(--surface); color: var(--text); cursor: pointer; }}
         .pagination-controls select:focus {{ outline: none; border-color: var(--accent); }}
         .pagination-btn {{ display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-weight: 500; font-family: inherit; background: var(--surface); color: var(--text); cursor: pointer; transition: all 0.15s; }}
         .pagination-btn:hover:not(:disabled) {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }}
         .pagination-btn:disabled {{ opacity: 0.4; cursor: not-allowed; }}
         .pagination-btn.active {{ background: var(--accent); border-color: var(--accent); color: white; }}
-        .pagination-pages {{ display: flex; gap: 4px; }}
+        .pagination-pages {{ display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }}
         @media (max-width: 1024px) {{ .layout {{ grid-template-columns: 1fr; }} .sidebar {{ display: none; }} .metrics {{ grid-template-columns: repeat(2, 1fr); }} }}
         @media (max-width: 640px) {{ .metrics {{ grid-template-columns: 1fr; }} .main {{ padding: 20px; }} }}
     </style>
@@ -557,7 +557,7 @@ def get_html_template() -> str:
             let pageSize = 25;
 
             function getVisibleRows() {{
-                return Array.from(table.querySelectorAll('tbody tr')).filter(row => row.style.display !== 'none');
+                return Array.from(table.querySelectorAll('tbody tr')).filter(row => row.dataset.filtered !== 'true');
             }}
 
             function updatePagination() {{
