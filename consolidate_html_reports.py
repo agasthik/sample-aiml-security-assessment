@@ -45,7 +45,7 @@ def consolidate_html_reports():
 
     all_findings = []
     account_ids = set()
-    service_stats = {'bedrock': {'passed': 0, 'failed': 0}, 'sagemaker': {'passed': 0, 'failed': 0}, 'agentcore': {'passed': 0, 'failed': 0}}
+    service_stats = {'bedrock': {'passed': 0, 'failed': 0, 'na': 0}, 'sagemaker': {'passed': 0, 'failed': 0, 'na': 0}, 'agentcore': {'passed': 0, 'failed': 0, 'na': 0}}
     service_findings = {'bedrock': [], 'sagemaker': [], 'agentcore': []}
 
     for account_dir in glob.glob('/tmp/account-files/*/'):
@@ -107,6 +107,8 @@ def consolidate_html_reports():
                                 service_stats[service]['passed'] += 1
                             elif status == 'failed':
                                 service_stats[service]['failed'] += 1
+                            elif status == 'n/a':
+                                service_stats[service]['na'] += 1
 
                 except IOError as e:
                     print(f"Error reading CSV file {csv_file}: {str(e)}")

@@ -84,6 +84,7 @@ def check_sagemaker_internet_access() -> Dict[str, Any]:
 
         instances_with_direct_access = []
         domains_with_direct_access = []
+        total_resources_checked = 0
         
         # Create SageMaker client
         sagemaker_client = boto3.client('sagemaker')
@@ -107,6 +108,7 @@ def check_sagemaker_internet_access() -> Dict[str, Any]:
                                 'subnet_id': instance_details.get('SubnetId', 'N/A'),
                                 'vpc_id': instance_details.get('VpcId', 'N/A')
                             })
+                        total_resources_checked += 1
         except Exception as e:
             logger.error(f"Error checking notebook instances: {str(e)}")
 
@@ -132,6 +134,7 @@ def check_sagemaker_internet_access() -> Dict[str, Any]:
                                 'name': domain_name,
                                 'vpc_id': vpc_id
                             })
+                        total_resources_checked += 1
         except Exception as e:
             logger.error(f"Error checking domains: {str(e)}")
 
@@ -166,25 +169,41 @@ def check_sagemaker_internet_access() -> Dict[str, Any]:
                 )
         else:
             findings['details'] = "No SageMaker resources found with direct internet access"
-            findings['csv_data'].append(create_finding(
-                check_id="SM-01",
-                finding_name= 'SageMaker Internet Access Check',
-                finding_details= 'All SageMaker resources are properly configured to use VPC connectivity',
-                resolution='No action required',
-                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/infrastructure-security.html",
-                severity='Informational',
-                status='Passed'
-            ))
+            if total_resources_checked > 0:
+                findings['csv_data'].append(create_finding(
+                    check_id="SM-01",
+                    finding_name= 'SageMaker Internet Access Check',
+                    finding_details= 'All SageMaker resources are properly configured to use VPC connectivity',
+                    resolution='No action required',
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/infrastructure-security.html",
+                    severity='Informational',
+                    status='Passed'
+                ))
+            else:
+                findings['csv_data'].append(create_finding(
+                    check_id="SM-01",
+                    finding_name= 'SageMaker Internet Access Check',
+                    finding_details= 'No SageMaker notebook instances or domains found to check',
+                    resolution='No action required',
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/infrastructure-security.html",
+                    severity='Informational',
+                    status='N/A'
+                ))
 
         return findings
 
     except Exception as e:
         logger.error(f"Error in check_sagemaker_internet_access: {str(e)}", exc_info=True)
         return {
-            'check_name': 'SageMaker Internet Access Check',
-            'status': 'ERROR',
-            'details': f"Error during check: {str(e)}",
-            'csv_data': []
+            'csv_data': [create_finding(
+                check_id="SM-01",
+                finding_name="SageMaker Internet Access Check",
+                finding_details=f"Error during check: {str(e)}",
+                resolution="Investigate error and retry assessment",
+                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                severity='High',
+                status='Failed'
+            )]
         }
 
 def check_guardduty_enabled() -> Dict[str, Any]:
@@ -364,7 +383,7 @@ def check_sagemaker_iam_permissions(permission_cache) -> Dict[str, Any]:
 
 
         # Generate findings
-        if roles_with_full_access or stale_users:
+        if roles_with_full_access or stale_users or domains_without_sso:
             
             # Findings for full access roles
             if roles_with_full_access:
@@ -492,6 +511,7 @@ def check_sagemaker_data_protection() -> Dict[str, Any]:
         resources_with_aws_managed_keys = []
         resources_without_encryption = []
         resources_without_vpc_encryption = []
+        total_resources_checked = 0
 
         # Check Notebook Instances
         try:
@@ -503,6 +523,7 @@ def check_sagemaker_data_protection() -> Dict[str, Any]:
                         instance_details = sagemaker_client.describe_notebook_instance(
                             NotebookInstanceName=instance_name
                         )
+                        total_resources_checked += 1
                         
                         # Check KMS key usage
                         kms_key_id = instance_details.get('KmsKeyId')
@@ -531,6 +552,7 @@ def check_sagemaker_data_protection() -> Dict[str, Any]:
                         domain_details = sagemaker_client.describe_domain(
                             DomainId=domain_id
                         )
+                        total_resources_checked += 1
                         
                         # Check KMS key usage for domain
                         kms_key_id = domain_details.get('KmsKeyId')
@@ -547,13 +569,14 @@ def check_sagemaker_data_protection() -> Dict[str, Any]:
                                 'key_id': kms_key_id
                             })
 
-                        # Check VPC encryption settings
-                        vpc_settings = domain_details.get('DefaultUserSettings', {}).get('SecurityGroups', [])
-                        if not vpc_settings:
+                        # Check VPC configuration
+                        vpc_id = domain_details.get('VpcId')
+                        subnet_ids = domain_details.get('SubnetIds', [])
+                        if not vpc_id or not subnet_ids:
                             resources_without_vpc_encryption.append({
                                 'type': 'Domain',
                                 'name': domain_details.get('DomainName', domain_id),
-                                'issue': 'No VPC encryption configuration'
+                                'issue': 'No VPC configuration'
                             })
         except Exception as e:
             logger.error(f"Error checking domain encryption: {str(e)}")
@@ -568,6 +591,7 @@ def check_sagemaker_data_protection() -> Dict[str, Any]:
                         job_details = sagemaker_client.describe_training_job(
                             TrainingJobName=job_name
                         )
+                        total_resources_checked += 1
                         
                         # Check output encryption
                         output_config = job_details.get('OutputDataConfig', {})
@@ -642,24 +666,45 @@ def check_sagemaker_data_protection() -> Dict[str, Any]:
                     )
 
         else:
-            findings['csv_data'].append(
-                create_finding(
-                    check_id="SM-03",
-                    finding_name='Data Protection Check',
-                    finding_details='All resources use appropriate encryption configurations',
-                    resolution='No action required',
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
-                    severity='Informational',
-                    status='Passed'
+            if total_resources_checked > 0:
+                findings['csv_data'].append(
+                    create_finding(
+                        check_id="SM-03",
+                        finding_name='Data Protection Check',
+                        finding_details='All resources use appropriate encryption configurations',
+                        resolution='No action required',
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                        severity='Informational',
+                        status='Passed'
+                    )
                 )
-            )
+            else:
+                findings['csv_data'].append(
+                    create_finding(
+                        check_id="SM-03",
+                        finding_name='Data Protection Check',
+                        finding_details='No SageMaker resources found to check for data protection',
+                        resolution='No action required',
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                        severity='Informational',
+                        status='N/A'
+                    )
+                )
 
         return findings
 
     except Exception as e:
         logger.error(f"Error in check_sagemaker_data_protection: {str(e)}", exc_info=True)
         return {
-            'csv_data': []
+            'csv_data': [create_finding(
+                check_id="SM-03",
+                finding_name="SageMaker Data Protection Check",
+                finding_details=f"Error during check: {str(e)}",
+                resolution="Investigate error and retry assessment",
+                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                severity='High',
+                status='Failed'
+            )]
         }
 
 def check_sagemaker_mlops_utilization(permission_cache) -> Dict[str, Any]:
@@ -688,8 +733,8 @@ def check_sagemaker_mlops_utilization(permission_cache) -> Dict[str, Any]:
                     'component': 'Model Registry',
                     'issue': 'No model package groups found',
                     'impact': 'Model versioning and governance may not be properly tracked',
-                    'severity': 'Medium',
-                    'status': "Failed"
+                    'severity': 'Informational',
+                    'status': 'N/A'
                 })
             else:
                 # Check if models are being versioned
@@ -1125,7 +1170,15 @@ def check_sagemaker_notebook_root_access() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error in check_sagemaker_notebook_root_access: {str(e)}", exc_info=True)
         return {
-            'csv_data': []
+            'csv_data': [create_finding(
+                check_id="SM-09",
+                finding_name="SageMaker Notebook Root Access Check",
+                finding_details=f"Error during check: {str(e)}",
+                resolution="Investigate error and retry assessment",
+                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                severity='High',
+                status='Failed'
+            )]
         }
 
 
@@ -1219,7 +1272,15 @@ def check_sagemaker_notebook_vpc_deployment() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error in check_sagemaker_notebook_vpc_deployment: {str(e)}", exc_info=True)
         return {
-            'csv_data': []
+            'csv_data': [create_finding(
+                check_id="SM-10",
+                finding_name="SageMaker Notebook VPC Deployment Check",
+                finding_details=f"Error during check: {str(e)}",
+                resolution="Investigate error and retry assessment",
+                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                severity='High',
+                status='Failed'
+            )]
         }
 
 
@@ -1432,7 +1493,15 @@ def check_sagemaker_endpoint_instance_count() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error in check_sagemaker_endpoint_instance_count: {str(e)}", exc_info=True)
         return {
-            'csv_data': []
+            'csv_data': [create_finding(
+                check_id="SM-12",
+                finding_name="SageMaker Endpoint Instance Count Check",
+                finding_details=f"Error during check: {str(e)}",
+                resolution="Investigate error and retry assessment",
+                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                severity='High',
+                status='Failed'
+            )]
         }
 
 
@@ -1527,7 +1596,15 @@ def check_sagemaker_monitoring_network_isolation() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error in check_sagemaker_monitoring_network_isolation: {str(e)}", exc_info=True)
         return {
-            'csv_data': []
+            'csv_data': [create_finding(
+                check_id="SM-13",
+                finding_name="SageMaker Monitoring Network Isolation Check",
+                finding_details=f"Error during check: {str(e)}",
+                resolution="Investigate error and retry assessment",
+                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                severity='High',
+                status='Failed'
+            )]
         }
 
 

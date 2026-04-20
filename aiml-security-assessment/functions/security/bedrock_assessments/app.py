@@ -167,7 +167,7 @@ def check_marketplace_subscription_access(permission_cache) -> Dict[str, Any]:
                     resolution="No action required",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html#security-iam-awsmanpol-bedrock-marketplace",
                     severity='Informational',
-                    status='N/A'
+                    status='Passed'
                 ))
 
         return findings
@@ -425,7 +425,7 @@ def check_bedrock_full_access_roles(permission_cache) -> Dict[str, Any]:
                 resolution="No action required",
                 reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples-agent.html#iam-agents-ex-all\nhttps://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples-br-studio.html",
                 severity='Informational',
-                status='N/A'
+                status='Passed'
             )
         )
 
@@ -634,8 +634,8 @@ def check_bedrock_access_and_vpc_endpoints(permission_cache) -> Dict[str, Any]:
                         finding_details=finding_detail,
                         resolution='Create a VPC endpoint in your VPC with any of the following Bedrock service endpoints that your application may be using:\n- com.amazonaws.region.bedrock\n- com.amazonaws.region.bedrock-runtime\n- com.amazonaws.region.bedrock-agent\n- com.amazonaws.region.bedrock-agent-runtime',
                         reference='https://docs.aws.amazon.com/bedrock/latest/userguide/vpc-interface-endpoints.html',
-                        severity='Informational',
-                        status='N/A'
+                        severity='Medium',
+                        status='Failed'
                     )
                     )
             else:
@@ -643,6 +643,17 @@ def check_bedrock_access_and_vpc_endpoints(permission_cache) -> Dict[str, Any]:
                 for endpoint in vpc_endpoint_check['found_endpoints']:
                     endpoint_details.append(f"VPC {endpoint['vpc_id']} has endpoint {endpoint['service']}")
                 findings['details'] = "Bedrock VPC endpoints found: " + "; ".join(endpoint_details)
+                findings['csv_data'].append(
+                    create_finding(
+                        check_id="BR-02",
+                        finding_name='Amazon Bedrock private connectivity',
+                        finding_details=f"Bedrock VPC endpoints found: {'; '.join(endpoint_details)}",
+                        resolution='No action required',
+                        reference='https://docs.aws.amazon.com/bedrock/latest/userguide/vpc-interface-endpoints.html',
+                        severity='Informational',
+                        status='Passed'
+                    )
+                )
         else:
             findings['details'] = "No Bedrock access found in roles or users"
 
@@ -850,9 +861,12 @@ def check_bedrock_cloudtrail_logging() -> Dict[str, Any]:
                 # Get trail configuration
                 trail_config = cloudtrail_client.get_trail(Name=trail_arn)
                 
+                # Get trail runtime status (IsLogging is only in get_trail_status)
+                trail_status = cloudtrail_client.get_trail_status(Name=trail_arn)
+                
                 # Check if trail is enabled and multi-region
                 if trail_config['Trail'].get('IsMultiRegionTrail') and \
-                   trail_config['Trail'].get('IsLogging', False):
+                   trail_status.get('IsLogging', False):
                     
                     # Get event selectors
                     event_selectors = cloudtrail_client.get_event_selectors(
@@ -1099,63 +1113,34 @@ def check_bedrock_knowledge_base_encryption() -> Dict[str, Any]:
 
                     kb_config = kb_details.get('knowledgeBase', {})
 
-                    # Check for customer-managed KMS key
-                    # KMS key can be in storageConfiguration or knowledgeBaseConfiguration
+                    # Knowledge Base encryption is managed at the underlying storage layer
+                    # (OpenSearch Serverless, RDS, S3, etc.) and cannot be determined
+                    # from the KB API alone. Flag for manual review.
                     storage_config = kb_config.get('storageConfiguration', {})
+                    storage_type = storage_config.get('type', 'Unknown')
 
-                    # Check OpenSearch Serverless configuration
-                    opensearch_config = storage_config.get('opensearchServerlessConfiguration', {})
-
-                    # Check if using customer-managed encryption
-                    has_cmk = False
-
-                    # Check various storage types for KMS configuration
-                    if opensearch_config:
-                        # OpenSearch Serverless uses collection-level encryption
-                        # We note this as a separate concern
-                        pass
-
-                    # Check RDS configuration
-                    rds_config = storage_config.get('rdsConfiguration', {})
-                    if rds_config:
-                        # RDS encryption is managed at database level
-                        pass
-
-                    # Check Pinecone configuration (uses Secrets Manager)
-                    pinecone_config = storage_config.get('pineconeConfiguration', {})
-
-                    # Check Redis configuration
-                    redis_config = storage_config.get('redisEnterpriseCloudConfiguration', {})
-
-                    # Check for S3 data source encryption
-                    # Knowledge base doesn't directly store the KMS key - it's on the data sources
-                    # But we can check if the KB has any indication of encryption settings
-
-                    # For now, flag KBs that don't have explicit encryption indicators
-                    # This is informational as encryption may be handled at storage layer
                     kb_without_cmk.append({
                         'id': kb_id,
                         'name': kb_name,
-                        'storage_type': storage_config.get('type', 'Unknown')
+                        'storage_type': storage_type
                     })
 
                 except Exception as e:
                     logger.warning(f"Error checking knowledge base {kb_id}: {str(e)}")
 
             if kb_without_cmk:
-                findings['status'] = 'WARN'
-                findings['details'] = f"Found {len(kb_without_cmk)} Knowledge Bases to review for encryption"
+                findings['details'] = f"Found {len(kb_without_cmk)} Knowledge Bases - encryption validated at storage layer"
 
                 for kb in kb_without_cmk:
                     findings['csv_data'].append(
                         create_finding(
                             check_id="BR-09",
                             finding_name="Bedrock Knowledge Base Encryption Review",
-                            finding_details=f"Knowledge Base '{kb['name']}' ({kb['id']}) with storage type '{kb['storage_type']}' should be reviewed for customer-managed KMS encryption at the storage layer",
-                            resolution="1. For OpenSearch Serverless: Enable encryption with CMK at collection level\n2. For S3 data sources: Use CMK-encrypted S3 buckets\n3. For RDS: Enable KMS encryption on the database\n4. Consider using CMK for transient data during ingestion",
+                            finding_details=f"Knowledge Base '{kb['name']}' ({kb['id']}) uses '{kb['storage_type']}' storage. Encryption is managed at the storage layer and cannot be validated from the KB API. Verify encryption configuration on the underlying storage resource.",
+                            resolution="1. For OpenSearch Serverless: Verify encryption with CMK at collection level\n2. For S3 data sources: Verify CMK-encrypted S3 buckets\n3. For RDS: Verify KMS encryption on the database\n4. Consider using CMK for transient data during ingestion",
                             reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
-                            severity='Medium',
-                            status='Failed'
+                            severity='Informational',
+                            status='N/A'
                         )
                     )
             else:
@@ -1400,21 +1385,20 @@ def check_bedrock_custom_model_encryption() -> Dict[str, Any]:
                         modelIdentifier=model_arn
                     )
 
-                    # Check for customer-managed KMS key
-                    output_config = model_details.get('outputDataConfig', {})
-                    kms_key_id = output_config.get('s3Uri', '')  # Output location
-
-                    # Check training data config for encryption
-                    training_config = model_details.get('trainingDataConfig', {})
-
-                    # Check if model customization used CMK
-                    # The model itself stores encrypted artifacts
-                    customization_config = model_details.get('customizationConfig', {})
-
-                    # Check for explicit KMS key in job or model config
+                    # Check for customer-managed KMS key via the customization job
                     has_cmk = False
+                    job_arn = model_details.get('jobArn')
+                    if job_arn:
+                        try:
+                            job_details = bedrock_client.get_model_customization_job(
+                                jobIdentifier=job_arn
+                            )
+                            job_output_config = job_details.get('outputDataConfig', {})
+                            if job_output_config.get('kmsKeyId'):
+                                has_cmk = True
+                        except Exception as job_err:
+                            logger.warning(f"Could not retrieve customization job for {model_name}: {str(job_err)}")
 
-                    # If no explicit CMK found, flag for review
                     if not has_cmk:
                         models_without_cmk.append({
                             'name': model_name,

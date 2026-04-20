@@ -190,7 +190,7 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
     """
     # Transform assessment_results into flat findings lists
     all_findings = []
-    service_stats = {'bedrock': {'passed': 0, 'failed': 0}, 'sagemaker': {'passed': 0, 'failed': 0}, 'agentcore': {'passed': 0, 'failed': 0}}
+    service_stats = {'bedrock': {'passed': 0, 'failed': 0, 'na': 0}, 'sagemaker': {'passed': 0, 'failed': 0, 'na': 0}, 'agentcore': {'passed': 0, 'failed': 0, 'na': 0}}
     service_findings = {'bedrock': [], 'sagemaker': [], 'agentcore': []}
 
     for service in ['bedrock', 'sagemaker', 'agentcore']:
@@ -205,6 +205,8 @@ def generate_html_report(assessment_results: Dict[str, Any]) -> str:
                         service_stats[service]['passed'] += 1
                     elif status == 'failed':
                         service_stats[service]['failed'] += 1
+                    elif status == 'n/a':
+                        service_stats[service]['na'] += 1
 
     account_id = assessment_results.get('account_id', 'Unknown')
     timestamp = assessment_results.get('timestamp', datetime.now(timezone.utc).strftime('%B %d, %Y %H:%M:%S UTC'))

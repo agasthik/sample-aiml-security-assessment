@@ -221,6 +221,7 @@ def check_agentcore_vpc_configuration() -> List[Dict[str, Any]]:
     
     try:
         logger.info("Checking AgentCore VPC configuration")
+        resources_found = False
         
         # Check Runtimes
         try:
@@ -230,6 +231,7 @@ def check_agentcore_vpc_configuration() -> List[Dict[str, Any]]:
             if not runtimes:
                 logger.info("No AgentCore Runtimes found")
             else:
+                resources_found = True
                 logger.info(f"Found {len(runtimes)} AgentCore Runtimes")
                 
                 for runtime in runtimes:
@@ -305,17 +307,28 @@ def check_agentcore_vpc_configuration() -> List[Dict[str, Any]]:
         # They don't have separate list/describe APIs in bedrock-agentcore-control
         # VPC configuration for these tools is inherited from the Runtime configuration
         
-        # If no findings and no resources, return N/A
+        # Return appropriate status based on whether resources were found
         if not findings:
-            findings.append(create_finding(
-                check_id="AC-01",
-                finding_name="AgentCore VPC Configuration Check",
-                finding_details="No AgentCore resources found or all resources have proper VPC configuration",
-                resolution="No action required",
-                reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/user-guide/security/agentcore-vpc.md",
-                severity=SeverityEnum.INFORMATIONAL,
-                status=StatusEnum.NA
-            ))
+            if resources_found:
+                findings.append(create_finding(
+                    check_id="AC-01",
+                    finding_name="AgentCore VPC Configuration Check",
+                    finding_details="All AgentCore resources have proper VPC configuration",
+                    resolution="No action required",
+                    reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/user-guide/security/agentcore-vpc.md",
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.PASSED
+                ))
+            else:
+                findings.append(create_finding(
+                    check_id="AC-01",
+                    finding_name="AgentCore VPC Configuration Check",
+                    finding_details="No AgentCore resources found",
+                    resolution="No action required",
+                    reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/user-guide/security/agentcore-vpc.md",
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA
+                ))
             
     except Exception as e:
         logger.error(f"Error in VPC configuration check: {e}")
@@ -439,7 +452,7 @@ def check_agentcore_full_access_roles(permission_cache: Dict[str, Any]) -> List[
                 status=StatusEnum.FAILED
             ))
         
-        # If no issues found
+        # If no issues found - roles were evaluated and none were problematic
         if not findings:
             findings.append(create_finding(
                 check_id="AC-02",
@@ -448,7 +461,7 @@ def check_agentcore_full_access_roles(permission_cache: Dict[str, Any]) -> List[
                 resolution="No action required",
                 reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
                 severity=SeverityEnum.INFORMATIONAL,
-                status=StatusEnum.NA
+                status=StatusEnum.PASSED
             ))
 
     except Exception as e:
@@ -716,6 +729,15 @@ def check_stale_agentcore_access(permission_cache: Dict[str, Any]) -> List[Dict[
                 
                 if job_status == 'IN_PROGRESS':
                     logger.warning(f"Job timed out for {principal_type} {principal_name} after {max_wait_time}s")
+                    findings.append(create_finding(
+                        check_id="AC-03",
+                        finding_name="AgentCore Stale Access Check Incomplete",
+                        finding_details=f"Could not determine last access for {principal_type} '{principal_name}' — IAM job timed out after {max_wait_time}s",
+                        resolution="Re-run the assessment or manually check service last accessed details for this principal",
+                        reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
+                        severity=SeverityEnum.LOW,
+                        status=StatusEnum.FAILED
+                    ))
                     
             except ClientError as e:
                 error_code = e.response['Error']['Code']
@@ -827,6 +849,7 @@ def check_agentcore_observability() -> List[Dict[str, Any]]:
 
     try:
         logger.info("Checking AgentCore observability configuration")
+        resources_found = False
         
         # Check Runtimes for logging and tracing
         try:
@@ -836,6 +859,7 @@ def check_agentcore_observability() -> List[Dict[str, Any]]:
             if not runtimes:
                 logger.info("No AgentCore Runtimes found")
             else:
+                resources_found = True
                 logger.info(f"Found {len(runtimes)} AgentCore Runtimes")
                 
                 for runtime in runtimes:
@@ -903,17 +927,28 @@ def check_agentcore_observability() -> List[Dict[str, Any]]:
             if e.response['Error']['Code'] != 'ResourceNotFoundException':
                 logger.error(f"Error listing runtimes: {e}")
         
-        # If no findings and no resources, return N/A
+        # Return appropriate status based on whether resources were found
         if not findings:
-            findings.append(create_finding(
-                check_id="AC-04",
-                finding_name="AgentCore Observability Check",
-                finding_details="No AgentCore resources found or all resources have proper observability configuration",
-                resolution="No action required",
-                reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/user-guide/observability/",
-                severity=SeverityEnum.INFORMATIONAL,
-                status=StatusEnum.NA
-            ))
+            if resources_found:
+                findings.append(create_finding(
+                    check_id="AC-04",
+                    finding_name="AgentCore Observability Check",
+                    finding_details="All AgentCore resources have proper observability configuration",
+                    resolution="No action required",
+                    reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/user-guide/observability/",
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.PASSED
+                ))
+            else:
+                findings.append(create_finding(
+                    check_id="AC-04",
+                    finding_name="AgentCore Observability Check",
+                    finding_details="No AgentCore resources found",
+                    resolution="No action required",
+                    reference="https://aws.github.io/bedrock-agentcore-starter-toolkit/user-guide/observability/",
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA
+                ))
 
     except Exception as e:
         logger.error(f"Error in observability check: {e}")
@@ -948,6 +983,7 @@ def check_agentcore_encryption() -> List[Dict[str, Any]]:
     
     try:
         logger.info("Checking AgentCore encryption configuration")
+        resources_found = False
         
         # Check ECR repositories used by AgentCore
         try:
@@ -962,6 +998,7 @@ def check_agentcore_encryption() -> List[Dict[str, Any]]:
                     agentcore_repos.append(repo)
             
             if agentcore_repos:
+                resources_found = True
                 logger.info(f"Found {len(agentcore_repos)} AgentCore-related ECR repositories")
                 
                 for repo in agentcore_repos:
@@ -996,17 +1033,28 @@ def check_agentcore_encryption() -> List[Dict[str, Any]]:
         # Note: Browser Tool recording buckets and Code Interpreter storage are configured
         # as part of Runtime configuration, not as separate resources
 
-        # If no findings, return N/A
+        # Return appropriate status based on whether resources were found
         if not findings:
-            findings.append(create_finding(
-                check_id="AC-05",
-                finding_name="AgentCore Encryption Check",
-                finding_details="No AgentCore resources found or all resources have proper encryption configuration",
-                resolution="No action required",
-                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/key-management.html",
-                severity=SeverityEnum.INFORMATIONAL,
-                status=StatusEnum.NA
-            ))
+            if resources_found:
+                findings.append(create_finding(
+                    check_id="AC-05",
+                    finding_name="AgentCore Encryption Check",
+                    finding_details="All AgentCore resources have proper encryption configuration",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/key-management.html",
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.PASSED
+                ))
+            else:
+                findings.append(create_finding(
+                    check_id="AC-05",
+                    finding_name="AgentCore Encryption Check",
+                    finding_details="No AgentCore resources found",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/key-management.html",
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA
+                ))
 
     except Exception as e:
         logger.error(f"Error in encryption check: {e}")
