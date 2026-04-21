@@ -36,7 +36,6 @@ def get_permissions_cache(execution_id: str) -> Optional[Dict[str, Any]]:
     """
     try:
         s3_client = boto3.client('s3', config=boto3_config)
-        date_string = get_current_utc_date()
         s3_key = f'permissions_cache_{execution_id}.json'
         s3_bucket = os.environ.get('AIML_ASSESSMENT_BUCKET_NAME')
 
@@ -363,7 +362,6 @@ def check_sagemaker_iam_permissions(permission_cache) -> Dict[str, Any]:
                         if auth_mode == 'SSO':
                             try:
                                 # Check Identity Center configuration
-                                sso_client = boto3.client('sso-admin')
                                 identity_store_id = domain_details.get('IdentityStoreId')
                                 
                                 if not identity_store_id:
@@ -505,7 +503,6 @@ def check_sagemaker_data_protection() -> Dict[str, Any]:
         }
 
         sagemaker_client = boto3.client('sagemaker')
-        kms_client = boto3.client('kms')
         
         # Track resources with encryption issues
         resources_with_aws_managed_keys = []
@@ -1852,7 +1849,6 @@ def check_sagemaker_data_quality_encryption() -> Dict[str, Any]:
             for page in paginator.paginate():
                 for job in page.get('JobDefinitionSummaries', []):
                     job_name = job.get('MonitoringJobDefinitionName')
-                    job_arn = job.get('MonitoringJobDefinitionArn')
 
                     if job_name:
                         try:
@@ -2976,9 +2972,9 @@ def check_ml_lineage_tracking() -> Dict[str, Any]:
                                         lineage_issues.append({
                                             'type': 'Missing Lineage',
                                             'resource': model_pkg.get('ModelPackageName', model_arn),
-                                            'details': f"Model package has no lineage associations. Training data and experiment lineage not tracked."
+                                            'details': "Model package has no lineage associations. Training data and experiment lineage not tracked."
                                         })
-                                except Exception as e:
+                                except Exception:
                                     # list_associations might not be available or might fail
                                     pass
                         except Exception as e:
@@ -3249,7 +3245,6 @@ def write_to_s3(execution_id, csv_content: str, bucket_name: str) -> Dict[str, s
         s3_client = boto3.client('s3', config=boto3_config)
         
         # Upload CSV file
-        date_string = get_current_utc_date()
         csv_file_name = f'sagemaker_security_report_{execution_id}.csv'
         s3_client.put_object(
             Bucket=bucket_name,

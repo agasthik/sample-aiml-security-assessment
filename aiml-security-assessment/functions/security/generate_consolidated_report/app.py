@@ -2,10 +2,9 @@ import boto3
 import csv
 import os
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 from io import StringIO
-import json
 from botocore.config import Config
 from botocore.exceptions import ClientError
 

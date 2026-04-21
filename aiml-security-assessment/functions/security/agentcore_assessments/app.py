@@ -11,10 +11,9 @@ import json
 import logging
 import os
 import time
-import re
 from io import StringIO
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
@@ -257,7 +256,6 @@ def check_agentcore_vpc_configuration() -> List[Dict[str, Any]]:
                         else:
                             # Validate VPC configuration
                             subnet_ids = network_config.get('subnetIds', [])
-                            security_group_ids = network_config.get('securityGroupIds', [])
                             
                             if subnet_ids:
                                 # Check if subnets are private
@@ -265,7 +263,6 @@ def check_agentcore_vpc_configuration() -> List[Dict[str, Any]]:
                                     subnets_response = ec2_client.describe_subnets(SubnetIds=subnet_ids)
                                     for subnet in subnets_response.get('Subnets', []):
                                         subnet_id = subnet['SubnetId']
-                                        vpc_id = subnet['VpcId']
                                         
                                         # Check route tables for internet gateway
                                         route_tables = ec2_client.describe_route_tables(
@@ -1290,17 +1287,6 @@ def check_agentcore_vpc_endpoints() -> List[Dict[str, Any]]:
 
     try:
         logger.info("Checking for AgentCore VPC endpoints")
-
-        # Get current region
-        session = boto3.session.Session()
-        current_region = session.region_name
-
-        # AgentCore VPC endpoint service names
-        agentcore_endpoints = [
-            f'com.amazonaws.{current_region}.bedrock-agentcore',
-            f'com.amazonaws.{current_region}.bedrock-agentcore-control',
-            f'com.amazonaws.{current_region}.bedrock-agentcore-runtime'
-        ]
 
         # Get all VPCs
         vpcs_response = ec2_client.describe_vpcs()

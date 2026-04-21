@@ -6,7 +6,7 @@ This module provides a unified report generation function used by both:
 - Multi-account CodeBuild consolidation (consolidate_html_reports.py)
 """
 from datetime import datetime, timezone
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Optional
 
 
 def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -> str:

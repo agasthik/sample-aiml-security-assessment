@@ -37,7 +37,6 @@ def get_permissions_cache(execution_id: str) -> Optional[Dict[str, Any]]:
     """
     try:
         s3_client = boto3.client('s3', config=boto3_config)
-        date_string = get_current_utc_date()
         s3_key = f'permissions_cache_{execution_id}.json'
         s3_bucket = os.environ.get('AIML_ASSESSMENT_BUCKET_NAME')
 
@@ -1099,7 +1098,6 @@ def check_bedrock_knowledge_base_encryption() -> Dict[str, Any]:
                 return findings
 
             kb_without_cmk = []
-            kb_with_cmk = []
 
             for kb in knowledge_bases:
                 kb_id = kb.get('knowledgeBaseId')
@@ -1883,7 +1881,7 @@ def check_bedrock_agent_roles(permission_cache) -> Dict[str, Any]:
                     create_finding(
                         check_id="BR-08",
                         finding_name="Bedrock Agent IAM Roles Check",
-                        finding_details=f"IAM roles associated with Bedrock agents have least privilege issues:\n" +
+                        finding_details="IAM roles associated with Bedrock agents have least privilege issues:\n" +
                                       "\n".join(f"- {issue}" for issue in issues_found),
                         resolution="1. Replace full access policies with scoped policies\n" +
                                  "2. Specify exact resource ARNs instead of using wildcards\n" +
