@@ -32,11 +32,17 @@ To send us a pull request, please:
 1. Fork the repository.
 2. Modify the source; please focus on the specific change you are contributing. If you also reformat all the code, it will be hard for us to focus on your change.
 3. Make sure local tests pass.
-4. Run linting and formatting checks locally before pushing:
+4. Run linting, formatting, and tests locally before pushing:
    ```bash
-   pip install ruff
+   # Install test dependencies (first time only)
+   pip install ruff pytest boto3 pydantic
+
+   # Run lint and format checks
    ruff check <changed-files>
    ruff format --check <changed-files>
+
+   # Run unit tests
+   python -m pytest tests/ -v
    ```
 5. Commit to your fork using clear commit messages.
 6. Send us a pull request, answering any default questions in the pull request interface.

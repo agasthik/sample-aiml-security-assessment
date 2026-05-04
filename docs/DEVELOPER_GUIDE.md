@@ -685,12 +685,15 @@ cfn-lint suppressions are configured in `.cfnlintrc` at the repository root for 
 Before pushing, run these checks locally to catch issues early:
 
 ```bash
-# Install tools
-pip install ruff cfn-lint
+# Install tools (first time only)
+pip install ruff cfn-lint pytest boto3 pydantic
 
 # Python lint and format
 ruff check aiml-security-assessment/functions/security/
 ruff format --check aiml-security-assessment/functions/security/
+
+# Unit tests (213 tests, ~5 seconds, no AWS credentials needed)
+python -m pytest tests/ -v
 
 # CloudFormation lint
 cfn-lint deployment/*.yaml

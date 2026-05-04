@@ -1524,7 +1524,19 @@ def check_sagemaker_model_network_isolation() -> Dict[str, Any]:
         logger.error(
             f"Error in check_sagemaker_model_network_isolation: {str(e)}", exc_info=True
         )
-        return {"csv_data": []}
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-11",
+                    finding_name="SageMaker Model Network Isolation Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ]
+        }
 
 
 def check_sagemaker_endpoint_instance_count() -> Dict[str, Any]:
@@ -1911,7 +1923,19 @@ def check_sagemaker_model_container_repository() -> Dict[str, Any]:
             f"Error in check_sagemaker_model_container_repository: {str(e)}",
             exc_info=True,
         )
-        return {"csv_data": []}
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-14",
+                    finding_name="SageMaker Model Container Repository Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ]
+        }
 
 
 def check_sagemaker_feature_store_encryption() -> Dict[str, Any]:
@@ -2016,7 +2040,19 @@ def check_sagemaker_feature_store_encryption() -> Dict[str, Any]:
             f"Error in check_sagemaker_feature_store_encryption: {str(e)}",
             exc_info=True,
         )
-        return {"csv_data": []}
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-15",
+                    finding_name="SageMaker Feature Store Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ]
+        }
 
 
 def check_sagemaker_data_quality_encryption() -> Dict[str, Any]:
@@ -2114,7 +2150,19 @@ def check_sagemaker_data_quality_encryption() -> Dict[str, Any]:
         logger.error(
             f"Error in check_sagemaker_data_quality_encryption: {str(e)}", exc_info=True
         )
-        return {"csv_data": []}
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-16",
+                    finding_name="SageMaker Data Quality Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ]
+        }
 
 
 def check_sagemaker_processing_job_encryption() -> Dict[str, Any]:
@@ -2228,7 +2276,19 @@ def check_sagemaker_processing_job_encryption() -> Dict[str, Any]:
             f"Error in check_sagemaker_processing_job_encryption: {str(e)}",
             exc_info=True,
         )
-        return {"csv_data": []}
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-17",
+                    finding_name="SageMaker Processing Job Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ]
+        }
 
 
 def check_sagemaker_transform_job_encryption() -> Dict[str, Any]:
@@ -2339,7 +2399,19 @@ def check_sagemaker_transform_job_encryption() -> Dict[str, Any]:
             f"Error in check_sagemaker_transform_job_encryption: {str(e)}",
             exc_info=True,
         )
-        return {"csv_data": []}
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-18",
+                    finding_name="SageMaker Transform Job Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ]
+        }
 
 
 def check_sagemaker_hyperparameter_tuning_encryption() -> Dict[str, Any]:
@@ -2457,7 +2529,19 @@ def check_sagemaker_hyperparameter_tuning_encryption() -> Dict[str, Any]:
             f"Error in check_sagemaker_hyperparameter_tuning_encryption: {str(e)}",
             exc_info=True,
         )
-        return {"csv_data": []}
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-19",
+                    finding_name="SageMaker Hyperparameter Tuning Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ]
+        }
 
 
 def check_sagemaker_compilation_job_encryption() -> Dict[str, Any]:
@@ -2566,7 +2650,19 @@ def check_sagemaker_compilation_job_encryption() -> Dict[str, Any]:
             f"Error in check_sagemaker_compilation_job_encryption: {str(e)}",
             exc_info=True,
         )
-        return {"csv_data": []}
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-20",
+                    finding_name="SageMaker Compilation Job Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ]
+        }
 
 
 def check_sagemaker_automl_network_isolation() -> Dict[str, Any]:
@@ -2679,7 +2775,19 @@ def check_sagemaker_automl_network_isolation() -> Dict[str, Any]:
             f"Error in check_sagemaker_automl_network_isolation: {str(e)}",
             exc_info=True,
         )
-        return {"csv_data": []}
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-21",
+                    finding_name="SageMaker AutoML Network Isolation Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ]
+        }
 
 
 # ============================================================================
@@ -2813,7 +2921,19 @@ def check_model_approval_workflow() -> Dict[str, Any]:
 
     except Exception as e:
         logger.error(f"Error in check_model_approval_workflow: {str(e)}", exc_info=True)
-        return {"csv_data": []}
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-22",
+                    finding_name="Model Approval Workflow Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ]
+        }
 
 
 def check_model_drift_detection() -> Dict[str, Any]:
@@ -2978,7 +3098,19 @@ def check_model_drift_detection() -> Dict[str, Any]:
 
     except Exception as e:
         logger.error(f"Error in check_model_drift_detection: {str(e)}", exc_info=True)
-        return {"csv_data": []}
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-23",
+                    finding_name="Model Drift Detection Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ]
+        }
 
 
 def check_ab_testing_shadow_deployment() -> Dict[str, Any]:
@@ -3143,7 +3275,19 @@ def check_ab_testing_shadow_deployment() -> Dict[str, Any]:
         logger.error(
             f"Error in check_ab_testing_shadow_deployment: {str(e)}", exc_info=True
         )
-        return {"csv_data": []}
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-24",
+                    finding_name="A/B Testing Shadow Deployment Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ]
+        }
 
 
 def check_ml_lineage_tracking() -> Dict[str, Any]:
@@ -3289,7 +3433,19 @@ def check_ml_lineage_tracking() -> Dict[str, Any]:
 
     except Exception as e:
         logger.error(f"Error in check_ml_lineage_tracking: {str(e)}", exc_info=True)
-        return {"csv_data": []}
+        return {
+            "csv_data": [
+                create_finding(
+                    check_id="SM-25",
+                    finding_name="ML Lineage Tracking Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/security.html",
+                    severity="High",
+                    status="Failed",
+                )
+            ]
+        }
 
 
 def check_model_registry_usage(permission_cache) -> Dict[str, Any]:
