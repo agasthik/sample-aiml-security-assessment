@@ -83,60 +83,114 @@ phases:
           # Track failed accounts
           failed_accounts=()
 
-          # Create directory to store execution ARNs for post-build phase
+          # Create directories for parallel execution
           mkdir -p /tmp/execution_arns
+          mkdir -p /tmp/deploy_logs
+          mkdir -p /tmp/deploy_results
 
+          # Use PARALLEL_ACCOUNTS env var (set by CloudFormation mapping: 3, 6, or 12)
+          MAX_PARALLEL=${PARALLEL_ACCOUNTS:-3}
+          echo "Deploying to member accounts with concurrency: $MAX_PARALLEL"
+
+          # Function to deploy to a single account (runs as background process)
+          deploy_account() {
+            local acctId=$1
+            local log_file="/tmp/deploy_logs/${acctId}.log"
+            local result_file="/tmp/deploy_results/${acctId}.status"
+
+            {
+              echo "Processing account $acctId"
+
+              # Assume role with error handling
+              local creds
+              creds=$(aws sts assume-role --role-arn arn:$AWS_PARTITION:iam::$acctId:role/service-role/$MEMBER_ROLE --role-session-name AIMLSecurityAssessment --output json 2>/dev/null)
+              if [[ $? -ne 0 || -z "$creds" ]]; then
+                echo "ERROR: Failed to assume role in account $acctId"
+                echo "FAILED" > "$result_file"
+                return 1
+              fi
+
+              # Extract credentials (local to this subshell)
+              local ak sk st
+              ak=$(echo "$creds" | jq -r '.Credentials.AccessKeyId')
+              sk=$(echo "$creds" | jq -r '.Credentials.SecretAccessKey')
+              st=$(echo "$creds" | jq -r '.Credentials.SessionToken')
+              unset creds
+
+              if [[ -z "$ak" || "$ak" == "null" ]]; then
+                echo "ERROR: Failed to extract credentials for account $acctId"
+                echo "FAILED" > "$result_file"
+                return 1
+              fi
+
+              export AWS_ACCESS_KEY_ID="$ak"
+              export AWS_SECRET_ACCESS_KEY="$sk"
+              export AWS_SESSION_TOKEN="$st"
+
+              echo "Deploying to account $acctId"
+              if ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name aiml-security-$acctId --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region $AWS_DEFAULT_REGION; then
+                echo "ERROR: Deploy failed for account $acctId"
+                echo "FAILED" > "$result_file"
+                return 1
+              fi
+
+              local state_machine_arn
+              state_machine_arn=$(aws cloudformation describe-stacks --stack-name aiml-security-$acctId --query 'Stacks[0].Outputs[?OutputKey==`AIMLAssessmentStateMachineArn`].OutputValue' --output text 2>/dev/null)
+              if [[ $state_machine_arn != "" && $state_machine_arn != "None" ]]; then
+                local execution_arn
+                if execution_arn=$(aws stepfunctions start-execution --state-machine-arn $state_machine_arn --input "{\"accountId\":\"$acctId\"}" --query 'executionArn' --output text); then
+                  echo "Started execution: $execution_arn"
+                  echo "$execution_arn" > /tmp/execution_arns/$acctId.txt
+                else
+                  echo "WARNING: Failed to start Step Function execution for account $acctId"
+                fi
+              else
+                echo "WARNING: No State Machine ARN found for account $acctId"
+              fi
+
+              echo "SUCCESS" > "$result_file"
+            } > "$log_file" 2>&1
+          }
+
+          # Deploy member accounts in parallel batches
+          active_jobs=0
           for accountId in $account_list; do
-            echo "Processing account $accountId"
             if [[ $accountId == $AWS_ACCOUNT_ID ]]; then
               echo "Skipping management account $accountId - will be handled separately"
               continue
             fi
 
-            # Assume role with error handling - keep credentials in memory only
-            CREDS=$(aws sts assume-role --role-arn arn:$AWS_PARTITION:iam::$accountId:role/service-role/$MEMBER_ROLE --role-session-name AIMLSecurityAssessment --output json 2>/dev/null)
-            if [[ $? -ne 0 || -z "$CREDS" ]]; then
-              echo "ERROR: Failed to assume role in account $accountId"
-              failed_accounts+=($accountId)
+            deploy_account "$accountId" &
+            active_jobs=$((active_jobs + 1))
+
+            if [[ $active_jobs -ge $MAX_PARALLEL ]]; then
+              wait -n
+              active_jobs=$((active_jobs - 1))
+            fi
+          done
+          wait
+
+          # Collect results and print logs
+          echo "========== Deployment Results =========="
+          for accountId in $account_list; do
+            if [[ $accountId == $AWS_ACCOUNT_ID ]]; then
               continue
             fi
-
-            # Extract credentials from memory
-            export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
-            export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
-            export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
-            unset CREDS
-
-            if [[ -z "$AWS_ACCESS_KEY_ID" || "$AWS_ACCESS_KEY_ID" == "null" ]]; then
-              echo "ERROR: Failed to extract credentials for account $accountId"
-              failed_accounts+=($accountId)
-              unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
-              continue
+            if [[ -f /tmp/deploy_logs/$accountId.log ]]; then
+              echo "--- Account $accountId ---"
+              cat /tmp/deploy_logs/$accountId.log
             fi
-
-            echo "Deploying to account $accountId"
-            if ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name aiml-security-$accountId --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region $AWS_DEFAULT_REGION; then
-              echo "ERROR: Deploy failed for account $accountId"
-              failed_accounts+=($accountId)
-              unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
-              continue
-            fi
-
-            STATE_MACHINE_ARN=$(aws cloudformation describe-stacks --stack-name aiml-security-$accountId --query 'Stacks[0].Outputs[?OutputKey==`AIMLAssessmentStateMachineArn`].OutputValue' --output text 2>/dev/null)
-            if [[ $STATE_MACHINE_ARN != "" && $STATE_MACHINE_ARN != "None" ]]; then
-              if EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$accountId\"}" --query 'executionArn' --output text); then
-                echo "Started execution: $EXECUTION_ARN"
-                # Save execution ARN for post-build phase
-                echo "$EXECUTION_ARN" > /tmp/execution_arns/$accountId.txt
-              else
-                echo "WARNING: Failed to start Step Function execution for account $accountId"
+            if [[ -f /tmp/deploy_results/$accountId.status ]]; then
+              status=$(cat /tmp/deploy_results/$accountId.status)
+              if [[ $status != "SUCCESS" ]]; then
+                failed_accounts+=($accountId)
               fi
             else
-              echo "WARNING: No State Machine ARN found for account $accountId"
+              echo "WARNING: No result recorded for account $accountId"
+              failed_accounts+=($accountId)
             fi
-
-            unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
           done
+          echo "========================================"
 
           echo "Deploying to management account $AWS_ACCOUNT_ID"
           # Clean up any leftover SAM managed stack from previous failed runs
@@ -221,96 +275,142 @@ phases:
           echo "Cleaning up existing account-files directory"
           rm -rf /tmp/account-files
           mkdir -p /tmp/account-files
+          mkdir -p /tmp/postbuild_logs
 
-          echo "Copying files from respective account S3 buckets to CodeBuild environment"
-          for accountId in $account_list; do
-            echo "Processing account $accountId"
-            if [[ $accountId == $AWS_ACCOUNT_ID ]]; then
-              # Management account - use mgmt stack name
-              STACK_NAME="aiml-security-mgmt"
-            else
-              # Member account - assume role and use account-specific stack name
-              CREDS=$(aws sts assume-role --role-arn arn:$AWS_PARTITION:iam::$accountId:role/service-role/$MEMBER_ROLE --role-session-name AIMLSecurityAssessment --output json 2>/dev/null)
-              if [[ $? -ne 0 || -z "$CREDS" ]]; then
-                echo "ERROR: Failed to assume role for account $accountId in post-build"
-                failed_accounts+=($accountId)
-                continue
-              fi
+          MAX_PARALLEL=${PARALLEL_ACCOUNTS:-3}
+          echo "Collecting results with concurrency: $MAX_PARALLEL"
 
-              export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
-              export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
-              export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
-              unset CREDS
+          # Function to wait for Step Function and collect results for one account
+          collect_account_results() {
+            local acctId=$1
+            local log_file="/tmp/postbuild_logs/${acctId}.log"
+            local result_file="/tmp/deploy_results/${acctId}_postbuild.status"
 
-              if [[ -z "$AWS_ACCESS_KEY_ID" || "$AWS_ACCESS_KEY_ID" == "null" ]]; then
-                echo "ERROR: Failed to extract credentials for account $accountId in post-build"
-                failed_accounts+=($accountId)
-                continue
-              fi
+            {
+              echo "Processing account $acctId"
+              local stack_name
 
-              STACK_NAME="aiml-security-$accountId"
-            fi
-
-            # Wait for Step Function to complete before copying files
-            # Read the execution ARN saved from build phase
-            if [[ -f /tmp/execution_arns/$accountId.txt ]]; then
-              EXECUTION_ARN=$(cat /tmp/execution_arns/$accountId.txt)
-              echo "Waiting for Step Function execution in account $accountId: $EXECUTION_ARN"
-              if [[ $EXECUTION_ARN != "" && $EXECUTION_ARN != "None" ]]; then
-                timeout=${SF_POLL_TIMEOUT:-600}
-                elapsed=0
-                while [[ $elapsed -lt $timeout ]]; do
-                  STATUS=$(aws stepfunctions describe-execution --execution-arn $EXECUTION_ARN --query 'status' --output text 2>/dev/null)
-                  if [[ $STATUS == "SUCCEEDED" || $STATUS == "FAILED" || $STATUS == "TIMED_OUT" || $STATUS == "ABORTED" ]]; then
-                    echo "Step Function for account $accountId completed with status: $STATUS"
-                    if [[ $STATUS == "FAILED" || $STATUS == "TIMED_OUT" || $STATUS == "ABORTED" ]]; then
-                      echo "WARNING: Step Function did not succeed for account $accountId"
-                    fi
-                    break
-                  fi
-                  echo "Step Function for account $accountId still running (status: $STATUS)... waiting 30 seconds"
-                  sleep 30
-                  elapsed=$((elapsed + 30))
-                done
-                if [[ $elapsed -ge $timeout ]]; then
-                  echo "WARNING: Timeout waiting for Step Function completion in account $accountId"
+              if [[ $acctId == $AWS_ACCOUNT_ID ]]; then
+                stack_name="aiml-security-mgmt"
+              else
+                local creds
+                creds=$(aws sts assume-role --role-arn arn:$AWS_PARTITION:iam::$acctId:role/service-role/$MEMBER_ROLE --role-session-name AIMLSecurityAssessment --output json 2>/dev/null)
+                if [[ $? -ne 0 || -z "$creds" ]]; then
+                  echo "ERROR: Failed to assume role for account $acctId in post-build"
+                  echo "FAILED" > "$result_file"
+                  return 1
                 fi
+
+                local ak sk st
+                ak=$(echo "$creds" | jq -r '.Credentials.AccessKeyId')
+                sk=$(echo "$creds" | jq -r '.Credentials.SecretAccessKey')
+                st=$(echo "$creds" | jq -r '.Credentials.SessionToken')
+                unset creds
+
+                if [[ -z "$ak" || "$ak" == "null" ]]; then
+                  echo "ERROR: Failed to extract credentials for account $acctId in post-build"
+                  echo "FAILED" > "$result_file"
+                  return 1
+                fi
+
+                export AWS_ACCESS_KEY_ID="$ak"
+                export AWS_SECRET_ACCESS_KEY="$sk"
+                export AWS_SESSION_TOKEN="$st"
+
+                stack_name="aiml-security-$acctId"
               fi
-            else
-              echo "WARNING: No execution ARN file found for account $accountId - execution may not have started"
-            fi
 
-            # Now copy files from the completed assessment
-            ACCOUNT_BUCKET=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query 'Stacks[0].Outputs[?OutputKey==`AssessmentBucketName`].OutputValue' --output text 2>/dev/null)
-            if [[ $ACCOUNT_BUCKET != "" && $ACCOUNT_BUCKET != "None" ]]; then
-              echo "Copying files from $ACCOUNT_BUCKET to local storage"
-              mkdir -p /tmp/account-files/$accountId
-
-              # List bucket contents first for debugging
-              echo "Bucket contents for $accountId:"
-              if ! aws s3 ls s3://$ACCOUNT_BUCKET/; then
-                echo "WARNING: Failed to list bucket contents for $accountId"
+              # Wait for Step Function to complete before copying files
+              if [[ -f /tmp/execution_arns/$acctId.txt ]]; then
+                local exec_arn
+                exec_arn=$(cat /tmp/execution_arns/$acctId.txt)
+                echo "Waiting for Step Function execution in account $acctId: $exec_arn"
+                if [[ $exec_arn != "" && $exec_arn != "None" ]]; then
+                  local poll_timeout=${SF_POLL_TIMEOUT:-600}
+                  local elapsed=0
+                  while [[ $elapsed -lt $poll_timeout ]]; do
+                    local sf_status
+                    sf_status=$(aws stepfunctions describe-execution --execution-arn $exec_arn --query 'status' --output text 2>/dev/null)
+                    if [[ $sf_status == "SUCCEEDED" || $sf_status == "FAILED" || $sf_status == "TIMED_OUT" || $sf_status == "ABORTED" ]]; then
+                      echo "Step Function for account $acctId completed with status: $sf_status"
+                      if [[ $sf_status == "FAILED" || $sf_status == "TIMED_OUT" || $sf_status == "ABORTED" ]]; then
+                        echo "WARNING: Step Function did not succeed for account $acctId"
+                      fi
+                      break
+                    fi
+                    echo "Step Function for account $acctId still running (status: $sf_status)... waiting 30 seconds"
+                    sleep 30
+                    elapsed=$((elapsed + 30))
+                  done
+                  if [[ $elapsed -ge $poll_timeout ]]; then
+                    echo "WARNING: Timeout waiting for Step Function completion in account $acctId"
+                  fi
+                fi
+              else
+                echo "WARNING: No execution ARN file found for account $acctId - execution may not have started"
               fi
 
-              if ! aws s3 cp s3://$ACCOUNT_BUCKET/ /tmp/account-files/$accountId/ --recursive --exclude "*" --include "*.csv" --include "*.html" --exclude "*/"; then
-                echo "WARNING: No files to copy or copy failed from $accountId"
+              # Copy files from the completed assessment
+              local account_bucket
+              account_bucket=$(aws cloudformation describe-stacks --stack-name $stack_name --query 'Stacks[0].Outputs[?OutputKey==`AssessmentBucketName`].OutputValue' --output text 2>/dev/null)
+              if [[ $account_bucket != "" && $account_bucket != "None" ]]; then
+                echo "Copying files from $account_bucket to local storage"
+                mkdir -p /tmp/account-files/$acctId
+
+                echo "Bucket contents for $acctId:"
+                if ! aws s3 ls s3://$account_bucket/; then
+                  echo "WARNING: Failed to list bucket contents for $acctId"
+                fi
+
+                if ! aws s3 cp s3://$account_bucket/ /tmp/account-files/$acctId/ --recursive --exclude "*" --include "*.csv" --include "*.html" --exclude "*/"; then
+                  echo "WARNING: No files to copy or copy failed from $acctId"
+                fi
+
+                echo "Files copied for $acctId:"
+                ls -la /tmp/account-files/$acctId/ 2>/dev/null || echo "No files in directory"
+
+                # Flatten any nested directories
+                find /tmp/account-files/$acctId -type f \( -name "*.csv" -o -name "*.html" \) -exec mv {} /tmp/account-files/$acctId/ \; 2>/dev/null || true
+                find /tmp/account-files/$acctId -type d -empty -delete 2>/dev/null || true
+              else
+                echo "WARNING: No assessment bucket found for $acctId (STACK_NAME: $stack_name)"
               fi
 
-              # Show what was actually copied
-              echo "Files copied for $accountId:"
-              ls -la /tmp/account-files/$accountId/ 2>/dev/null || echo "No files in directory"
+              echo "SUCCESS" > "$result_file"
+            } > "$log_file" 2>&1
+          }
 
-              # Flatten any nested directories
-              find /tmp/account-files/$accountId -type f \( -name "*.csv" -o -name "*.html" \) -exec mv {} /tmp/account-files/$accountId/ \; 2>/dev/null || true
-              find /tmp/account-files/$accountId -type d -empty -delete 2>/dev/null || true
-            else
-              echo "WARNING: No assessment bucket found for $accountId (STACK_NAME: $STACK_NAME)"
-            fi
+          # Collect results in parallel batches
+          active_jobs=0
+          for accountId in $account_list; do
+            collect_account_results "$accountId" &
+            active_jobs=$((active_jobs + 1))
 
-            if [[ $accountId != $AWS_ACCOUNT_ID ]]; then
-              unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+            if [[ $active_jobs -ge $MAX_PARALLEL ]]; then
+              wait -n
+              active_jobs=$((active_jobs - 1))
             fi
           done
+          wait
+
+          # Print collected logs and track failures
+          echo "========== Post-Build Results =========="
+          for accountId in $account_list; do
+            if [[ -f /tmp/postbuild_logs/$accountId.log ]]; then
+              echo "--- Account $accountId ---"
+              cat /tmp/postbuild_logs/$accountId.log
+            fi
+            if [[ -f /tmp/deploy_results/${accountId}_postbuild.status ]]; then
+              status=$(cat /tmp/deploy_results/${accountId}_postbuild.status)
+              if [[ $status != "SUCCESS" ]]; then
+                failed_accounts+=($accountId)
+              fi
+            else
+              echo "WARNING: No post-build result recorded for account $accountId"
+              failed_accounts+=($accountId)
+            fi
+          done
+          echo "========================================"
 
           echo "Uploading files to management account S3 bucket and creating consolidated report"
 
