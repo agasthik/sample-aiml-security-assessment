@@ -217,13 +217,13 @@ The deployment follows a two-step approach:
 
 ### Step 1: Deploy Member Roles (AWS CloudFormation StackSets)
 
-Deploy [1-aiml-security-member-roles.yaml](deployment/1-aiml-security-member-roles.yaml) to all target accounts using AWS CloudFormation StackSets with service-managed permissions.
+Deploy [aiml-security-member-roles.yaml](deployment/aiml-security-member-roles.yaml) to all target accounts using AWS CloudFormation StackSets with service-managed permissions.
 
 #### AWS Console Deployment
 
 1. Navigate to **AWS CloudFormation** > **StackSets** in the management account
 2. Click **Create StackSet**
-3. Select **Upload a template file** and upload [1-aiml-security-member-roles.yaml](deployment/1-aiml-security-member-roles.yaml)
+3. Select **Upload a template file** and upload [aiml-security-member-roles.yaml](deployment/aiml-security-member-roles.yaml)
 4. Enter a StackSet name (for example, `aiml-security-member-roles`)
 5. Set the `ManagementAccountID` parameter to your management account ID
 6. Under **Permissions**, select **Service-managed permissions**
@@ -392,7 +392,7 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
 
 ### Modifying Assessment Scope
 
-To add or remove service permissions, edit the member role permissions in `1-aiml-security-member-roles.yaml`.
+To add or remove service permissions, edit the member role permissions in `aiml-security-member-roles.yaml`.
 
 ### Concurrent Scanning
 

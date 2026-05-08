@@ -69,7 +69,7 @@ The AI/ML Security Assessment Framework is a serverless, multi-account security 
 
 ### Phase 1: Infrastructure Deployment
 
-#### Step 1: Member Account Roles (`1-aiml-security-member-roles.yaml`)
+#### Step 1: Member Account Roles (`aiml-security-member-roles.yaml`)
 - **AWS CloudFormation StackSets Deployment**: Deploys `AIMLSecurityMemberRole` to all target accounts
 - **Cross-Account Trust**: Establishes trust relationship with central management account
 - **Assessment Permissions**: Grants read-only access to AI/ML services (Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore) for security assessment
@@ -376,7 +376,7 @@ Add new service to the parallel execution in `aiml-security-assessment/statemach
 
 Add required permissions to member role template:
 
-**In `deployment/1-aiml-security-member-roles.yaml`**:
+**In `deployment/aiml-security-member-roles.yaml`**:
 ```yaml
 - Effect: Allow
   Action:
@@ -696,7 +696,7 @@ python -m pytest tests/ -v
 
 # CloudFormation lint
 cfn-lint deployment/aiml-security-assessment.yaml
-cfn-lint deployment/1-aiml-security-member-roles.yaml
+cfn-lint deployment/aiml-security-member-roles.yaml
 cfn-lint aiml-security-assessment/template.yaml
 
 # SAM validate and build
