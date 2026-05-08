@@ -40,13 +40,7 @@ jobs:
           cd aiml-security-assessment
           sam validate --template template.yaml --lint
 
-      - name: SAM Validate (multi-account)
-        if: steps.changed-files.outputs.any_changed == 'true'
-        run: |
-          cd aiml-security-assessment
-          sam validate --template template-multi-account.yaml --lint
-
-      - name: SAM Build (single-account)
+      - name: SAM Build
         if: steps.changed-files.outputs.any_changed == 'true'
         run: |
           cd aiml-security-assessment

@@ -132,18 +132,18 @@ This tool operates within the [AWS Shared Responsibility Model](https://aws.amaz
 
 ## Single-Account Deployment
 
-1. Download the [aiml-security-single-account.yaml](deployment/aiml-security-single-account.yaml) AWS CloudFormation template.
-2. **[Deploy to AWS CloudFormation](https://console.aws.amazon.com/cloudformation/home#/stacks/create/template?stackName=aiml-security-single-account)**
+1. Download the [aiml-security-assessment.yaml](deployment/aiml-security-assessment.yaml) AWS CloudFormation template.
+2. **[Deploy to AWS CloudFormation](https://console.aws.amazon.com/cloudformation/home#/stacks/create/template?stackName=aiml-security-assessment)**
 3. Upload the AWS CloudFormation template from step 1.
 4. Provide a stack name and optionally specify your email address to receive notifications.
-5. Leave all other parameters at their default values.
+5. Leave `MultiAccountScan` set to `false` (default) and all other parameters at their default values.
 6. Navigate to the next page, read and acknowledge the notice, and click **Next**.
 7. Review the information and click **Submit**.
 8. Wait for the AWS CloudFormation stack to complete.
 9. Once complete, AWS CodeBuild automatically deploys the assessment stack and runs the assessment.
 10. To view results:
     - Navigate to the AWS CloudFormation console
-    - Open the stack you deployed (for example, `aiml-security-single-account` or your custom name)
+    - Open the stack you deployed (for example, `aiml-security-assessment` or your custom name)
     - Go to the **Outputs** tab
     - Copy the `AssessmentBucket` value
     - Navigate to that Amazon S3 bucket and open the `{account_id}/security_assessment_*.html` file
@@ -166,7 +166,7 @@ The name <strong>you chose</strong><br/>
 Examples:<br/>
   - <code>my-aiml-assessment</code><br/>
   - <code>aiml-security-prod</code><br/>
-  - <code>aiml-security-single-account</code>
+  - <code>aiml-security-assessment</code>
 </td>
 <td>
 AWS CodeBuild project<br/>
@@ -235,12 +235,12 @@ This uses AWS Organizations to deploy the member role to all accounts in the sel
 
 ### Step 2: Deploy Central Infrastructure
 
-Deploy [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yaml) in your central management account or delegated administrator member account.
+Deploy [aiml-security-assessment.yaml](deployment/aiml-security-assessment.yaml) in your central management account or delegated administrator member account.
 
 #### AWS Console Deployment
 
 1. Navigate to [AWS CloudFormation](https://console.aws.amazon.com/cloudformation/home#/stacks/create/template?stackName=aiml-security-multi-account)
-2. Select **Upload a template file** and upload the [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yaml) file.
+2. Select **Upload a template file** and upload the [aiml-security-assessment.yaml](deployment/aiml-security-assessment.yaml) file.
 3. Set the `MultiAccountScan` parameter to `true`.
 4. Optionally, provide your email address in the `EmailAddress` parameter for completion notifications.
 5. Leave the remaining parameters at their default values.
@@ -289,7 +289,7 @@ Deploy [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yam
 
 ## Permissions Required
 
-### Central Account Role (`MultiAccountCodeBuildRole`)
+### Central Account Role (`AIMLSecurityCodeBuildRole`)
 
 - Assumes roles in member accounts
 - Lists AWS Organizations accounts
@@ -320,8 +320,8 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
 
 1. **Find the Amazon S3 Bucket Name**:
    - Navigate to **AWS CloudFormation** > **Stacks** in the AWS Console
-   - For single-account deployments using the standalone template (`aiml-security-single-account.yaml`), select the stack you deployed (for example, `aiml-security-single-account`) and find the `AssessmentBucket` output. Results are synced to this bucket under the `{account_id}/` prefix.
-   - For multi-account deployments, select the `aiml-security-multi-account` stack created in [Step 2: Deploy Central Infrastructure](#step-2-deploy-central-infrastructure) and find the `AssessmentBucket` output
+   - For single-account deployments, select the stack you deployed (for example, `aiml-security-assessment`) and find the `AssessmentBucket` output. Results are synced to this bucket under the `{account_id}/` prefix.
+   - For multi-account deployments, select the stack created in [Step 2: Deploy Central Infrastructure](#step-2-deploy-central-infrastructure) and find the `AssessmentBucket` output
    - Go to the **Outputs** tab
    - Copy the Amazon S3 bucket name
 
@@ -411,7 +411,7 @@ To remove all resources deployed for single-account assessment:
    - Wait for stack deletion to complete
 
 2. **Delete the AWS CodeBuild infrastructure stack**:
-   - Select the `aiml-security-single-account` stack (or your custom stack name)
+   - Select the `aiml-security-assessment` stack (or your custom stack name)
    - Click **Delete**
    - Wait for stack deletion to complete
 

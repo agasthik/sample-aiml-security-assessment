@@ -37,9 +37,9 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'true'
         run: |
           echo "Linting CloudFormation templates..."
-          cfn-lint deployment/*.yaml
+          cfn-lint deployment/aiml-security-assessment.yaml
+          cfn-lint deployment/1-aiml-security-member-roles.yaml
           cfn-lint aiml-security-assessment/template.yaml
-          cfn-lint aiml-security-assessment/template-multi-account.yaml
 
       - name: Skip message
         if: steps.changed-files.outputs.any_changed == 'false'

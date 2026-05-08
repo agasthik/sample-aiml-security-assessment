@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: AIML Single-Account Security Assessment Solution
+Description: AIML Security Assessment Solution (Single and Multi-Account)
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -7,11 +7,15 @@ Metadata:
       - Label:
           default: Assessment Options
         Parameters:
+          - MultiAccountScan
+          - MultiAccountListOverride
           - EmailAddress
       - Label:
           default: Advanced Options
         Parameters:
+          - ConcurrentAccountScans
           - CodeBuildTimeout
+          - MemberRoleName
           - GitHubRepoUrl
           - GitHubBranch
 
@@ -28,6 +32,24 @@ Parameters:
     Description: GitHub branch to build from
     Default: main
 
+  MemberRoleName:
+    Description: "The role that the assessment should assume to perform the assessment."
+    Type: String
+    Default: AIMLSecurityMemberRole
+
+  MultiAccountScan:
+    Description: "Set to true to scan all accounts in your organization. Set to false for single-account assessment."
+    Type: String
+    AllowedValues:
+      - "true"
+      - "false"
+    Default: "false"
+
+  MultiAccountListOverride:
+    Description: "Specify a space delimited list of accounts to scan. Leaving this blank will scan all accounts in your organization. Only used when MultiAccountScan is true."
+    Type: String
+    Default: ""
+
   EmailAddress:
     Description: "Email address to receive assessment completion notifications (optional)"
     Type: String
@@ -35,15 +57,38 @@ Parameters:
     AllowedPattern: ^$|^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$
     ConstraintDescription: Must be a valid email address or leave empty
 
+  ConcurrentAccountScans:
+    Description: "For multi-account scans, specify the number of accounts to scan concurrently."
+    Type: String
+    AllowedValues:
+      - "Three"
+      - "Six"
+      - "Twelve"
+    Default: "Three"
+
   CodeBuildTimeout:
     Description: "Timeout for the CodeBuild job in minutes"
     Type: Number
     MinValue: 5
-    MaxValue: 480
+    MaxValue: 2160
     Default: 60
 
 Conditions:
+  IsMultiAccount: !Equals [!Ref MultiAccountScan, "true"]
+  IsSingleAccount: !Not [!Equals [!Ref MultiAccountScan, "true"]]
   CreateEmailNotification: !Not [!Equals [!Ref EmailAddress, ""]]
+
+Mappings:
+  CodeBuildPerformanceOptionMap:
+    Three:
+      ParallelAccounts: 3
+      CodeBuildComputeType: BUILD_GENERAL1_SMALL
+    Six:
+      ParallelAccounts: 6
+      CodeBuildComputeType: BUILD_GENERAL1_MEDIUM
+    Twelve:
+      ParallelAccounts: 12
+      CodeBuildComputeType: BUILD_GENERAL1_LARGE
 
 Resources:
   # S3 bucket for assessment results
@@ -80,8 +125,9 @@ Resources:
               Bool:
                 aws:SecureTransport: false
 
-  # Local member role for single account assessments
+  # Local member role for single-account assessments
   MemberRole:
+    Condition: IsSingleAccount
     Type: "AWS::IAM::Role"
     Properties:
       Path: "/service-role/"
@@ -96,7 +142,7 @@ Resources:
               - "sts:AssumeRole"
             Condition:
               ArnEquals:
-                aws:PrincipalArn: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/service-role/CodeBuildRole
+                aws:PrincipalArn: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/service-role/AIMLSecurityCodeBuildRole
       Policies:
         - PolicyName: AIMLSecurityAssessmentPermissions
           PolicyDocument:
@@ -234,7 +280,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       Path: "/service-role/"
-      RoleName: CodeBuildRole
+      RoleName: AIMLSecurityCodeBuildRole
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -261,7 +307,10 @@ Resources:
               - Action:
                   - sts:AssumeRole
                 Effect: Allow
-                Resource: !GetAtt MemberRole.Arn
+                Resource: !If
+                  - IsMultiAccount
+                  - !Sub "arn:${AWS::Partition}:iam::*:role/service-role/AIMLSecurityMemberRole"
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/service-role/AIMLSecurityMemberRole"
         - PolicyName: CloudFormationPermissions
           PolicyDocument:
             Version: "2012-10-17"
@@ -334,14 +383,14 @@ Resources:
                   - iam:ListRolePolicies
                   - iam:ListAttachedRolePolicies
                 Effect: Allow
-                Resource: '*'
+                Resource: "*"
               - Sid: IAMPassRole
                 Action:
                   - iam:PassRole
                 Effect: Allow
                 Resource:
-                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-security-*'
-                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-sec-*'
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-security-*"
+                  - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aiml-sec-*"
               - Sid: StepFunctionsPermissions
                 Action:
                   - states:CreateStateMachine
@@ -353,8 +402,9 @@ Resources:
                   - states:ListStateMachines
                   - states:StartExecution
                   - states:DescribeExecution
+                  - states:ListExecutions
                 Effect: Allow
-                Resource: '*'
+                Resource: "*"
               - Sid: S3Permissions
                 Action:
                   - s3:CreateBucket
@@ -376,7 +426,7 @@ Resources:
                   - s3:GetObject
                   - s3:DeleteObject
                 Effect: Allow
-                Resource: '*'
+                Resource: "*"
         - PolicyName: UploadtoS3
           PolicyDocument:
             Version: "2012-10-17"
@@ -393,6 +443,19 @@ Resources:
                 Resource:
                   - !Sub "arn:${AWS::Partition}:s3:::aiml-security-*"
                   - !Sub "arn:${AWS::Partition}:s3:::aiml-security-*/*"
+        - !If
+          - IsMultiAccount
+          - PolicyName: ListOrganizationAccounts
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Action:
+                    - organizations:ListAccounts
+                    - organizations:DescribeAccount
+                    - organizations:ListTagsForResource
+                  Effect: Allow
+                  Resource: "*"
+          - !Ref "AWS::NoValue"
 
   # CodeBuild project for running assessments
   CodeBuild:
@@ -400,7 +463,10 @@ Resources:
     Properties:
       Name: AIMLSecurityCodeBuild
       Environment:
-        ComputeType: BUILD_GENERAL1_SMALL
+        ComputeType: !If
+          - IsMultiAccount
+          - !FindInMap [CodeBuildPerformanceOptionMap, !Ref ConcurrentAccountScans, "CodeBuildComputeType"]
+          - BUILD_GENERAL1_SMALL
         Image: "aws/codebuild/amazonlinux2-x86_64-standard:4.0"
         Type: "LINUX_CONTAINER"
         EnvironmentVariables:
@@ -414,10 +480,13 @@ Resources:
             Value: !Ref GitHubBranch
             Type: PLAINTEXT
           - Name: MEMBER_ROLE
-            Value: AIMLSecurityMemberRole
+            Value: !Ref MemberRoleName
             Type: PLAINTEXT
           - Name: MULTI_ACCOUNT_SCAN
-            Value: "false"
+            Value: !Ref MultiAccountScan
+            Type: PLAINTEXT
+          - Name: MULTI_ACCOUNT_LIST_OVERRIDE
+            Value: !Ref MultiAccountListOverride
             Type: PLAINTEXT
           - Name: AWS_PARTITION
             Value: !Sub ${AWS::Partition}
@@ -425,7 +494,16 @@ Resources:
           - Name: AWS_ACCOUNT_ID
             Value: !Sub ${AWS::AccountId}
             Type: PLAINTEXT
-      Description: Run AIML Security single-account assessment
+          - Name: PARALLEL_ACCOUNTS
+            Value: !If
+              - IsMultiAccount
+              - !FindInMap [CodeBuildPerformanceOptionMap, !Ref ConcurrentAccountScans, "ParallelAccounts"]
+              - "1"
+            Type: PLAINTEXT
+      Description: !If
+        - IsMultiAccount
+        - Run AIML Security multi-account assessment
+        - Run AIML Security single-account assessment
       ServiceRole: !GetAtt CodeBuildRole.Arn
       TimeoutInMinutes: !Ref CodeBuildTimeout
       Artifacts:
@@ -584,3 +662,8 @@ Outputs:
   AssessmentBucket:
     Description: S3 bucket containing assessment results (HTML reports and CSV data)
     Value: !Ref AssessmentBucket
+
+  AccountID:
+    Condition: IsMultiAccount
+    Description: AWS Account ID where the AI-ML Security Assessment is executed from
+    Value: !Ref AWS::AccountId

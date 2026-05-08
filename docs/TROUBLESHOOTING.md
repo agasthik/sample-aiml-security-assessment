@@ -138,7 +138,7 @@ The trust policy should allow the central CodeBuild role:
   "Action": "sts:AssumeRole",
   "Condition": {
     "ArnEquals": {
-      "aws:PrincipalArn": "arn:aws:iam::<management-account-id>:role/service-role/MultiAccountCodeBuildRole"
+      "aws:PrincipalArn": "arn:aws:iam::<management-account-id>:role/service-role/AIMLSecurityCodeBuildRole"
     }
   }
 }

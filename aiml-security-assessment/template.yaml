@@ -3,11 +3,20 @@ Transform: AWS::Serverless-2016-10-31
 Description: >
   aiml-security-assessment
 
-  SAM Template for aiml-security-assessment
+  SAM Template for aiml-security-assessment (single and multi-account)
+
+Parameters:
+  FunctionNamePrefix:
+    Type: String
+    Description: Prefix for Lambda function names. Use stack name for single-account isolation or a fixed prefix for multi-account.
+    Default: ""
+
+Conditions:
+  HasPrefix: !Not [!Equals [!Ref FunctionNamePrefix, ""]]
 
 Resources:
   AIMLAssessmentStateMachine:
-    Type: AWS::Serverless::StateMachine # More info about State Machine Resource: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-resource-statemachine.html
+    Type: AWS::Serverless::StateMachine
     Properties:
       DefinitionUri: statemachine/assessments.asl.json
       DefinitionSubstitutions:
@@ -19,7 +28,6 @@ Resources:
         GenerateConsolidatedReportFunction: !GetAtt GenerateConsolidatedReportFunction.Arn
         AIMLAssessmentBucketName: !Ref AIMLAssessmentBucket
       Policies:
-        # Find out more about SAM policy templates: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-policy-templates.html
         - LambdaInvokePolicy:
             FunctionName: !Ref CleanupBucketFunction
         - LambdaInvokePolicy:
@@ -32,14 +40,16 @@ Resources:
             FunctionName: !Ref AgentCoreSecurityAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref GenerateConsolidatedReportFunction
-        #Add S3 Read Write policy
         - S3CrudPolicy:
             BucketName: !Ref AIMLAssessmentBucket
 
   CleanupBucketFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'aiml-security-${AWS::StackName}-CleanupBucket'
+      FunctionName: !If
+        - HasPrefix
+        - !Sub 'aiml-security-${FunctionNamePrefix}-CleanupBucket'
+        - !Sub 'aiml-security-${AWS::StackName}-CleanupBucket'
       CodeUri: functions/security/cleanup_bucket/
       Handler: app.lambda_handler
       Runtime: python3.12
@@ -57,13 +67,16 @@ Resources:
   IAMPermissionCachingFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'aiml-security-${AWS::StackName}-IAMPermissionCaching'
+      FunctionName: !If
+        - HasPrefix
+        - !Sub 'aiml-security-${FunctionNamePrefix}-IAMPermissionCaching'
+        - !Sub 'aiml-security-${AWS::StackName}-IAMPermissionCaching'
       CodeUri: functions/security/iam_permission_caching/
       Handler: app.lambda_handler
       Runtime: python3.12
       Architectures:
         - x86_64
-      Timeout: 600 # 10 minutes
+      Timeout: 600
       MemorySize: 1024
       Environment:
         Variables:
@@ -89,16 +102,20 @@ Resources:
                 - iam:GetServiceLastAccessedDetails
                 - sts:GetCallerIdentity
               Resource: '*'
+
   GenerateConsolidatedReportFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'aiml-security-${AWS::StackName}-GenerateReport'
+      FunctionName: !If
+        - HasPrefix
+        - !Sub 'aiml-security-${FunctionNamePrefix}-GenerateReport'
+        - !Sub 'aiml-security-${AWS::StackName}-GenerateReport'
       CodeUri: functions/security/generate_consolidated_report/
       Handler: app.lambda_handler
       Runtime: python3.12
       Architectures:
         - x86_64
-      Timeout: 600 # 10 minutes
+      Timeout: 600
       MemorySize: 1024
       Environment:
         Variables:
@@ -106,17 +123,20 @@ Resources:
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref AIMLAssessmentBucket
+
   BedrockSecurityAssessmentFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'aiml-security-${AWS::StackName}-BedrockAssessment'
+      FunctionName: !If
+        - HasPrefix
+        - !Sub 'aiml-security-${FunctionNamePrefix}-BedrockAssessment'
+        - !Sub 'aiml-security-${AWS::StackName}-BedrockAssessment'
       CodeUri: functions/security/bedrock_assessments/
       Handler: app.lambda_handler
       Runtime: python3.12
       Architectures:
         - x86_64
-      # Add S3 Read Write policy
-      Timeout: 600 # 10 minutes
+      Timeout: 600
       MemorySize: 1024
       Environment:
         Variables:
@@ -195,19 +215,22 @@ Resources:
               Effect: Allow
               Action:
                 - ec2:DescribeVpcEndpoints
-                - ec2:DescribeVpcs # Added this permission
+                - ec2:DescribeVpcs
               Resource: '*'
+
   SagemakerSecurityAssessmentFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'aiml-security-${AWS::StackName}-SagemakerAssessment'
+      FunctionName: !If
+        - HasPrefix
+        - !Sub 'aiml-security-${FunctionNamePrefix}-SagemakerAssessment'
+        - !Sub 'aiml-security-${AWS::StackName}-SagemakerAssessment'
       CodeUri: functions/security/sagemaker_assessments/
       Handler: app.lambda_handler
       Runtime: python3.12
       Architectures:
         - x86_64
-      # Add S3 Read Write policy
-      Timeout: 600 # 10 minutes
+      Timeout: 600
       MemorySize: 1024
       Environment:
         Variables:
@@ -252,6 +275,7 @@ Resources:
                 - kms:ListAliases
                 - sagemaker:ListModelPackageGroups
                 - sagemaker:ListModelPackages
+                - sagemaker:DescribeModelPackage
                 - sagemaker:ListFeatureGroups
                 - sagemaker:DescribeFeatureGroup
                 - sagemaker:ListPipelines
@@ -288,19 +312,22 @@ Resources:
               Effect: Allow
               Action:
                 - ec2:DescribeVpcEndpoints
-                - ec2:DescribeVpcs # Added this permission
+                - ec2:DescribeVpcs
               Resource: '*'
 
   AgentCoreSecurityAssessmentFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'aiml-security-${AWS::StackName}-AgentCoreAssessment'
+      FunctionName: !If
+        - HasPrefix
+        - !Sub 'aiml-security-${FunctionNamePrefix}-AgentCoreAssessment'
+        - !Sub 'aiml-security-${AWS::StackName}-AgentCoreAssessment'
       CodeUri: functions/security/agentcore_assessments/
       Handler: app.lambda_handler
       Runtime: python3.12
       Architectures:
         - x86_64
-      Timeout: 600 # 10 minutes
+      Timeout: 600
       MemorySize: 1024
       Environment:
         Variables:
@@ -387,7 +414,7 @@ Resources:
                 - s3:HeadBucket
               Resource: 'arn:aws:s3:::*'
 
-  # Add a S3 bucket to store the AIML assessment results
+  # S3 bucket to store the AIML assessment results
   AIMLAssessmentBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain

@@ -74,10 +74,10 @@ The AI/ML Security Assessment Framework is a serverless, multi-account security 
 - **Cross-Account Trust**: Establishes trust relationship with central management account
 - **Assessment Permissions**: Grants read-only access to AI/ML services (Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore) for security assessment
 
-#### Step 2: Central Infrastructure (`2-aiml-security-codebuild.yaml`)
-- **AWS CodeBuild Project**: Orchestrates multi-account deployments and assessments
+#### Step 2: Central Infrastructure (`aiml-security-assessment.yaml`)
+- **AWS CodeBuild Project**: Orchestrates single or multi-account deployments and assessments
 - **Amazon S3 Bucket**: Central storage for consolidated assessment results
-- **AWS IAM Role**: `MultiAccountCodeBuildRole` with cross-account access permissions
+- **AWS IAM Role**: `AIMLSecurityCodeBuildRole` with cross-account access permissions
 - **Amazon SNS Topic**: Optional email notifications for assessment completion
 - **Amazon EventBridge Rules**: Automated workflow triggers
 - **AWS Lambda Trigger**: Automatically starts AWS CodeBuild after stack creation
@@ -104,8 +104,7 @@ sample-aiml-security-assessment/
 │   │   └── generate_consolidated_report/  # HTML/CSV report generation
 │   ├── statemachine/                 # AWS Step Functions definition
 │   ├── images/                       # SAM application images
-│   ├── template.yaml                 # AWS SAM template (single-account)
-│   ├── template-multi-account.yaml   # AWS SAM template (multi-account)
+│   ├── template.yaml                 # AWS SAM template (single and multi-account)
 │   ├── samconfig.toml                # SAM deployment configuration
 │   ├── envvars.json                  # Environment variables for local testing
 │   └── testfile.json                 # Test event file for local invocation
@@ -387,7 +386,7 @@ Add required permissions to member role template:
   Resource: '*'
 ```
 
-**In `deployment/aiml-security-single-account.yaml`** (for single account mode):
+**In `deployment/aiml-security-assessment.yaml`** (for the MemberRole used in single-account mode):
 ```yaml
 - comprehend:List*
 - comprehend:Describe*
@@ -696,9 +695,9 @@ ruff format --check aiml-security-assessment/functions/security/
 python -m pytest tests/ -v
 
 # CloudFormation lint
-cfn-lint deployment/*.yaml
+cfn-lint deployment/aiml-security-assessment.yaml
+cfn-lint deployment/1-aiml-security-member-roles.yaml
 cfn-lint aiml-security-assessment/template.yaml
-cfn-lint aiml-security-assessment/template-multi-account.yaml
 
 # SAM validate and build
 cd aiml-security-assessment

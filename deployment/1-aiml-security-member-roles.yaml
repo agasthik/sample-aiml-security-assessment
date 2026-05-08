@@ -25,7 +25,7 @@ Resources:
               - "sts:AssumeRole"
             Condition:
               ArnEquals:
-                aws:PrincipalArn: !Sub arn:${AWS::Partition}:iam::${ManagementAccountID}:role/service-role/MultiAccountCodeBuildRole
+                aws:PrincipalArn: !Sub arn:${AWS::Partition}:iam::${ManagementAccountID}:role/service-role/AIMLSecurityCodeBuildRole
       Policies:
         - PolicyName: AIMLSecurityAssessmentPermissions
           PolicyDocument:

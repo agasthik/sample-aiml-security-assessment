@@ -44,18 +44,10 @@ phases:
       - cd aiml-security-assessment
       - ls -la
       - |
-        if [[ $MULTI_ACCOUNT_SCAN = 'true' ]]; then
-          echo "Building multi-account template"
-          if ! sam build --template template-multi-account.yaml; then
-            echo "ERROR: SAM build failed for multi-account template"
-            exit 1
-          fi
-        else
-          echo "Building single-account template"
-          if ! sam build --template template.yaml; then
-            echo "ERROR: SAM build failed for single-account template"
-            exit 1
-          fi
+        echo "Building assessment template"
+        if ! sam build --template template.yaml; then
+          echo "ERROR: SAM build failed"
+          exit 1
         fi
       - echo "Build completed, checking build directory:"
       - ls -la .aws-sam/build/
