@@ -516,6 +516,8 @@ GitHub Actions workflows run automatically on pull requests and pushes to `main`
 | **ASH Security Scan** | PR | Scans changed files for secrets, dependency vulnerabilities, and IaC misconfigurations |
 | **ASH Full Repository Scan** | Push to main, monthly | Full repository security scan with results uploaded as artifacts |
 
+**Local hooks**: Run `bash .githooks/install.sh` to enable pre-commit and pre-push checks that mirror these workflows. See the [Developer Guide](docs/DEVELOPER_GUIDE.md#running-checks-locally) for details.
+
 ---
 
 ## Contributing

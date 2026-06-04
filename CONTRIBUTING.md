@@ -30,23 +30,35 @@ Contributions through pull requests are much appreciated. Before sending us a pu
 To send us a pull request, please:
 
 1. Fork the repository.
-2. Modify the source; please focus on the specific change you are contributing. If you also reformat all the code, it will be hard for us to focus on your change.
-3. Make sure local tests pass.
-4. Run linting, formatting, and tests locally before pushing:
+2. Set up local git hooks (one-time):
    ```bash
-   # Install test dependencies (first time only)
-   pip install ruff pytest boto3 pydantic
+   bash .githooks/install.sh
 
-   # Run lint and format checks
-   ruff check <changed-files>
-   ruff format --check <changed-files>
-
-   # Run unit tests
-   python -m pytest tests/ -v
+   # Optional: verify all tools are installed
+   bash .githooks/install.sh --verify
    ```
-5. Commit to your fork using clear commit messages.
-6. Send us a pull request, answering any default questions in the pull request interface.
-7. Pay attention to any automated CI failures reported in the pull request, and stay involved in the conversation.
+   This enables pre-commit (ruff lint/format, cfn-lint) and pre-push (pytest, SAM validate, ASH security scan) checks that mirror the CI pipeline.
+3. Modify the source; please focus on the specific change you are contributing. If you also reformat all the code, it will be hard for us to focus on your change.
+4. Make sure local tests pass.
+5. Commit to your fork using clear commit messages. The pre-commit hook will automatically check linting and formatting on staged files.
+6. Push your changes. The pre-push hook will run tests, SAM validation, and a security scan.
+7. Send us a pull request, answering any default questions in the pull request interface.
+8. Pay attention to any automated CI failures reported in the pull request, and stay involved in the conversation.
+
+**Prerequisites** (install as needed):
+```bash
+pip install ruff cfn-lint
+pip install -r tests/requirements.txt
+pip install git+https://github.com/awslabs/automated-security-helper.git
+# SAM CLI: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html
+```
+
+You can also run checks manually:
+```bash
+ruff check <changed-files>
+ruff format --check <changed-files>
+python -m pytest tests/ -v
+```
 
 ### Automated CI Checks
 

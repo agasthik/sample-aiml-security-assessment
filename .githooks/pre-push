@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m'
+
+FAILED=0
+
+echo "Running pre-push checks..."
+
+# --- Python Tests ---
+if [ -d "$REPO_ROOT/tests" ]; then
+    if command -v pytest &> /dev/null; then
+        echo -e "${YELLOW}Running pytest...${NC}"
+
+        export AIML_ASSESSMENT_BUCKET_NAME=test-assessment-bucket
+        export AWS_DEFAULT_REGION=us-east-1
+        export AWS_ACCESS_KEY_ID=testing
+        export AWS_SECRET_ACCESS_KEY=testing
+
+        if ! python -m pytest "$REPO_ROOT/tests/" -v --tb=short -x; then
+            echo -e "${RED}Tests failed.${NC}"
+            FAILED=1
+        else
+            echo -e "${GREEN}Tests passed.${NC}"
+        fi
+    else
+        echo -e "${YELLOW}pytest not found — skipping tests. Install with: pip install -r tests/requirements.txt${NC}"
+    fi
+fi
+
+# --- SAM Validate ---
+SAM_DIR="$REPO_ROOT/aiml-security-assessment"
+
+if [ -d "$SAM_DIR" ]; then
+    if command -v sam &> /dev/null; then
+        echo -e "${YELLOW}Validating SAM templates...${NC}"
+
+        if ! sam validate --template "$SAM_DIR/template.yaml" --lint; then
+            echo -e "${RED}SAM validate failed for template.yaml${NC}"
+            FAILED=1
+        fi
+
+        if ! sam validate --template "$SAM_DIR/template-multi-account.yaml" --lint; then
+            echo -e "${RED}SAM validate failed for template-multi-account.yaml${NC}"
+            FAILED=1
+        fi
+
+        if [ $FAILED -eq 0 ]; then
+            echo -e "${GREEN}SAM validation passed.${NC}"
+        fi
+    else
+        echo -e "${YELLOW}SAM CLI not found — skipping SAM validate. Install from: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html${NC}"
+    fi
+fi
+
+# --- ASH Security Scan ---
+if command -v ash &> /dev/null || command -v uvx &> /dev/null; then
+    echo -e "${YELLOW}Running ASH security scan...${NC}"
+
+    ASH_CMD="ash"
+    if ! command -v ash &> /dev/null; then
+        ASH_CMD="uvx --from git+https://github.com/awslabs/automated-security-helper.git ash"
+    fi
+
+    if ! $ASH_CMD --source-dir "$REPO_ROOT" --mode local; then
+        echo -e "${RED}ASH security scan found issues.${NC}"
+        FAILED=1
+    else
+        echo -e "${GREEN}ASH security scan passed.${NC}"
+    fi
+else
+    echo -e "${YELLOW}ASH not found — skipping security scan. Install with: pip install git+https://github.com/awslabs/automated-security-helper.git${NC}"
+fi
+
+# --- Exit ---
+if [ $FAILED -ne 0 ]; then
+    echo -e "${RED}Pre-push checks failed. Please fix the issues above.${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}All pre-push checks passed.${NC}"

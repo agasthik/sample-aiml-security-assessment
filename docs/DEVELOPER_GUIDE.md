@@ -682,12 +682,40 @@ cfn-lint suppressions are configured in `.cfnlintrc` at the repository root for 
 
 ### Running Checks Locally
 
-Before pushing, run these checks locally to catch issues early:
+#### Git Hooks (Recommended)
+
+The repository includes pre-commit and pre-push hooks that mirror the CI pipeline. Set them up once:
 
 ```bash
-# Install tools (first time only)
-pip install ruff cfn-lint pytest boto3 pydantic
+# Install hooks
+bash .githooks/install.sh
 
+# Verify all prerequisite tools are installed
+bash .githooks/install.sh --verify
+```
+
+**What the hooks run:**
+
+| Hook | Checks | When |
+|------|--------|------|
+| **pre-commit** | `ruff check`, `ruff format --check`, `cfn-lint` | On staged files at commit time |
+| **pre-push** | `pytest`, `sam validate --lint`, ASH security scan | Before push |
+
+Hooks skip gracefully if a tool is not installed — you'll see a warning instead of a failure.
+
+**Prerequisites:**
+```bash
+pip install ruff cfn-lint
+pip install -r tests/requirements.txt
+pip install git+https://github.com/awslabs/automated-security-helper.git
+# SAM CLI: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html
+```
+
+#### Manual Commands
+
+You can also run checks manually before pushing:
+
+```bash
 # Python lint and format
 ruff check aiml-security-assessment/functions/security/
 ruff format --check aiml-security-assessment/functions/security/
@@ -704,6 +732,9 @@ cfn-lint aiml-security-assessment/template-multi-account.yaml
 cd aiml-security-assessment
 sam validate --template template.yaml --lint
 sam build --template template.yaml
+
+# ASH security scan
+ash --source-dir . --mode local
 ```
 
 ## Support and Resources
