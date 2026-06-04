@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/awslabs/automated-security-helper/refs/heads/main/automated_security_helper/schemas/AshConfig.json
+project_name: sample-aiml-security-assessment
+global_settings:
+  severity_threshold: MEDIUM
+  ignore_paths:
+    - path: ".claude/**"
+      reason: "Claude Code workspace files"
+    - path: "sample-reports/security_assessment_single_account.html"
+      reason: "Sample report for documentation purposes"
+    - path: "sample-reports/security_assessment_multi_account.html"
+      reason: "Sample report for documentation purposes"
+  suppressions:
+    - rule_id: "B108"
+      path: "consolidate_html_reports.py"
+      reason: "Hardcoded /tmp paths used within CodeBuild container environment"
+
+fail_on_findings: true
