@@ -41,12 +41,5 @@ samples/
 
 .ruff_cache/
 
-# Exclude entire .ash folder except specific files
+# Exclude entire .ash folder 
 .ash/*
-!.ash/ash_output/
-.ash/ash_output/*
-!.ash/ash_output/reports/
-.ash/ash_output/reports/*
-!.ash/ash_output/reports/ash.html
-!.ash/.ash.yaml
-!.ash/ash_output/ash.log

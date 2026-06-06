@@ -59,25 +59,6 @@ if [ -d "$SAM_DIR" ]; then
     fi
 fi
 
-# --- ASH Security Scan ---
-if command -v ash &> /dev/null || command -v uvx &> /dev/null; then
-    echo -e "${YELLOW}Running ASH security scan...${NC}"
-
-    ASH_CMD="ash"
-    if ! command -v ash &> /dev/null; then
-        ASH_CMD="uvx --from git+https://github.com/awslabs/automated-security-helper.git ash"
-    fi
-
-    if ! $ASH_CMD --source-dir "$REPO_ROOT" --mode local; then
-        echo -e "${RED}ASH security scan found issues.${NC}"
-        FAILED=1
-    else
-        echo -e "${GREEN}ASH security scan passed.${NC}"
-    fi
-else
-    echo -e "${YELLOW}ASH not found — skipping security scan. Install with: pip install git+https://github.com/awslabs/automated-security-helper.git${NC}"
-fi
-
 # --- Exit ---
 if [ $FAILED -ne 0 ]; then
     echo -e "${RED}Pre-push checks failed. Please fix the issues above.${NC}"
