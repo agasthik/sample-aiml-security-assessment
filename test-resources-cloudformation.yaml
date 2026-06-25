@@ -544,6 +544,310 @@ Resources:
           Value: SecurityTestingFail
 
   # ============================================================================
+  # ============================================================================
+  # BEDROCK RESOURCES - Guardrails, Agents, Knowledge Bases, Prompts, Flows
+  # ============================================================================
+
+  # BR-05, BR-16, BR-23: Bedrock Guardrail with content filters (PASS)
+  BedrockGuardrail:
+    Type: AWS::Bedrock::Guardrail
+    Properties:
+      Name: !Sub '${EnvironmentName}-test-guardrail'
+      Description: Test guardrail with content filters for security assessment
+      BlockedInputMessaging: "Sorry, I cannot process this request due to content policy."
+      BlockedOutputsMessaging: "Sorry, I cannot provide this response due to content policy."
+      ContentPolicyConfig:
+        FiltersConfig:
+          - Type: HATE
+            InputStrength: MEDIUM
+            OutputStrength: MEDIUM
+          - Type: VIOLENCE
+            InputStrength: MEDIUM
+            OutputStrength: MEDIUM
+          - Type: SEXUAL
+            InputStrength: HIGH
+            OutputStrength: HIGH
+          - Type: MISCONDUCT
+            InputStrength: LOW
+            OutputStrength: LOW
+      TopicPolicyConfig:
+        TopicsConfig:
+          - Name: FinancialAdvice
+            Definition: Providing specific financial or investment advice
+            Examples:
+              - "Should I invest in stocks?"
+              - "What stock should I buy?"
+            Type: DENY
+          - Name: MedicalAdvice
+            Definition: Providing medical diagnosis or treatment advice
+            Examples:
+              - "Do I have a disease?"
+              - "What medication should I take?"
+            Type: DENY
+      WordPolicyConfig:
+        WordsConfig:
+          - Text: "prohibited-term"
+        ManagedWordListsConfig:
+          - Type: PROFANITY
+      KmsKeyArn: !GetAtt BedrockKMSKey.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-guardrail'
+        - Key: Purpose
+          Value: SecurityTestingPass
+
+  # BR-07: Bedrock Prompt Management (PASS)
+  BedrockPrompt:
+    Type: AWS::Bedrock::Prompt
+    Properties:
+      Name: !Sub '${EnvironmentName}-test-prompt'
+      Description: Test prompt for security assessment
+      DefaultVariant: variant1
+      Variants:
+        - Name: variant1
+          TemplateType: TEXT
+          ModelId: anthropic.claude-3-sonnet-20240229-v1:0
+          TemplateConfiguration:
+            Text:
+              InputVariables:
+                - Name: question
+              Text: "You are a helpful AI assistant. Answer the following question: {{question}}"
+      CustomerEncryptionKeyArn: !GetAtt BedrockKMSKey.Arn
+      Tags:
+        Purpose: SecurityTestingPass
+
+  # BR-08, BR-21: Bedrock Agent with restricted permissions (PASS)
+  BedrockAgentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-bedrock-agent-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: BedrockAgentAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'bedrock:InvokeModel'
+                  - 'bedrock:InvokeModelWithResponseStream'
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'bedrock:guardrailIdentifier': !GetAtt BedrockGuardrail.GuardrailId
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                Resource: !Sub '${BedrockLoggingBucket.Arn}/*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-agent-role'
+        - Key: Purpose
+          Value: SecurityTestingPass
+
+  BedrockAgent:
+    Type: AWS::Bedrock::Agent
+    DependsOn: BedrockLoggingBucket
+    Properties:
+      AgentName: !Sub '${EnvironmentName}-test-agent'
+      Description: Test agent for security assessment
+      AgentResourceRoleArn: !GetAtt BedrockAgentRole.Arn
+      FoundationModel: anthropic.claude-3-sonnet-20240229-v1:0
+      Instruction: "You are a helpful AI assistant that follows all content policies and guardrails."
+      CustomerEncryptionKeyArn: !GetAtt BedrockKMSKey.Arn
+      GuardrailConfiguration:
+        GuardrailIdentifier: !GetAtt BedrockGuardrail.GuardrailId
+        GuardrailVersion: DRAFT
+      IdleSessionTTLInSeconds: 600
+      AutoPrepare: true
+      Tags:
+        Purpose: SecurityTestingPass
+
+  # BR-09, BR-20: Knowledge Base with OpenSearch Serverless (requires external setup)
+  # Note: This requires an OpenSearch Serverless collection to be created separately
+  # Creating the IAM role for Knowledge Base
+  BedrockKnowledgeBaseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-kb-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: KnowledgeBaseAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'bedrock:InvokeModel'
+                Resource: !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-embed-text-v1'
+              - Effect: Allow
+                Action:
+                  - 'aoss:APIAccessAll'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:ListBucket'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${BedrockLoggingBucket}/*'
+                  - !Sub 'arn:aws:s3:::${BedrockLoggingBucket}'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-kb-role'
+
+  # BR-13, BR-19: Bedrock Flow with guardrails (PASS)
+  BedrockFlowRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-flow-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: FlowExecutionAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'bedrock:InvokeModel'
+                  - 'bedrock:InvokeModelWithResponseStream'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'bedrock:InvokeAgent'
+                Resource: !GetAtt BedrockAgent.AgentArn
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-flow-role'
+
+  BedrockFlow:
+    Type: AWS::Bedrock::Flow
+    Properties:
+      Name: !Sub '${EnvironmentName}-test-flow'
+      Description: Test flow for security assessment with guardrail enforcement
+      ExecutionRoleArn: !GetAtt BedrockFlowRole.Arn
+      CustomerEncryptionKeyArn: !GetAtt BedrockKMSKey.Arn
+      DefinitionString: !Sub |
+        {
+          "nodes": [
+            {
+              "name": "InputNode",
+              "type": "Input",
+              "configuration": {
+                "input": {}
+              },
+              "outputs": [
+                {
+                  "name": "document",
+                  "type": "String"
+                }
+              ]
+            },
+            {
+              "name": "PromptNode",
+              "type": "Prompt",
+              "configuration": {
+                "prompt": {
+                  "sourceConfiguration": {
+                    "resource": {
+                      "promptArn": "${BedrockPrompt.Arn}"
+                    }
+                  }
+                }
+              },
+              "inputs": [
+                {
+                  "name": "question",
+                  "type": "String",
+                  "expression": "$.data"
+                }
+              ],
+              "outputs": [
+                {
+                  "name": "modelCompletion",
+                  "type": "String"
+                }
+              ]
+            },
+            {
+              "name": "OutputNode",
+              "type": "Output",
+              "configuration": {
+                "output": {}
+              },
+              "inputs": [
+                {
+                  "name": "document",
+                  "type": "String",
+                  "expression": "$.data"
+                }
+              ]
+            }
+          ],
+          "connections": [
+            {
+              "name": "InputToPrompt",
+              "source": "InputNode.document",
+              "target": "PromptNode.question",
+              "type": "Data"
+            },
+            {
+              "name": "PromptToOutput",
+              "source": "PromptNode.modelCompletion",
+              "target": "OutputNode.document",
+              "type": "Data"
+            }
+          ]
+        }
+      Tags:
+        Purpose: SecurityTestingPass
+
+  # BR-08: Role without guardrail condition (FAIL for BR-10)
+  BedrockAgentRoleWithoutGuardrail:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-agent-role-no-guardrail'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: BedrockAgentAccessNoGuardrail
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'bedrock:InvokeModel'
+                  - 'bedrock:InvokeModelWithResponseStream'
+                Resource: '*'
+                # No Condition enforcing guardrail - FAILS BR-10
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-agent-role-no-guardrail'
+        - Key: Purpose
+          Value: SecurityTestingFail
   # S3 BUCKETS - For SageMaker and Bedrock logging
   # ============================================================================
 
