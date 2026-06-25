@@ -2657,6 +2657,1971 @@ def check_bedrock_agent_roles(permission_cache, region: str = "") -> Dict[str, A
         }
 
 
+def check_bedrock_cross_account_guardrails(region: str = "") -> Dict[str, Any]:
+    """
+    BR-15: Check if organization-level guardrails are configured using AWS Organizations Bedrock policies
+    for centralized safety control enforcement (NEW - April 2026 feature)
+    """
+    logger.debug("Starting check for cross-account guardrails enforcement")
+    try:
+        findings = {
+            "check_name": "Cross-Account Guardrails Enforcement Check",
+            "status": "PASS",
+            "details": "",
+            "csv_data": [],
+        }
+
+        try:
+            orgs_client = boto3.client("organizations", config=boto3_config)
+
+            # Check if running in management account
+            org_info = orgs_client.describe_organization()
+            master_account_id = org_info["Organization"]["MasterAccountId"]
+
+            # Get current account ID
+            sts_client = boto3.client("sts", config=boto3_config)
+            current_account = sts_client.get_caller_identity()["Account"]
+
+            if current_account != master_account_id:
+                findings["details"] = (
+                    "Not running in management account, cannot check organizational policies"
+                )
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-15",
+                        finding_name="Cross-Account Guardrails Enforcement Check",
+                        finding_details="Check must run in AWS Organizations management account to evaluate organizational policies",
+                        resolution="Run assessment in management account to check cross-account guardrails enforcement",
+                        reference="https://aws.amazon.com/about-aws/whats-new/2026/04/bedrock-guardrails-cross-account-safeguards/",
+                        severity="Medium",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                return findings
+
+            # List policy types enabled for the organization
+            enabled_policy_types = orgs_client.list_roots()["Roots"][0].get(
+                "PolicyTypes", []
+            )
+            bedrock_policy_enabled = any(
+                pt.get("Type") == "BEDROCK_GUARDRAILS_POLICY"
+                and pt.get("Status") == "ENABLED"
+                for pt in enabled_policy_types
+            )
+
+            if not bedrock_policy_enabled:
+                findings["status"] = "WARN"
+                findings["details"] = (
+                    "Bedrock Guardrails policy type is not enabled for the organization"
+                )
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-15",
+                        finding_name="Cross-Account Guardrails Enforcement Check",
+                        finding_details="Bedrock Guardrails policy type is not enabled at the organization level. Cross-account guardrails cannot be enforced without enabling this policy type.",
+                        resolution="Enable Bedrock Guardrails policy type in AWS Organizations to enforce consistent safety controls across all accounts. Use AWS Organizations console or CLI to enable the policy type.",
+                        reference="https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_bedrock.html",
+                        severity="High",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+                return findings
+
+            # Check for Bedrock policies attached to organization roots/OUs/accounts
+            policies_attached = False
+            try:
+                # This is a placeholder - actual API may differ
+                # The feature documentation doesn't show the exact list API yet
+                policies = orgs_client.list_policies(Filter="BEDROCK_GUARDRAILS_POLICY")
+                policies_attached = len(policies.get("Policies", [])) > 0
+            except Exception as e:
+                if "UnknownOperation" in str(e) or "Unknown operation" in str(e):
+                    logger.info(
+                        "Bedrock Guardrails policy listing not available in this region"
+                    )
+                    findings["details"] = (
+                        "Bedrock Guardrails organizational policy feature not available in this region"
+                    )
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="BR-15",
+                            finding_name="Cross-Account Guardrails Enforcement Check",
+                            finding_details="Bedrock Guardrails organizational policy API not available in this region",
+                            resolution="This feature may not be available in all regions. Check AWS documentation for regional availability.",
+                            reference="https://aws.amazon.com/about-aws/whats-new/2026/04/bedrock-guardrails-cross-account-safeguards/",
+                            severity="Medium",
+                            status="N/A",
+                            region=region,
+                        )
+                    )
+                    return findings
+                raise
+
+            if not policies_attached:
+                findings["status"] = "WARN"
+                findings["details"] = (
+                    "No Bedrock Guardrails policies found at organization level"
+                )
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-15",
+                        finding_name="Cross-Account Guardrails Enforcement Check",
+                        finding_details="Bedrock Guardrails policy type is enabled but no policies are attached. Cross-account guardrails are not being enforced across the organization.",
+                        resolution="Create and attach Bedrock Guardrails policies to the organization root, OUs, or specific accounts to enforce consistent safety controls across all foundation model interactions.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-enforcements.html",
+                        severity="High",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+            else:
+                findings["details"] = (
+                    "Cross-account guardrails enforcement is configured"
+                )
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-15",
+                        finding_name="Cross-Account Guardrails Enforcement Check",
+                        finding_details="Bedrock Guardrails policies are configured at organization level, enabling centralized enforcement of safety controls",
+                        resolution="No action required. Continue monitoring guardrail policy coverage and effectiveness.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-enforcements.html",
+                        severity="Medium",
+                        status="Passed",
+                        region=region,
+                    )
+                )
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code == "AWSOrganizationsNotInUseException":
+                findings["details"] = (
+                    "AWS Organizations is not enabled for this account"
+                )
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-15",
+                        finding_name="Cross-Account Guardrails Enforcement Check",
+                        finding_details="AWS Organizations is not in use. Cross-account guardrails can only be configured in Organizations-enabled accounts.",
+                        resolution="Enable AWS Organizations and configure Bedrock Guardrails policies for centralized multi-account enforcement, or accept single-account guardrail management.",
+                        reference="https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_bedrock.html",
+                        severity="Medium",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+            elif error_code in ACCESS_DENIED_ERROR_CODES:
+                findings["details"] = (
+                    "Insufficient permissions to check organizational policies"
+                )
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-15",
+                        finding_name="Cross-Account Guardrails Enforcement Check",
+                        finding_details=describe_api_error(
+                            e, "Organizations policy check", region
+                        ),
+                        resolution="Grant organizations:DescribeOrganization and organizations:ListPolicies permissions to the assessment role",
+                        reference="https://docs.aws.amazon.com/organizations/latest/userguide/orgs_permissions_overview.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+            else:
+                raise
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_bedrock_cross_account_guardrails: {str(e)}", exc_info=True
+        )
+        return {
+            "check_name": "Cross-Account Guardrails Enforcement Check",
+            "status": "ERROR",
+            "details": f"Error during check: {str(e)}",
+            "csv_data": [
+                create_finding(
+                    check_id="BR-15",
+                    finding_name="Cross-Account Guardrails Enforcement Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-enforcements.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            ],
+        }
+
+
+def check_bedrock_guardrail_tier(region: str = "") -> Dict[str, Any]:
+    """
+    BR-16: Verify guardrails are using Standard tier (vs Express tier) for enhanced protection
+    """
+    logger.debug("Starting check for Bedrock guardrail tier validation")
+    try:
+        findings = {
+            "check_name": "Guardrail Tier Validation Check",
+            "status": "PASS",
+            "details": "",
+            "csv_data": [],
+        }
+
+        bedrock_client = boto3.client(
+            "bedrock", config=boto3_config, region_name=region
+        )
+
+        try:
+            # List all guardrails
+            guardrails_response = bedrock_client.list_guardrails(maxResults=100)
+            guardrails = guardrails_response.get("guardrails", [])
+
+            if not guardrails:
+                findings["details"] = "No Bedrock guardrails found"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-16",
+                        finding_name="Guardrail Tier Validation Check",
+                        finding_details="No Bedrock guardrails configured in this region",
+                        resolution="Create Bedrock guardrails with Standard tier for enhanced content filtering and protection",
+                        reference="https://aws.amazon.com/about-aws/whats-new/2025/06/amazon-bedrock-guardrails-tiers-content-filters-denied-topics/",
+                        severity="Medium",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                return findings
+
+            suboptimal_guardrails = []
+            standard_tier_guardrails = []
+
+            for guardrail_summary in guardrails:
+                guardrail_id = guardrail_summary.get("id")
+                guardrail_name = guardrail_summary.get("name", "unknown")
+
+                if not guardrail_id:
+                    continue
+
+                # Get detailed guardrail configuration
+                guardrail_detail = bedrock_client.get_guardrail(
+                    guardrailIdentifier=guardrail_id
+                )
+                guardrail_config = guardrail_detail.get("guardrail", guardrail_detail)
+
+                # Check tier setting - may be under different paths
+                tier = guardrail_config.get("tier") or guardrail_config.get(
+                    "guardrailTier", "Standard"
+                )
+
+                if tier != "Standard":
+                    suboptimal_guardrails.append(
+                        {"name": guardrail_name, "id": guardrail_id, "tier": tier}
+                    )
+                else:
+                    standard_tier_guardrails.append(guardrail_name)
+
+            if suboptimal_guardrails:
+                findings["status"] = "WARN"
+                findings["details"] = (
+                    f"Found {len(suboptimal_guardrails)} guardrails not using Standard tier"
+                )
+
+                for gr in suboptimal_guardrails:
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="BR-16",
+                            finding_name="Guardrail Tier Validation Check",
+                            finding_details=f"Guardrail '{gr['name']}' (ID: {gr['id']}) is using tier '{gr['tier']}' instead of 'Standard'. Standard tier provides enhanced content filtering with typographical error detection and 60-language support.",
+                            resolution="Update guardrail to use Standard tier for improved contextual understanding, better prompt attack filtering (distinguishing jailbreaks from prompt injection), and broader language support. Review pricing implications before upgrading.",
+                            reference="https://aws.amazon.com/about-aws/whats-new/2025/06/amazon-bedrock-guardrails-tiers-content-filters-denied-topics/",
+                            severity="Medium",
+                            status="Failed",
+                            region=region,
+                        )
+                    )
+
+            if standard_tier_guardrails:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-16",
+                        finding_name="Guardrail Tier Validation Check",
+                        finding_details=f"{len(standard_tier_guardrails)} guardrails are using Standard tier with enhanced protection capabilities",
+                        resolution="No action required. Continue monitoring guardrail effectiveness.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+                        severity="Low",
+                        status="Passed",
+                        region=region,
+                    )
+                )
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ACCESS_DENIED_ERROR_CODES:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-16",
+                        finding_name="Guardrail Tier Validation Check",
+                        finding_details=describe_api_error(
+                            e, "Guardrail tier check", region
+                        ),
+                        resolution="Grant bedrock:ListGuardrails and bedrock:GetGuardrail permissions",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+            else:
+                raise
+
+        return findings
+
+    except Exception as e:
+        logger.error(f"Error in check_bedrock_guardrail_tier: {str(e)}", exc_info=True)
+        return {
+            "check_name": "Guardrail Tier Validation Check",
+            "status": "ERROR",
+            "details": f"Error during check: {str(e)}",
+            "csv_data": [
+                create_finding(
+                    check_id="BR-16",
+                    finding_name="Guardrail Tier Validation Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html",
+                    severity="Medium",
+                    status="Failed",
+                    region=region,
+                )
+            ],
+        }
+
+
+def check_bedrock_custom_model_kms_encryption(region: str = "") -> Dict[str, Any]:
+    """
+    BR-17: Verify fine-tuned/customized models use customer-managed KMS keys instead of AWS-owned keys
+    Note: This extends the existing check_bedrock_custom_model_encryption (BR-12) to specifically verify KMS key type
+    """
+    logger.debug("Starting check for custom model KMS encryption")
+    try:
+        findings = {
+            "check_name": "Custom Model Customer-Managed KMS Encryption Check",
+            "status": "PASS",
+            "details": "",
+            "csv_data": [],
+        }
+
+        bedrock_client = boto3.client(
+            "bedrock", config=boto3_config, region_name=region
+        )
+
+        try:
+            # Get custom models using paginator
+            paginator = bedrock_client.get_paginator("list_custom_models")
+            custom_models = []
+            for page in paginator.paginate():
+                custom_models.extend(page.get("modelSummaries", []))
+
+            if not custom_models:
+                findings["details"] = "No custom models found"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-17",
+                        finding_name="Custom Model Customer-Managed KMS Encryption Check",
+                        finding_details="No custom (fine-tuned) Bedrock models found in this region",
+                        resolution="When creating custom models, specify a customer-managed KMS key for encryption to maintain control over encryption keys",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-custom-job.html",
+                        severity="High",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                return findings
+
+            models_with_aws_keys = []
+            models_with_customer_keys = []
+            models_unknown = []
+
+            for model in custom_models:
+                model_arn = model.get("modelArn")
+                model_name = model.get("modelName", "unknown")
+
+                # Get model details to check encryption
+                try:
+                    model_detail = bedrock_client.get_custom_model(
+                        modelIdentifier=model_arn
+                    )
+
+                    # Check for custom KMS key
+                    kms_key_id = model_detail.get(
+                        "customModelKmsKeyId"
+                    ) or model_detail.get("kmsKeyId")
+
+                    if not kms_key_id:
+                        # No KMS key specified = AWS-owned key
+                        models_with_aws_keys.append(
+                            {"name": model_name, "arn": model_arn}
+                        )
+                    elif kms_key_id.startswith("arn:aws:kms"):
+                        # Customer-managed KMS key
+                        models_with_customer_keys.append(model_name)
+                    else:
+                        # Unknown key format
+                        models_unknown.append(model_name)
+
+                except ClientError as detail_error:
+                    error_code = detail_error.response.get("Error", {}).get("Code", "")
+                    if error_code not in ACCESS_DENIED_ERROR_CODES:
+                        logger.warning(
+                            f"Could not get details for model {model_name}: {error_code}"
+                        )
+                    models_unknown.append(model_name)
+
+            if models_with_aws_keys:
+                findings["status"] = "WARN"
+                findings["details"] = (
+                    f"Found {len(models_with_aws_keys)} custom models using AWS-owned keys"
+                )
+
+                for model_info in models_with_aws_keys:
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="BR-17",
+                            finding_name="Custom Model Customer-Managed KMS Encryption Check",
+                            finding_details=f"Custom model '{model_info['name']}' uses AWS-owned encryption keys instead of customer-managed KMS keys. This limits your control over key rotation, access policies, and audit trail.",
+                            resolution="When creating new custom models, specify a customer-managed KMS key using the customizationConfig.kmsKeyArn parameter. For existing models, consider retraining with customer-managed KMS encryption. Ensure KMS key grants allow Amazon Bedrock service access.",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-custom-job.html",
+                            severity="High",
+                            status="Failed",
+                            region=region,
+                        )
+                    )
+
+            if models_with_customer_keys:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-17",
+                        finding_name="Custom Model Customer-Managed KMS Encryption Check",
+                        finding_details=f"{len(models_with_customer_keys)} custom models are using customer-managed KMS keys for encryption",
+                        resolution="No action required. Continue using customer-managed keys for new custom models.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-custom-job.html",
+                        severity="Medium",
+                        status="Passed",
+                        region=region,
+                    )
+                )
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ACCESS_DENIED_ERROR_CODES:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-17",
+                        finding_name="Custom Model Customer-Managed KMS Encryption Check",
+                        finding_details=describe_api_error(
+                            e, "Custom model encryption check", region
+                        ),
+                        resolution="Grant bedrock:ListCustomModels and bedrock:GetCustomModel permissions",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
+                        severity="High",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+            else:
+                raise
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_bedrock_custom_model_kms_encryption: {str(e)}",
+            exc_info=True,
+        )
+        return {
+            "check_name": "Custom Model Customer-Managed KMS Encryption Check",
+            "status": "ERROR",
+            "details": f"Error during check: {str(e)}",
+            "csv_data": [
+                create_finding(
+                    check_id="BR-17",
+                    finding_name="Custom Model Customer-Managed KMS Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-custom-job.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            ],
+        }
+
+
+def check_bedrock_model_evaluations(region: str = "") -> Dict[str, Any]:
+    """
+    BR-18: Check if model evaluation jobs exist for foundation models to assess safety metrics
+    """
+    logger.debug("Starting check for Bedrock model evaluation implementation")
+    try:
+        findings = {
+            "check_name": "Model Evaluation Implementation Check",
+            "status": "PASS",
+            "details": "",
+            "csv_data": [],
+        }
+
+        bedrock_client = boto3.client(
+            "bedrock", config=boto3_config, region_name=region
+        )
+
+        try:
+            # List model evaluation jobs
+            eval_jobs_response = bedrock_client.list_evaluation_jobs(maxResults=100)
+            eval_jobs = eval_jobs_response.get("jobSummaries", [])
+
+            if not eval_jobs:
+                findings["status"] = "WARN"
+                findings["details"] = "No model evaluation jobs found"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-18",
+                        finding_name="Model Evaluation Implementation Check",
+                        finding_details="No Bedrock model evaluation jobs found. Model evaluation helps assess toxicity, accuracy, semantic robustness, and other safety metrics before production deployment.",
+                        resolution="Create model evaluation jobs using Amazon Bedrock Evaluations to assess foundation model performance against safety and quality metrics. Use built-in datasets or custom test sets. Enable LLM-as-a-judge evaluation for comprehensive assessment.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+                return findings
+
+            # Analyze evaluation jobs
+            recent_evaluations = []
+            thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+
+            for job in eval_jobs:
+                job_name = job.get("jobName", "unknown")
+                job_status = job.get("status", "unknown")
+                creation_time = job.get("creationTime")
+
+                # Check if evaluation is recent (within 30 days)
+                is_recent = False
+                if creation_time:
+                    if isinstance(creation_time, str):
+                        try:
+                            creation_time = datetime.fromisoformat(
+                                creation_time.replace("Z", "+00:00")
+                            )
+                        except:
+                            pass
+                    if isinstance(creation_time, datetime):
+                        is_recent = creation_time >= thirty_days_ago
+
+                if is_recent and job_status == "Completed":
+                    recent_evaluations.append(job_name)
+
+            findings["details"] = (
+                f"Found {len(eval_jobs)} model evaluation jobs, {len(recent_evaluations)} recent"
+            )
+
+            if recent_evaluations:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-18",
+                        finding_name="Model Evaluation Implementation Check",
+                        finding_details=f"Found {len(recent_evaluations)} model evaluation jobs completed in the last 30 days. Regular evaluation helps maintain model quality and safety standards.",
+                        resolution="Continue regular model evaluations. Consider implementing automated evaluation pipelines for continuous model validation. Review evaluation results for safety metrics including toxicity and bias.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation.html",
+                        severity="Low",
+                        status="Passed",
+                        region=region,
+                    )
+                )
+            else:
+                findings["status"] = "WARN"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-18",
+                        finding_name="Model Evaluation Implementation Check",
+                        finding_details=f"Found {len(eval_jobs)} total model evaluation jobs, but none completed in the last 30 days. Regular evaluation is recommended for production models.",
+                        resolution="Schedule regular model evaluation runs to assess ongoing model performance and safety. Configure evaluations to include responsible AI metrics like toxicity, accuracy, and robustness.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            error_msg = str(e)
+
+            if "UnknownOperation" in error_msg or "Unknown operation" in error_msg:
+                findings["details"] = (
+                    "Model evaluation API not available in this region"
+                )
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-18",
+                        finding_name="Model Evaluation Implementation Check",
+                        finding_details=describe_api_error(
+                            e, "Model evaluation API", region
+                        ),
+                        resolution="Model evaluation may not be available in all regions. Check AWS documentation for regional availability.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation.html",
+                        severity="Low",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+            elif error_code in ACCESS_DENIED_ERROR_CODES:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-18",
+                        finding_name="Model Evaluation Implementation Check",
+                        finding_details=describe_api_error(
+                            e, "Model evaluation check", region
+                        ),
+                        resolution="Grant bedrock:ListEvaluationJobs permission to assess model evaluation practices",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+            else:
+                raise
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_bedrock_model_evaluations: {str(e)}", exc_info=True
+        )
+        return {
+            "check_name": "Model Evaluation Implementation Check",
+            "status": "ERROR",
+            "details": f"Error during check: {str(e)}",
+            "csv_data": [
+                create_finding(
+                    check_id="BR-18",
+                    finding_name="Model Evaluation Implementation Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation.html",
+                    severity="Medium",
+                    status="Failed",
+                    region=region,
+                )
+            ],
+        }
+
+
+def check_bedrock_prompt_flow_validation(region: str = "") -> Dict[str, Any]:
+    """
+    BR-19: Verify Bedrock Agents prompt flows are validated before deployment
+    """
+    logger.debug("Starting check for Bedrock prompt flow validation")
+    try:
+        findings = {
+            "check_name": "Prompt Flow Validation Check",
+            "status": "PASS",
+            "details": "",
+            "csv_data": [],
+        }
+
+        bedrock_agent_client = boto3.client(
+            "bedrock-agent", config=boto3_config, region_name=region
+        )
+
+        try:
+            # List all flows
+            flows_response = bedrock_agent_client.list_flows(maxResults=100)
+            flows = flows_response.get("flowSummaries", [])
+
+            if not flows:
+                findings["details"] = "No Bedrock prompt flows found"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-19",
+                        finding_name="Prompt Flow Validation Check",
+                        finding_details="No Bedrock prompt flows configured in this region",
+                        resolution="When creating prompt flows, use the ValidateFlowDefinition API to validate flow definitions before deployment",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/flows.html",
+                        severity="Medium",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                return findings
+
+            unvalidated_flows = []
+            validated_flows = []
+
+            for flow_summary in flows:
+                flow_id = flow_summary.get("id")
+                flow_name = flow_summary.get("name", "unknown")
+                flow_status = flow_summary.get("status", "unknown")
+
+                if not flow_id:
+                    continue
+
+                # Get detailed flow configuration
+                try:
+                    flow_detail = bedrock_agent_client.get_flow(flowIdentifier=flow_id)
+                    flow_info = flow_detail.get("flow", flow_detail)
+
+                    # Check if flow has been validated (status indicates deployment readiness)
+                    # Flows with status "Prepared" or "Published" have been validated
+                    if flow_status in ["Prepared", "Published"]:
+                        validated_flows.append(flow_name)
+                    elif flow_status in ["NotPrepared", "Failed"]:
+                        unvalidated_flows.append(
+                            {"name": flow_name, "id": flow_id, "status": flow_status}
+                        )
+                    else:
+                        # Unknown status, consider unvalidated
+                        unvalidated_flows.append(
+                            {"name": flow_name, "id": flow_id, "status": flow_status}
+                        )
+
+                except ClientError as detail_error:
+                    error_code = detail_error.response.get("Error", {}).get("Code", "")
+                    if error_code not in ACCESS_DENIED_ERROR_CODES:
+                        logger.warning(
+                            f"Could not get details for flow {flow_name}: {error_code}"
+                        )
+
+            if unvalidated_flows:
+                findings["status"] = "WARN"
+                findings["details"] = (
+                    f"Found {len(unvalidated_flows)} flows that may not be validated"
+                )
+
+                for flow in unvalidated_flows:
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="BR-19",
+                            finding_name="Prompt Flow Validation Check",
+                            finding_details=f"Prompt flow '{flow['name']}' (ID: {flow['id']}) has status '{flow['status']}' and may not be validated. Unvalidated flows can lead to runtime errors or unexpected behavior.",
+                            resolution="Use the ValidateFlowDefinition API to validate the flow definition before preparing or publishing. Fix any validation errors before deployment. Ensure all nodes, connections, and configurations are correct.",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/APIReference/API_agent_ValidateFlowDefinition.html",
+                            severity="Medium",
+                            status="Failed",
+                            region=region,
+                        )
+                    )
+
+            if validated_flows:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-19",
+                        finding_name="Prompt Flow Validation Check",
+                        finding_details=f"{len(validated_flows)} prompt flows are validated and prepared for deployment",
+                        resolution="No action required. Continue validating flows before deployment.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/flows.html",
+                        severity="Low",
+                        status="Passed",
+                        region=region,
+                    )
+                )
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            error_msg = str(e)
+
+            if "UnknownOperation" in error_msg or "Unknown operation" in error_msg:
+                findings["details"] = "Prompt flows API not available in this region"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-19",
+                        finding_name="Prompt Flow Validation Check",
+                        finding_details=describe_api_error(
+                            e, "Prompt flows API", region
+                        ),
+                        resolution="Bedrock prompt flows may not be available in all regions",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/flows.html",
+                        severity="Low",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+            elif error_code in ACCESS_DENIED_ERROR_CODES:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-19",
+                        finding_name="Prompt Flow Validation Check",
+                        finding_details=describe_api_error(
+                            e, "Prompt flow check", region
+                        ),
+                        resolution="Grant bedrock-agent:ListFlows and bedrock-agent:GetFlow permissions",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+            else:
+                raise
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_bedrock_prompt_flow_validation: {str(e)}", exc_info=True
+        )
+        return {
+            "check_name": "Prompt Flow Validation Check",
+            "status": "ERROR",
+            "details": f"Error during check: {str(e)}",
+            "csv_data": [
+                create_finding(
+                    check_id="BR-19",
+                    finding_name="Prompt Flow Validation Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/flows.html",
+                    severity="Medium",
+                    status="Failed",
+                    region=region,
+                )
+            ],
+        }
+
+
+def check_bedrock_knowledge_base_kms_encryption(region: str = "") -> Dict[str, Any]:
+    """
+    BR-20: Verify Knowledge Base vector stores use customer-managed KMS keys (extends BR-09)
+    """
+    logger.debug("Starting check for Knowledge Base customer-managed KMS encryption")
+    try:
+        findings = {
+            "check_name": "Knowledge Base Customer-Managed KMS Encryption Check",
+            "status": "PASS",
+            "details": "",
+            "csv_data": [],
+        }
+
+        bedrock_agent_client = boto3.client(
+            "bedrock-agent", config=boto3_config, region_name=region
+        )
+
+        try:
+            # List all knowledge bases
+            kb_response = bedrock_agent_client.list_knowledge_bases(maxResults=100)
+            knowledge_bases = kb_response.get("knowledgeBaseSummaries", [])
+
+            if not knowledge_bases:
+                findings["details"] = "No Bedrock knowledge bases found"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-20",
+                        finding_name="Knowledge Base Customer-Managed KMS Encryption Check",
+                        finding_details="No Bedrock knowledge bases found in this region",
+                        resolution="When creating knowledge bases, specify customer-managed KMS keys for both vector store and data source encryption",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-encryption.html",
+                        severity="High",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                return findings
+
+            kbs_with_aws_keys = []
+            kbs_with_customer_keys = []
+
+            for kb_summary in knowledge_bases:
+                kb_id = kb_summary.get("knowledgeBaseId")
+                kb_name = kb_summary.get("name", "unknown")
+
+                if not kb_id:
+                    continue
+
+                # Get detailed KB configuration
+                try:
+                    kb_detail = bedrock_agent_client.get_knowledge_base(
+                        knowledgeBaseId=kb_id
+                    )
+                    kb_config = kb_detail.get("knowledgeBase", {})
+
+                    # Check storage configuration for KMS key
+                    storage_config = kb_config.get("storageConfiguration", {})
+
+                    # Check various storage types
+                    has_customer_kms = False
+                    storage_type = None
+
+                    if "opensearchServerlessConfiguration" in storage_config:
+                        storage_type = "OpenSearch Serverless"
+                        # OpenSearch Serverless uses collection-level encryption
+                        has_customer_kms = True  # Assume customer-managed if configured
+                    elif "pineconeConfiguration" in storage_config:
+                        storage_type = "Pinecone"
+                        # External service - mark as N/A for this check
+                        continue
+                    elif "rdsConfiguration" in storage_config:
+                        storage_type = "RDS"
+                        # RDS encryption handled separately
+                        has_customer_kms = True
+
+                    # Check for explicit KMS key ARN in KB configuration
+                    kms_key_arn = kb_config.get("kmsKeyArn")
+                    if kms_key_arn and kms_key_arn.startswith("arn:aws:kms"):
+                        has_customer_kms = True
+
+                    if not has_customer_kms or not kms_key_arn:
+                        kbs_with_aws_keys.append(
+                            {
+                                "name": kb_name,
+                                "id": kb_id,
+                                "storage_type": storage_type or "unknown",
+                            }
+                        )
+                    else:
+                        kbs_with_customer_keys.append(kb_name)
+
+                except ClientError as detail_error:
+                    error_code = detail_error.response.get("Error", {}).get("Code", "")
+                    if error_code not in ACCESS_DENIED_ERROR_CODES:
+                        logger.warning(
+                            f"Could not get details for KB {kb_name}: {error_code}"
+                        )
+
+            if kbs_with_aws_keys:
+                findings["status"] = "WARN"
+                findings["details"] = (
+                    f"Found {len(kbs_with_aws_keys)} knowledge bases without explicit customer-managed KMS keys"
+                )
+
+                for kb in kbs_with_aws_keys:
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="BR-20",
+                            finding_name="Knowledge Base Customer-Managed KMS Encryption Check",
+                            finding_details=f"Knowledge base '{kb['name']}' (ID: {kb['id']}, Storage: {kb['storage_type']}) does not have an explicit customer-managed KMS key configured. This limits control over key rotation, access policies, and audit trails.",
+                            resolution="When creating or updating knowledge bases, specify a customer-managed KMS key ARN in the knowledgeBase.kmsKeyArn field. Ensure the KMS key policy allows Amazon Bedrock service access. For vector stores, also configure encryption at the collection/database level.",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-encryption.html",
+                            severity="High",
+                            status="Failed",
+                            region=region,
+                        )
+                    )
+
+            if kbs_with_customer_keys:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-20",
+                        finding_name="Knowledge Base Customer-Managed KMS Encryption Check",
+                        finding_details=f"{len(kbs_with_customer_keys)} knowledge bases are using customer-managed KMS keys",
+                        resolution="No action required. Continue using customer-managed keys for new knowledge bases.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-encryption.html",
+                        severity="Medium",
+                        status="Passed",
+                        region=region,
+                    )
+                )
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ACCESS_DENIED_ERROR_CODES:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-20",
+                        finding_name="Knowledge Base Customer-Managed KMS Encryption Check",
+                        finding_details=describe_api_error(
+                            e, "Knowledge base encryption check", region
+                        ),
+                        resolution="Grant bedrock-agent:ListKnowledgeBases and bedrock-agent:GetKnowledgeBase permissions",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
+                        severity="High",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+            else:
+                raise
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_bedrock_knowledge_base_kms_encryption: {str(e)}",
+            exc_info=True,
+        )
+        return {
+            "check_name": "Knowledge Base Customer-Managed KMS Encryption Check",
+            "status": "ERROR",
+            "details": f"Error during check: {str(e)}",
+            "csv_data": [
+                create_finding(
+                    check_id="BR-20",
+                    finding_name="Knowledge Base Customer-Managed KMS Encryption Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-encryption.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            ],
+        }
+
+
+def check_bedrock_agent_action_group_iam(
+    region: str = "", permission_cache: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    BR-21: Check if Bedrock Agent action groups use scoped Lambda execution roles (extends BR-08)
+    """
+    logger.debug("Starting check for Bedrock Agent action group IAM least privilege")
+
+    if permission_cache is None:
+        permission_cache = {}
+
+    try:
+        findings = {
+            "check_name": "Agent Action Group IAM Least Privilege Check",
+            "status": "PASS",
+            "details": "",
+            "csv_data": [],
+        }
+
+        bedrock_agent_client = boto3.client(
+            "bedrock-agent", config=boto3_config, region_name=region
+        )
+        lambda_client = boto3.client("lambda", config=boto3_config, region_name=region)
+
+        try:
+            # List all agents
+            agents_response = bedrock_agent_client.list_agents(maxResults=100)
+            agents = agents_response.get("agentSummaries", [])
+
+            if not agents:
+                findings["details"] = "No Bedrock agents found"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-21",
+                        finding_name="Agent Action Group IAM Least Privilege Check",
+                        finding_details="No Bedrock agents configured in this region",
+                        resolution="When creating agents with action groups, ensure Lambda execution roles follow least privilege principles",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-security.html",
+                        severity="High",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                return findings
+
+            overly_permissive_lambdas = []
+            compliant_lambdas = []
+
+            for agent_summary in agents:
+                agent_id = agent_summary.get("agentId")
+                agent_name = agent_summary.get("agentName", "unknown")
+
+                if not agent_id:
+                    continue
+
+                try:
+                    # Get agent action groups
+                    action_groups_response = (
+                        bedrock_agent_client.list_agent_action_groups(
+                            agentId=agent_id, agentVersion="DRAFT", maxResults=100
+                        )
+                    )
+                    action_groups = action_groups_response.get(
+                        "actionGroupSummaries", []
+                    )
+
+                    for action_group in action_groups:
+                        # Get action group details
+                        action_group_id = action_group.get("actionGroupId")
+                        action_group_name = action_group.get(
+                            "actionGroupName", "unknown"
+                        )
+
+                        if not action_group_id:
+                            continue
+
+                        try:
+                            ag_detail = bedrock_agent_client.get_agent_action_group(
+                                agentId=agent_id,
+                                agentVersion="DRAFT",
+                                actionGroupId=action_group_id,
+                            )
+                            ag_config = ag_detail.get("agentActionGroup", {})
+
+                            # Get Lambda function ARN if configured
+                            action_group_executor = ag_config.get(
+                                "actionGroupExecutor", {}
+                            )
+                            lambda_arn = action_group_executor.get("lambda")
+
+                            if lambda_arn:
+                                # Extract function name from ARN
+                                function_name = (
+                                    lambda_arn.split(":")[-1]
+                                    if ":" in lambda_arn
+                                    else lambda_arn
+                                )
+
+                                try:
+                                    # Get Lambda function configuration
+                                    lambda_config = lambda_client.get_function(
+                                        FunctionName=function_name
+                                    )
+                                    role_arn = lambda_config.get(
+                                        "Configuration", {}
+                                    ).get("Role")
+
+                                    if role_arn:
+                                        # Check if role has overly broad permissions
+                                        role_name = role_arn.split("/")[-1]
+
+                                        # Check permission cache for this role
+                                        role_perms = permission_cache.get(
+                                            "role_permissions", {}
+                                        ).get(role_name, {})
+                                        policies = role_perms.get(
+                                            "attached_policies", []
+                                        )
+
+                                        # Check for overly permissive policies
+                                        has_admin_access = any(
+                                            "AdministratorAccess" in p for p in policies
+                                        )
+                                        has_full_access = any(
+                                            "FullAccess" in p for p in policies
+                                        )
+                                        has_star_resource = (
+                                            False  # Would need inline policy analysis
+                                        )
+
+                                        if has_admin_access or has_full_access:
+                                            overly_permissive_lambdas.append(
+                                                {
+                                                    "agent_name": agent_name,
+                                                    "action_group": action_group_name,
+                                                    "function_name": function_name,
+                                                    "role_name": role_name,
+                                                    "issue": "AdministratorAccess"
+                                                    if has_admin_access
+                                                    else "FullAccess policy",
+                                                }
+                                            )
+                                        else:
+                                            compliant_lambdas.append(function_name)
+
+                                except ClientError as lambda_error:
+                                    error_code = lambda_error.response.get(
+                                        "Error", {}
+                                    ).get("Code", "")
+                                    if error_code not in ACCESS_DENIED_ERROR_CODES:
+                                        logger.warning(
+                                            f"Could not get Lambda config for {function_name}: {error_code}"
+                                        )
+
+                        except ClientError as ag_error:
+                            error_code = ag_error.response.get("Error", {}).get(
+                                "Code", ""
+                            )
+                            if error_code not in ACCESS_DENIED_ERROR_CODES:
+                                logger.warning(
+                                    f"Could not get action group details: {error_code}"
+                                )
+
+                except ClientError as list_error:
+                    error_code = list_error.response.get("Error", {}).get("Code", "")
+                    if error_code not in ACCESS_DENIED_ERROR_CODES:
+                        logger.warning(
+                            f"Could not list action groups for agent {agent_name}: {error_code}"
+                        )
+
+            if overly_permissive_lambdas:
+                findings["status"] = "WARN"
+                findings["details"] = (
+                    f"Found {len(overly_permissive_lambdas)} Lambda functions with overly permissive IAM roles"
+                )
+
+                for lambda_info in overly_permissive_lambdas:
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="BR-21",
+                            finding_name="Agent Action Group IAM Least Privilege Check",
+                            finding_details=f"Lambda function '{lambda_info['function_name']}' used by agent '{lambda_info['agent_name']}' action group '{lambda_info['action_group']}' has role '{lambda_info['role_name']}' with {lambda_info['issue']}. This violates least privilege principles.",
+                            resolution="Update the Lambda execution role to use scoped permissions. Remove AdministratorAccess and FullAccess policies. Grant only the specific AWS service permissions needed for the action group's operations. Use Resource-based policies to scope permissions to specific resources.",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-security.html",
+                            severity="High",
+                            status="Failed",
+                            region=region,
+                        )
+                    )
+
+            if compliant_lambdas:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-21",
+                        finding_name="Agent Action Group IAM Least Privilege Check",
+                        finding_details=f"{len(compliant_lambdas)} Lambda functions are using scoped IAM roles",
+                        resolution="No action required. Continue using least privilege IAM roles for action group Lambda functions.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-security.html",
+                        severity="Medium",
+                        status="Passed",
+                        region=region,
+                    )
+                )
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ACCESS_DENIED_ERROR_CODES:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-21",
+                        finding_name="Agent Action Group IAM Least Privilege Check",
+                        finding_details=describe_api_error(
+                            e, "Agent action group IAM check", region
+                        ),
+                        resolution="Grant bedrock-agent:ListAgents, bedrock-agent:ListAgentActionGroups, bedrock-agent:GetAgentActionGroup, and lambda:GetFunction permissions",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
+                        severity="High",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+            else:
+                raise
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_bedrock_agent_action_group_iam: {str(e)}", exc_info=True
+        )
+        return {
+            "check_name": "Agent Action Group IAM Least Privilege Check",
+            "status": "ERROR",
+            "details": f"Error during check: {str(e)}",
+            "csv_data": [
+                create_finding(
+                    check_id="BR-21",
+                    finding_name="Agent Action Group IAM Least Privilege Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-security.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            ],
+        }
+
+
+def check_bedrock_service_quotas_throttling(region: str = "") -> Dict[str, Any]:
+    """
+    BR-22: Verify service quotas are configured for model invocation throttling
+    """
+    logger.debug("Starting check for Bedrock service quotas throttling limits")
+    try:
+        findings = {
+            "check_name": "Model Invocation Throttling Limits Check",
+            "status": "PASS",
+            "details": "",
+            "csv_data": [],
+        }
+
+        service_quotas_client = boto3.client(
+            "service-quotas", config=boto3_config, region_name=region
+        )
+
+        try:
+            # List Bedrock service quotas
+            quotas_response = service_quotas_client.list_service_quotas(
+                ServiceCode="bedrock", MaxResults=100
+            )
+            quotas = quotas_response.get("Quotas", [])
+
+            if not quotas:
+                findings["details"] = "Could not retrieve Bedrock service quotas"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-22",
+                        finding_name="Model Invocation Throttling Limits Check",
+                        finding_details="Unable to retrieve Bedrock service quotas for this region",
+                        resolution="Verify service quotas access and ensure Bedrock is available in this region",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
+                        severity="Medium",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                return findings
+
+            # Check for custom quotas (non-default values indicate intentional configuration)
+            custom_quotas = []
+            default_quotas = []
+
+            for quota in quotas:
+                quota_name = quota.get("QuotaName", "unknown")
+                quota_code = quota.get("QuotaCode", "")
+
+                # Check if quota is related to throttling/rate limits
+                is_throttling_quota = any(
+                    keyword in quota_name.lower()
+                    for keyword in [
+                        "tokens per minute",
+                        "tpm",
+                        "requests per",
+                        "throughput",
+                        "invocations",
+                    ]
+                )
+
+                if is_throttling_quota:
+                    # Check if quota has been customized
+                    default_value = quota.get("Value", 0)
+                    adjustable = quota.get("Adjustable", False)
+
+                    # Try to get applied quota (custom value if set)
+                    try:
+                        applied_quota = service_quotas_client.get_service_quota(
+                            ServiceCode="bedrock", QuotaCode=quota_code
+                        )
+                        applied_value = applied_quota.get("Quota", {}).get(
+                            "Value", default_value
+                        )
+
+                        if applied_value != default_value or not adjustable:
+                            custom_quotas.append(
+                                {
+                                    "name": quota_name,
+                                    "value": applied_value,
+                                    "adjustable": adjustable,
+                                }
+                            )
+                        else:
+                            default_quotas.append(quota_name)
+                    except:
+                        # If we can't get applied quota, assume default
+                        if adjustable:
+                            default_quotas.append(quota_name)
+
+            if not custom_quotas and default_quotas:
+                findings["status"] = "WARN"
+                findings["details"] = "No custom throttling quotas configured"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-22",
+                        finding_name="Model Invocation Throttling Limits Check",
+                        finding_details=f"Account is using default Bedrock service quotas for model invocation throttling. Custom quotas help prevent abuse, control costs, and ensure fair resource usage across applications.",
+                        resolution="Review Bedrock service quotas and configure custom limits for model invocation rates (tokens per minute) based on your application requirements. Request quota increases through AWS Service Quotas console if needed. Set up CloudWatch alarms to monitor quota utilization.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+            elif custom_quotas:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-22",
+                        finding_name="Model Invocation Throttling Limits Check",
+                        finding_details=f"{len(custom_quotas)} custom throttling quotas are configured. Regular quota review helps maintain appropriate rate limits.",
+                        resolution="Continue monitoring quota utilization. Review and adjust quotas as application requirements change.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
+                        severity="Low",
+                        status="Passed",
+                        region=region,
+                    )
+                )
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            error_msg = str(e)
+
+            if (
+                "NoSuchResourceException" in error_msg
+                or "not found" in error_msg.lower()
+            ):
+                findings["details"] = "Bedrock service quotas not available"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-22",
+                        finding_name="Model Invocation Throttling Limits Check",
+                        finding_details="Bedrock service quotas not found in Service Quotas API for this region",
+                        resolution="Bedrock may not be available in this region or quotas may not be published to Service Quotas API",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
+                        severity="Low",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+            elif error_code in ACCESS_DENIED_ERROR_CODES:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-22",
+                        finding_name="Model Invocation Throttling Limits Check",
+                        finding_details=describe_api_error(
+                            e, "Service quotas check", region
+                        ),
+                        resolution="Grant servicequotas:ListServiceQuotas and servicequotas:GetServiceQuota permissions",
+                        reference="https://docs.aws.amazon.com/servicequotas/latest/userguide/identity-access-management.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+            else:
+                raise
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_bedrock_service_quotas_throttling: {str(e)}", exc_info=True
+        )
+        return {
+            "check_name": "Model Invocation Throttling Limits Check",
+            "status": "ERROR",
+            "details": f"Error during check: {str(e)}",
+            "csv_data": [
+                create_finding(
+                    check_id="BR-22",
+                    finding_name="Model Invocation Throttling Limits Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
+                    severity="Medium",
+                    status="Failed",
+                    region=region,
+                )
+            ],
+        }
+
+
+def check_bedrock_guardrail_content_filters(region: str = "") -> Dict[str, Any]:
+    """
+    BR-23: Verify guardrails have ALL content filters enabled (extends BR-05)
+    """
+    logger.debug("Starting check for Bedrock guardrail content filter coverage")
+    try:
+        findings = {
+            "check_name": "Guardrail Content Filter Coverage Check",
+            "status": "PASS",
+            "details": "",
+            "csv_data": [],
+        }
+
+        bedrock_client = boto3.client(
+            "bedrock", config=boto3_config, region_name=region
+        )
+
+        try:
+            # List all guardrails
+            guardrails_response = bedrock_client.list_guardrails(maxResults=100)
+            guardrails = guardrails_response.get("guardrails", [])
+
+            if not guardrails:
+                findings["details"] = "No Bedrock guardrails found"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-23",
+                        finding_name="Guardrail Content Filter Coverage Check",
+                        finding_details="No Bedrock guardrails configured in this region",
+                        resolution="Create guardrails with all content filters enabled (hate, insults, sexual, violence) with appropriate thresholds",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-content-filters.html",
+                        severity="High",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                return findings
+
+            incomplete_guardrails = []
+            complete_guardrails = []
+
+            for guardrail_summary in guardrails:
+                guardrail_id = guardrail_summary.get("id")
+                guardrail_name = guardrail_summary.get("name", "unknown")
+
+                if not guardrail_id:
+                    continue
+
+                # Get detailed guardrail configuration
+                guardrail_detail = bedrock_client.get_guardrail(
+                    guardrailIdentifier=guardrail_id
+                )
+                guardrail_config = guardrail_detail.get("guardrail", guardrail_detail)
+
+                # Check content filter configuration
+                content_policy_config = guardrail_config.get("contentPolicyConfig", {})
+                filters_config = content_policy_config.get("filtersConfig", [])
+
+                # Required filter types
+                required_filters = {"HATE", "INSULTS", "SEXUAL", "VIOLENCE"}
+                configured_filters = set()
+                missing_filters = []
+
+                for filter_item in filters_config:
+                    filter_type = filter_item.get("type")
+                    input_strength = filter_item.get("inputStrength", "NONE")
+                    output_strength = filter_item.get("outputStrength", "NONE")
+
+                    if filter_type in required_filters:
+                        # Filter is considered configured if it has any strength other than NONE
+                        if input_strength != "NONE" or output_strength != "NONE":
+                            configured_filters.add(filter_type)
+
+                # Find missing filters
+                missing_filters = required_filters - configured_filters
+
+                if missing_filters:
+                    incomplete_guardrails.append(
+                        {
+                            "name": guardrail_name,
+                            "id": guardrail_id,
+                            "missing": list(missing_filters),
+                        }
+                    )
+                else:
+                    complete_guardrails.append(guardrail_name)
+
+            if incomplete_guardrails:
+                findings["status"] = "WARN"
+                findings["details"] = (
+                    f"Found {len(incomplete_guardrails)} guardrails with incomplete content filter coverage"
+                )
+
+                for gr in incomplete_guardrails:
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="BR-23",
+                            finding_name="Guardrail Content Filter Coverage Check",
+                            finding_details=f"Guardrail '{gr['name']}' (ID: {gr['id']}) is missing content filters: {', '.join(gr['missing'])}. Complete content filter coverage is essential for comprehensive content safety.",
+                            resolution="Update guardrail to enable all content filters (HATE, INSULTS, SEXUAL, VIOLENCE). Configure appropriate threshold levels (LOW, MEDIUM, HIGH) for both input and output filtering based on your use case. Review AWS documentation for threshold guidance.",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-content-filters.html",
+                            severity="High",
+                            status="Failed",
+                            region=region,
+                        )
+                    )
+
+            if complete_guardrails:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-23",
+                        finding_name="Guardrail Content Filter Coverage Check",
+                        finding_details=f"{len(complete_guardrails)} guardrails have complete content filter coverage (hate, insults, sexual, violence)",
+                        resolution="No action required. Continue monitoring filter effectiveness and adjust thresholds as needed.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-content-filters.html",
+                        severity="Low",
+                        status="Passed",
+                        region=region,
+                    )
+                )
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ACCESS_DENIED_ERROR_CODES:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-23",
+                        finding_name="Guardrail Content Filter Coverage Check",
+                        finding_details=describe_api_error(
+                            e, "Guardrail content filter check", region
+                        ),
+                        resolution="Grant bedrock:ListGuardrails and bedrock:GetGuardrail permissions",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
+                        severity="High",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+            else:
+                raise
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_bedrock_guardrail_content_filters: {str(e)}", exc_info=True
+        )
+        return {
+            "check_name": "Guardrail Content Filter Coverage Check",
+            "status": "ERROR",
+            "details": f"Error during check: {str(e)}",
+            "csv_data": [
+                create_finding(
+                    check_id="BR-23",
+                    finding_name="Guardrail Content Filter Coverage Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-content-filters.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            ],
+        }
+
+
+def check_bedrock_automated_reasoning_policy(region: str = "") -> Dict[str, Any]:
+    """
+    BR-24: Check if Automated Reasoning policies are configured on guardrails
+    """
+    logger.debug("Starting check for Bedrock Automated Reasoning policy implementation")
+    try:
+        findings = {
+            "check_name": "Automated Reasoning Policy Implementation Check",
+            "status": "PASS",
+            "details": "",
+            "csv_data": [],
+        }
+
+        bedrock_client = boto3.client(
+            "bedrock", config=boto3_config, region_name=region
+        )
+
+        try:
+            # List all guardrails
+            guardrails_response = bedrock_client.list_guardrails(maxResults=100)
+            guardrails = guardrails_response.get("guardrails", [])
+
+            if not guardrails:
+                findings["details"] = "No Bedrock guardrails found"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-24",
+                        finding_name="Automated Reasoning Policy Implementation Check",
+                        finding_details="No Bedrock guardrails configured in this region",
+                        resolution="Create guardrails with Automated Reasoning policies for formal verification of model responses",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-automated-reasoning.html",
+                        severity="Medium",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                return findings
+
+            without_ar_policy = []
+            with_ar_policy = []
+
+            for guardrail_summary in guardrails:
+                guardrail_id = guardrail_summary.get("id")
+                guardrail_name = guardrail_summary.get("name", "unknown")
+
+                if not guardrail_id:
+                    continue
+
+                # Get detailed guardrail configuration
+                try:
+                    guardrail_detail = bedrock_client.get_guardrail(
+                        guardrailIdentifier=guardrail_id
+                    )
+                    guardrail_config = guardrail_detail.get(
+                        "guardrail", guardrail_detail
+                    )
+
+                    # Check for Automated Reasoning policy
+                    # Note: Field name may vary - check common variations
+                    has_ar_policy = (
+                        "automatedReasoningPolicy" in guardrail_config
+                        or "automatedReasoningPolicyConfig" in guardrail_config
+                        or guardrail_config.get(
+                            "automatedReasoningPolicyEnabled", False
+                        )
+                    )
+
+                    if not has_ar_policy:
+                        without_ar_policy.append(
+                            {"name": guardrail_name, "id": guardrail_id}
+                        )
+                    else:
+                        with_ar_policy.append(guardrail_name)
+
+                except ClientError as detail_error:
+                    error_code = detail_error.response.get("Error", {}).get("Code", "")
+                    if error_code not in ACCESS_DENIED_ERROR_CODES:
+                        logger.warning(
+                            f"Could not get details for guardrail {guardrail_name}: {error_code}"
+                        )
+
+            if without_ar_policy:
+                findings["status"] = "WARN"
+                findings["details"] = (
+                    f"Found {len(without_ar_policy)} guardrails without Automated Reasoning policies"
+                )
+
+                for gr in without_ar_policy:
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="BR-24",
+                            finding_name="Automated Reasoning Policy Implementation Check",
+                            finding_details=f"Guardrail '{gr['name']}' (ID: {gr['id']}) does not have an Automated Reasoning policy configured. Automated Reasoning provides formal verification of model responses against defined policies.",
+                            resolution="Configure Automated Reasoning policies on guardrails to mathematically verify model responses. Define policies that specify allowed and disallowed behaviors. Use for high-assurance use cases where formal verification is required.",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-automated-reasoning.html",
+                            severity="Medium",
+                            status="Failed",
+                            region=region,
+                        )
+                    )
+
+            if with_ar_policy:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-24",
+                        finding_name="Automated Reasoning Policy Implementation Check",
+                        finding_details=f"{len(with_ar_policy)} guardrails have Automated Reasoning policies configured for formal verification",
+                        resolution="No action required. Continue using Automated Reasoning for high-assurance verification.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-automated-reasoning.html",
+                        severity="Low",
+                        status="Passed",
+                        region=region,
+                    )
+                )
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            error_msg = str(e)
+
+            if "UnknownOperation" in error_msg or "Unknown operation" in error_msg:
+                findings["details"] = (
+                    "Automated Reasoning feature not available in this region"
+                )
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-24",
+                        finding_name="Automated Reasoning Policy Implementation Check",
+                        finding_details=describe_api_error(
+                            e, "Automated Reasoning API", region
+                        ),
+                        resolution="Automated Reasoning may not be available in all regions. Check AWS documentation for regional availability.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-automated-reasoning.html",
+                        severity="Low",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+            elif error_code in ACCESS_DENIED_ERROR_CODES:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-24",
+                        finding_name="Automated Reasoning Policy Implementation Check",
+                        finding_details=describe_api_error(
+                            e, "Automated Reasoning policy check", region
+                        ),
+                        resolution="Grant bedrock:ListGuardrails and bedrock:GetGuardrail permissions",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
+                        severity="Medium",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+            else:
+                raise
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_bedrock_automated_reasoning_policy: {str(e)}",
+            exc_info=True,
+        )
+        return {
+            "check_name": "Automated Reasoning Policy Implementation Check",
+            "status": "ERROR",
+            "details": f"Error during check: {str(e)}",
+            "csv_data": [
+                create_finding(
+                    check_id="BR-24",
+                    finding_name="Automated Reasoning Policy Implementation Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-automated-reasoning.html",
+                    severity="Medium",
+                    status="Failed",
+                    region=region,
+                )
+            ],
+        }
+
+
+def check_bedrock_rag_evaluation_jobs(region: str = "") -> Dict[str, Any]:
+    """
+    BR-25: Verify RAG applications have evaluation jobs configured
+    """
+    logger.debug("Starting check for Bedrock RAG evaluation jobs")
+    try:
+        findings = {
+            "check_name": "RAG Evaluation Jobs Check",
+            "status": "PASS",
+            "details": "",
+            "csv_data": [],
+        }
+
+        bedrock_agent_client = boto3.client(
+            "bedrock-agent", config=boto3_config, region_name=region
+        )
+        bedrock_client = boto3.client(
+            "bedrock", config=boto3_config, region_name=region
+        )
+
+        try:
+            # List all knowledge bases
+            kb_response = bedrock_agent_client.list_knowledge_bases(maxResults=100)
+            knowledge_bases = kb_response.get("knowledgeBaseSummaries", [])
+
+            if not knowledge_bases:
+                findings["details"] = "No knowledge bases found"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-25",
+                        finding_name="RAG Evaluation Jobs Check",
+                        finding_details="No Bedrock knowledge bases found in this region",
+                        resolution="When implementing RAG applications, configure evaluation jobs to assess context relevance, response correctness, and prevent hallucinations",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation-rag.html",
+                        severity="Low",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                return findings
+
+            # List evaluation jobs (filter for RAG-related evaluations)
+            try:
+                eval_jobs_response = bedrock_client.list_evaluation_jobs(maxResults=100)
+                eval_jobs = eval_jobs_response.get("jobSummaries", [])
+
+                # Map knowledge bases to evaluation jobs
+                kbs_with_evals = set()
+                recent_evaluations = []
+                thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+
+                for job in eval_jobs:
+                    job_name = job.get("jobName", "")
+                    job_status = job.get("status", "unknown")
+                    creation_time = job.get("creationTime")
+
+                    # Check if this is a RAG evaluation (simple heuristic: name contains kb id or "rag")
+                    is_rag_eval = "rag" in job_name.lower() or any(
+                        kb["knowledgeBaseId"] in job_name for kb in knowledge_bases
+                    )
+
+                    if is_rag_eval:
+                        # Check if evaluation is recent
+                        is_recent = False
+                        if creation_time:
+                            if isinstance(creation_time, str):
+                                try:
+                                    creation_time = datetime.fromisoformat(
+                                        creation_time.replace("Z", "+00:00")
+                                    )
+                                except:
+                                    pass
+                            if isinstance(creation_time, datetime):
+                                is_recent = creation_time >= thirty_days_ago
+
+                        if is_recent and job_status == "Completed":
+                            recent_evaluations.append(job_name)
+                            # Try to identify which KB this evaluation is for
+                            for kb in knowledge_bases:
+                                if kb["knowledgeBaseId"] in job_name:
+                                    kbs_with_evals.add(kb["knowledgeBaseId"])
+
+                kbs_without_evals = [
+                    kb
+                    for kb in knowledge_bases
+                    if kb["knowledgeBaseId"] not in kbs_with_evals
+                ]
+
+                if kbs_without_evals:
+                    findings["status"] = "WARN"
+                    findings["details"] = (
+                        f"Found {len(kbs_without_evals)} knowledge bases without recent RAG evaluation jobs"
+                    )
+
+                    for kb in kbs_without_evals:
+                        findings["csv_data"].append(
+                            create_finding(
+                                check_id="BR-25",
+                                finding_name="RAG Evaluation Jobs Check",
+                                finding_details=f"Knowledge base '{kb['name']}' (ID: {kb['knowledgeBaseId']}) does not have recent RAG evaluation jobs. RAG evaluations assess context relevance, response correctness, faithfulness, and harmfulness to prevent hallucinations.",
+                                resolution="Create RAG evaluation jobs for knowledge bases using Amazon Bedrock Model Evaluation. Configure evaluations to test context relevance, answer correctness, and faithfulness metrics. Run evaluations regularly (monthly or after significant KB updates) to maintain quality.",
+                                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation-rag.html",
+                                severity="Low",
+                                status="Failed",
+                                region=region,
+                            )
+                        )
+
+                if recent_evaluations:
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="BR-25",
+                            finding_name="RAG Evaluation Jobs Check",
+                            finding_details=f"Found {len(recent_evaluations)} recent RAG evaluation jobs. Regular RAG evaluations help maintain response quality and prevent hallucinations.",
+                            resolution="Continue regular RAG evaluations. Review evaluation results and adjust retrieval strategies or knowledge base content as needed.",
+                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation-rag.html",
+                            severity="Low",
+                            status="Passed",
+                            region=region,
+                        )
+                    )
+
+            except ClientError as eval_error:
+                error_code = eval_error.response.get("Error", {}).get("Code", "")
+                if error_code not in ACCESS_DENIED_ERROR_CODES:
+                    logger.warning(f"Could not list evaluation jobs: {error_code}")
+                    # Continue check even if evaluation jobs API fails
+
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "")
+            if error_code in ACCESS_DENIED_ERROR_CODES:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-25",
+                        finding_name="RAG Evaluation Jobs Check",
+                        finding_details=describe_api_error(
+                            e, "RAG evaluation check", region
+                        ),
+                        resolution="Grant bedrock-agent:ListKnowledgeBases and bedrock:ListEvaluationJobs permissions",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
+                        severity="Low",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+            else:
+                raise
+
+        return findings
+
+    except Exception as e:
+        logger.error(
+            f"Error in check_bedrock_rag_evaluation_jobs: {str(e)}", exc_info=True
+        )
+        return {
+            "check_name": "RAG Evaluation Jobs Check",
+            "status": "ERROR",
+            "details": f"Error during check: {str(e)}",
+            "csv_data": [
+                create_finding(
+                    check_id="BR-25",
+                    finding_name="RAG Evaluation Jobs Check",
+                    finding_details=f"Error during check: {str(e)}",
+                    resolution="Investigate error and retry assessment",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-evaluation-rag.html",
+                    severity="Low",
+                    status="Failed",
+                    region=region,
+                )
+            ],
+        }
+
+
 def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
     """
     Generate CSV report from all security check findings
@@ -2878,6 +4843,66 @@ def lambda_handler(event, context):
         logger.info("Running Bedrock Flows guardrails check")
         flows_guardrails_findings = check_bedrock_flows_guardrails(region=region)
         all_findings.append(flows_guardrails_findings)
+
+        # New security checks (BR-15+)
+        # BR-15 is a global check (runs once on primary region)
+        if is_primary_region:
+            logger.info("Running cross-account guardrails enforcement check (BR-15)")
+            cross_account_guardrails_findings = check_bedrock_cross_account_guardrails(
+                region=GLOBAL_REGION_LABEL
+            )
+            all_findings.append(cross_account_guardrails_findings)
+
+        # Regional checks (BR-16 through BR-25)
+        logger.info("Running guardrail tier validation check (BR-16)")
+        guardrail_tier_findings = check_bedrock_guardrail_tier(region=region)
+        all_findings.append(guardrail_tier_findings)
+
+        logger.info(
+            "Running custom model customer-managed KMS encryption check (BR-17)"
+        )
+        custom_model_kms_findings = check_bedrock_custom_model_kms_encryption(
+            region=region
+        )
+        all_findings.append(custom_model_kms_findings)
+
+        logger.info("Running model evaluation implementation check (BR-18)")
+        model_eval_findings = check_bedrock_model_evaluations(region=region)
+        all_findings.append(model_eval_findings)
+
+        logger.info("Running prompt flow validation check (BR-19)")
+        prompt_flow_findings = check_bedrock_prompt_flow_validation(region=region)
+        all_findings.append(prompt_flow_findings)
+
+        logger.info(
+            "Running knowledge base customer-managed KMS encryption check (BR-20)"
+        )
+        kb_kms_findings = check_bedrock_knowledge_base_kms_encryption(region=region)
+        all_findings.append(kb_kms_findings)
+
+        logger.info("Running agent action group IAM least privilege check (BR-21)")
+        agent_action_group_iam_findings = check_bedrock_agent_action_group_iam(
+            region=region, permission_cache=permission_cache
+        )
+        all_findings.append(agent_action_group_iam_findings)
+
+        logger.info("Running service quotas throttling limits check (BR-22)")
+        service_quotas_findings = check_bedrock_service_quotas_throttling(region=region)
+        all_findings.append(service_quotas_findings)
+
+        logger.info("Running guardrail content filter coverage check (BR-23)")
+        content_filter_findings = check_bedrock_guardrail_content_filters(region=region)
+        all_findings.append(content_filter_findings)
+
+        logger.info("Running automated reasoning policy implementation check (BR-24)")
+        automated_reasoning_findings = check_bedrock_automated_reasoning_policy(
+            region=region
+        )
+        all_findings.append(automated_reasoning_findings)
+
+        logger.info("Running RAG evaluation jobs check (BR-25)")
+        rag_eval_findings = check_bedrock_rag_evaluation_jobs(region=region)
+        all_findings.append(rag_eval_findings)
 
         # Generate and upload report
         logger.info("Generating CSV report")

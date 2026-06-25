@@ -1,6 +1,6 @@
 # Security Checks Reference
 
-This document provides a comprehensive reference for all 116 security checks performed by the AI/ML Security Assessment framework (52 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, plus 64 Financial Services GenAI Risk checks).
+This document provides a comprehensive reference for all 127 security checks performed by the AI/ML Security Assessment framework (63 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, plus 64 Financial Services GenAI Risk checks).
 
 ## Table of Contents
 
@@ -9,7 +9,7 @@ This document provides a comprehensive reference for all 116 security checks per
 - [Severity Levels](#severity-levels)
 - [Status Values](#status-values)
 - [Amazon SageMaker AI Security Checks (25)](#amazon-sagemaker-ai-security-checks-25)
-- [Amazon Bedrock Security Checks (14)](#amazon-bedrock-security-checks-14)
+- [Amazon Bedrock Security Checks (25)](#amazon-bedrock-security-checks-25)
 - [Amazon Bedrock AgentCore Security Checks (13)](#amazon-bedrock-agentcore-security-checks-13)
 - [Financial Services GenAI Risk Checks (64)](#financial-services-genai-risk-checks-64-additional-5-upstream-extensions)
 
@@ -22,7 +22,7 @@ The framework evaluates your AI/ML workloads against AWS security best practices
 | Service | Number of Checks | Focus Areas |
 |---------|------------------|-------------|
 | Amazon SageMaker AI | 25 | Security Hub controls, encryption, network isolation, IAM, MLOps |
-| Amazon Bedrock | 14 | Guardrails, encryption, VPC endpoints, IAM permissions, logging |
+| Amazon Bedrock | 25 | Guardrails, encryption, VPC endpoints, IAM permissions, logging, cross-account policies, model evaluation, content filters, automated reasoning, RAG evaluation |
 | Amazon Bedrock AgentCore | 13 | VPC configuration, encryption, observability, resource policies |
 | Financial Services GenAI Risk | 64 | Unbounded consumption, excessive agency, supply chain, training data poisoning, vector weaknesses, non-compliant output, misinformation, harmful output, biased output, PII disclosure, hallucination, prompt injection, improper output handling, off-topic output, out-of-date training data |
 
@@ -198,7 +198,7 @@ Each security check has a unique identifier with a service prefix:
 
 ---
 
-## Amazon Bedrock Security Checks (14)
+## Amazon Bedrock Security Checks (25)
 
 ### BR-01: AWS IAM Least Privilege
 
@@ -269,6 +269,73 @@ Each security check has a unique identifier with a service prefix:
 
 - **Severity:** Medium
 - **Description:** Detects principals with Bedrock permissions that have not used the service recently, using IAM service-last-accessed data. As an IAM-global check, it runs once per execution and is tagged with the `Global` region in multi-region scans.
+
+### BR-15: Cross-Account Guardrails Enforcement
+
+- **Severity:** High
+- **Type:** Global (runs once)
+- **Feature Date:** April 2026
+- **Description:** Verifies organization-level guardrails are configured using AWS Organizations Bedrock policies for centralized safety control enforcement across all accounts. Checks if running in AWS Organizations management account, validates Bedrock Guardrails policy type is enabled, and verifies policies are attached at org/OU/account level.
+
+### BR-16: Guardrail Tier Validation
+
+- **Severity:** Medium
+- **Type:** Regional
+- **Description:** Verifies guardrails use Standard tier (vs Express tier) for enhanced protection including typographical error detection and 60-language support. Lists all guardrails in the region and checks tier settings.
+
+### BR-17: Custom Model Customer-Managed KMS Encryption
+
+- **Severity:** High
+- **Type:** Regional
+- **Description:** Verifies fine-tuned/customized models use customer-managed KMS keys instead of AWS-owned keys for greater control over encryption. Lists all custom models, retrieves model details to check KMS key configuration, and validates KMS key ARN format. This extends the existing BR-12 check by specifically verifying the type of encryption key used.
+
+### BR-18: Model Evaluation Implementation
+
+- **Severity:** Medium
+- **Type:** Regional
+- **Description:** Checks if model evaluation jobs exist to assess safety metrics (toxicity, accuracy, semantic robustness) before production deployment. Lists all model evaluation jobs, identifies recent evaluations (completed within 30 days), and analyzes evaluation configurations for safety metrics.
+
+### BR-19: Prompt Flow Validation
+
+- **Severity:** Medium
+- **Type:** Regional
+- **Description:** Verifies Bedrock Agents prompt flows are validated using `validate_flow_definition` API before deployment to prevent misconfigured flows. Lists all flows in the region, checks for validation records or status, identifies unvalidated flows, and reports flows deployed without validation.
+
+### BR-20: Knowledge Base Encryption Enhancement
+
+- **Severity:** High
+- **Type:** Regional
+- **Description:** Extends existing BR-09 to specifically verify Knowledge Base vector stores are encrypted with customer-managed KMS keys (not just encrypted). Lists all knowledge bases, validates KMS key type for vector stores and data sources, reports KBs using AWS-managed keys vs customer-managed keys, and checks both vector store and data source encryption.
+
+### BR-21: Agent Action Group IAM Least Privilege
+
+- **Severity:** High
+- **Type:** Regional
+- **Description:** Extends existing BR-08 to specifically check if Bedrock Agent action groups use scoped Lambda execution roles with minimal permissions. Enumerates agents and their action groups, retrieves Lambda execution roles for each action group, analyzes IAM policies for overly broad permissions (AdministratorAccess, FullAccess, Resource: "*"), and verifies principle of least privilege.
+
+### BR-22: Model Invocation Throttling Limits
+
+- **Severity:** Medium
+- **Type:** Regional
+- **Description:** Verifies service quotas are configured for model invocation throttling to prevent abuse/DoS and control costs. Queries Service Quotas for Bedrock, checks if custom limits are set for on-demand model invocation TPM (tokens per minute), provisioned throughput limits, and concurrent requests. Reports accounts relying solely on default quotas.
+
+### BR-23: Guardrail Content Filter Coverage
+
+- **Severity:** High
+- **Type:** Regional
+- **Description:** Extends existing BR-05 to verify guardrails have ALL content filters enabled (hate, insults, sexual, violence) with appropriate thresholds. For each guardrail, checks content filter configuration for all four filter types, verifies filter thresholds are configured, and reports missing or misconfigured filters.
+
+### BR-24: Automated Reasoning Policy Implementation
+
+- **Severity:** Medium
+- **Type:** Regional
+- **Description:** Checks if Automated Reasoning policies are configured on guardrails for formal verification of model responses. Enumerates guardrails, checks for Automated Reasoning policy configuration, validates policy syntax and enabled state, and reports guardrails without formal verification capability.
+
+### BR-25: RAG Evaluation Jobs
+
+- **Severity:** Low
+- **Type:** Regional
+- **Description:** Verifies RAG applications have evaluation jobs configured to assess context relevance, response correctness, and prevent hallucinations. Lists Knowledge Bases, checks for associated RAG evaluation jobs for each KB, verifies evaluation metrics include context relevance, response correctness, faithfulness, and harmfulness checks. Reports KBs without evaluation jobs.
 
 ---
 

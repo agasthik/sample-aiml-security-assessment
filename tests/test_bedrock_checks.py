@@ -1375,3 +1375,446 @@ class TestBedrockHandlerMultiRegion:
         # checks ran (e.g. BR-04 logging, BR-05 guardrails are present).
         assert "BR-00" not in check_ids
         assert len(check_ids) > 3
+
+
+# ===================================================================
+# BR-15: check_bedrock_cross_account_guardrails
+# ===================================================================
+class TestBR15CrossAccountGuardrails:
+    """BR-15: Check AWS Organizations Bedrock Guardrails policies."""
+
+    @patch("bedrock_app.boto3.client")
+    def test_br15_organizations_not_enabled_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_cross_account_guardrails
+
+        org_client = MagicMock()
+        org_client.describe_organization.side_effect = ClientError(
+            {"Error": {"Code": "AWSOrganizationsNotInUseException"}},
+            "DescribeOrganization",
+        )
+        mock_client.return_value = org_client
+
+        result = check(region="Global")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-15"
+        assert "not enabled" in findings[0]["Finding_Details"]
+
+    @patch("bedrock_app.boto3.client")
+    def test_br15_policy_type_not_enabled_returns_failed(self, mock_client):
+        check = bedrock_app.check_bedrock_cross_account_guardrails
+
+        org_client = MagicMock()
+        org_client.describe_organization.return_value = {
+            "Organization": {"MasterAccountId": "123456789012"}
+        }
+        org_client.list_roots.return_value = {
+            "Roots": [
+                {
+                    "Id": "r-abc123",
+                    "Arn": "arn:aws:organizations::123456789012:root/o-xyz/r-abc123",
+                }
+            ]
+        }
+        # No policies returned = policy type not enabled
+        org_client.list_policies.return_value = {"Policies": []}
+
+        sts_client = MagicMock()
+        sts_client.get_caller_identity.return_value = {"Account": "123456789012"}
+
+        def client_factory(service, **kwargs):
+            if service == "organizations":
+                return org_client
+            return sts_client
+
+        mock_client.side_effect = client_factory
+
+        result = check(region="Global")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Check_ID"] == "BR-15"
+        assert findings[0]["Severity"] == "High"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br15_policies_configured_returns_passed(self, mock_client):
+        check = bedrock_app.check_bedrock_cross_account_guardrails
+
+        org_client = MagicMock()
+        org_client.describe_organization.return_value = {
+            "Organization": {"MasterAccountId": "123456789012"}
+        }
+        org_client.list_roots.return_value = {
+            "Roots": [
+                {
+                    "Id": "r-abc123",
+                    "Arn": "arn:aws:organizations::123456789012:root/o-xyz/r-abc123",
+                }
+            ]
+        }
+        org_client.list_policies.return_value = {
+            "Policies": [{"Id": "p-123", "Name": "BedrockGuardrailPolicy"}]
+        }
+
+        sts_client = MagicMock()
+        sts_client.get_caller_identity.return_value = {"Account": "123456789012"}
+
+        def client_factory(service, **kwargs):
+            if service == "organizations":
+                return org_client
+            return sts_client
+
+        mock_client.side_effect = client_factory
+
+        result = check(region="Global")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        passed_findings = [f for f in findings if f["Status"] == "Passed"]
+        assert len(passed_findings) >= 1
+        assert passed_findings[0]["Check_ID"] == "BR-15"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br15_access_denied_returns_failed(self, mock_client):
+        check = bedrock_app.check_bedrock_cross_account_guardrails
+
+        org_client = MagicMock()
+        org_client.describe_organization.side_effect = ClientError(
+            {"Error": {"Code": "AccessDeniedException"}}, "DescribeOrganization"
+        )
+        mock_client.return_value = org_client
+
+        result = check(region="Global")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Check_ID"] == "BR-15"
+
+    def test_br15_schema_valid(self):
+        check = bedrock_app.check_bedrock_cross_account_guardrails
+        with patch("bedrock_app.boto3.client") as mock_client:
+            org_client = MagicMock()
+            org_client.describe_organization.side_effect = ClientError(
+                {"Error": {"Code": "AWSOrganizationsNotInUseException"}},
+                "DescribeOrganization",
+            )
+            mock_client.return_value = org_client
+            result = check(region="Global")
+
+        for f in extract_csv_data(result):
+            assert_finding_schema(f)
+
+
+# ===================================================================
+# BR-16: check_bedrock_guardrail_tier
+# ===================================================================
+class TestBR16GuardrailTier:
+    """BR-16: Verify guardrails use Standard tier."""
+
+    @patch("bedrock_app.boto3.client")
+    def test_br16_no_guardrails_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_guardrail_tier
+
+        bedrock_client = MagicMock()
+        bedrock_client.list_guardrails.return_value = {"guardrails": []}
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-16"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br16_standard_tier_returns_passed(self, mock_client):
+        check = bedrock_app.check_bedrock_guardrail_tier
+
+        bedrock_client = MagicMock()
+        bedrock_client.list_guardrails.return_value = {
+            "guardrails": [{"id": "gr-123", "name": "test-guardrail"}]
+        }
+        bedrock_client.get_guardrail.return_value = {"guardrail": {"tier": "Standard"}}
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        passed_findings = [f for f in findings if f["Status"] == "Passed"]
+        assert len(passed_findings) >= 1
+        assert passed_findings[0]["Check_ID"] == "BR-16"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br16_non_standard_tier_returns_failed(self, mock_client):
+        check = bedrock_app.check_bedrock_guardrail_tier
+
+        bedrock_client = MagicMock()
+        bedrock_client.list_guardrails.return_value = {
+            "guardrails": [{"id": "gr-123", "name": "express-guardrail"}]
+        }
+        bedrock_client.get_guardrail.return_value = {"guardrail": {"tier": "Express"}}
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Check_ID"] == "BR-16"
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br16_access_denied_returns_failed(self, mock_client):
+        check = bedrock_app.check_bedrock_guardrail_tier
+
+        bedrock_client = MagicMock()
+        bedrock_client.list_guardrails.side_effect = ClientError(
+            {"Error": {"Code": "AccessDeniedException"}}, "ListGuardrails"
+        )
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Check_ID"] == "BR-16"
+
+    def test_br16_schema_valid(self):
+        check = bedrock_app.check_bedrock_guardrail_tier
+        with patch("bedrock_app.boto3.client") as mock_client:
+            bedrock_client = MagicMock()
+            bedrock_client.list_guardrails.return_value = {"guardrails": []}
+            mock_client.return_value = bedrock_client
+            result = check(region="us-east-1")
+
+        for f in extract_csv_data(result):
+            assert_finding_schema(f)
+
+
+# ===================================================================
+# BR-17: check_bedrock_custom_model_kms_encryption
+# ===================================================================
+class TestBR17CustomModelKMSEncryption:
+    """BR-17: Verify custom models use customer-managed KMS keys."""
+
+    @patch("bedrock_app.boto3.client")
+    def test_br17_no_custom_models_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_custom_model_kms_encryption
+
+        bedrock_client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [{"modelSummaries": []}]
+        bedrock_client.get_paginator.return_value = paginator
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-17"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br17_customer_managed_kms_returns_passed(self, mock_client):
+        check = bedrock_app.check_bedrock_custom_model_kms_encryption
+
+        bedrock_client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "modelSummaries": [
+                    {
+                        "modelArn": "arn:aws:bedrock:us-east-1:123456789012:custom-model/my-model",
+                        "modelName": "my-model",
+                    }
+                ]
+            }
+        ]
+        bedrock_client.get_paginator.return_value = paginator
+        bedrock_client.get_custom_model.return_value = {
+            "customModelKmsKeyId": "arn:aws:kms:us-east-1:123456789012:key/abc-123"
+        }
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        passed_findings = [f for f in findings if f["Status"] == "Passed"]
+        assert len(passed_findings) >= 1
+        assert passed_findings[0]["Check_ID"] == "BR-17"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br17_aws_owned_keys_returns_failed(self, mock_client):
+        check = bedrock_app.check_bedrock_custom_model_kms_encryption
+
+        bedrock_client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.return_value = [
+            {
+                "modelSummaries": [
+                    {
+                        "modelArn": "arn:aws:bedrock:us-east-1:123456789012:custom-model/my-model",
+                        "modelName": "my-model",
+                    }
+                ]
+            }
+        ]
+        bedrock_client.get_paginator.return_value = paginator
+        # No KMS key ID = AWS-owned key
+        bedrock_client.get_custom_model.return_value = {}
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Check_ID"] == "BR-17"
+        assert findings[0]["Severity"] == "High"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br17_access_denied_returns_failed(self, mock_client):
+        check = bedrock_app.check_bedrock_custom_model_kms_encryption
+
+        bedrock_client = MagicMock()
+        paginator = MagicMock()
+        paginator.paginate.side_effect = ClientError(
+            {"Error": {"Code": "AccessDeniedException"}}, "ListCustomModels"
+        )
+        bedrock_client.get_paginator.return_value = paginator
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Check_ID"] == "BR-17"
+
+    def test_br17_schema_valid(self):
+        check = bedrock_app.check_bedrock_custom_model_kms_encryption
+        with patch("bedrock_app.boto3.client") as mock_client:
+            bedrock_client = MagicMock()
+            paginator = MagicMock()
+            paginator.paginate.return_value = [{"modelSummaries": []}]
+            bedrock_client.get_paginator.return_value = paginator
+            mock_client.return_value = bedrock_client
+            result = check(region="us-east-1")
+
+        for f in extract_csv_data(result):
+            assert_finding_schema(f)
+
+
+# ===================================================================
+# BR-18: check_bedrock_model_evaluations
+# ===================================================================
+class TestBR18ModelEvaluations:
+    """BR-18: Check if model evaluation jobs exist."""
+
+    @patch("bedrock_app.boto3.client")
+    def test_br18_no_evaluations_returns_failed(self, mock_client):
+        check = bedrock_app.check_bedrock_model_evaluations
+
+        bedrock_client = MagicMock()
+        bedrock_client.list_evaluation_jobs.return_value = {"jobSummaries": []}
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Check_ID"] == "BR-18"
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br18_recent_evaluations_returns_passed(self, mock_client):
+        check = bedrock_app.check_bedrock_model_evaluations
+
+        from datetime import datetime, timezone, timedelta
+
+        recent_time = datetime.now(timezone.utc) - timedelta(days=10)
+
+        bedrock_client = MagicMock()
+        bedrock_client.list_evaluation_jobs.return_value = {
+            "jobSummaries": [
+                {
+                    "jobName": "eval-job-1",
+                    "status": "Completed",
+                    "creationTime": recent_time,
+                }
+            ]
+        }
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        passed_findings = [f for f in findings if f["Status"] == "Passed"]
+        assert len(passed_findings) >= 1
+        assert passed_findings[0]["Check_ID"] == "BR-18"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br18_stale_evaluations_returns_failed(self, mock_client):
+        check = bedrock_app.check_bedrock_model_evaluations
+
+        from datetime import datetime, timezone, timedelta
+
+        stale_time = datetime.now(timezone.utc) - timedelta(days=60)
+
+        bedrock_client = MagicMock()
+        bedrock_client.list_evaluation_jobs.return_value = {
+            "jobSummaries": [
+                {
+                    "jobName": "eval-job-old",
+                    "status": "Completed",
+                    "creationTime": stale_time,
+                }
+            ]
+        }
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Check_ID"] == "BR-18"
+        assert findings[0]["Severity"] == "Medium"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br18_unknown_operation_returns_na(self, mock_client):
+        check = bedrock_app.check_bedrock_model_evaluations
+
+        bedrock_client = MagicMock()
+        bedrock_client.list_evaluation_jobs.side_effect = ClientError(
+            {"Error": {"Code": "UnknownOperation", "Message": "Unknown operation"}},
+            "ListEvaluationJobs",
+        )
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Check_ID"] == "BR-18"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br18_access_denied_returns_failed(self, mock_client):
+        check = bedrock_app.check_bedrock_model_evaluations
+
+        bedrock_client = MagicMock()
+        bedrock_client.list_evaluation_jobs.side_effect = ClientError(
+            {"Error": {"Code": "AccessDeniedException"}}, "ListEvaluationJobs"
+        )
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+        assert len(findings) >= 1
+        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Check_ID"] == "BR-18"
+
+    def test_br18_schema_valid(self):
+        check = bedrock_app.check_bedrock_model_evaluations
+        with patch("bedrock_app.boto3.client") as mock_client:
+            bedrock_client = MagicMock()
+            bedrock_client.list_evaluation_jobs.return_value = {"jobSummaries": []}
+            mock_client.return_value = bedrock_client
+            result = check(region="us-east-1")
+
+        for f in extract_csv_data(result):
+            assert_finding_schema(f)
