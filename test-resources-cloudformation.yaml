@@ -1,0 +1,1152 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Comprehensive AIML Security Assessment Test Resources - Creates resources that both pass and fail security checks for Bedrock, SageMaker, and AgentCore'
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - AvailabilityZone1
+          - AvailabilityZone2
+      - Label:
+          default: "Resource Configuration"
+        Parameters:
+          - EnvironmentName
+          - EnableAgentCore
+          - EnableGuardDuty
+    ParameterLabels:
+      EnvironmentName:
+        default: "Environment Name"
+      AvailabilityZone1:
+        default: "First Availability Zone"
+      AvailabilityZone2:
+        default: "Second Availability Zone"
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: aiml-sec-test
+    Description: Prefix for all resource names
+    AllowedPattern: ^[a-z0-9-]+$
+    ConstraintDescription: Must contain only lowercase letters, numbers, and hyphens
+
+  AvailabilityZone1:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Description: First Availability Zone for subnet placement
+
+  AvailabilityZone2:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Description: Second Availability Zone for subnet placement
+
+  EnableAgentCore:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Enable AgentCore resources (requires preview access)
+
+  EnableGuardDuty:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Enable GuardDuty (additional cost)
+
+Conditions:
+  CreateAgentCoreResources: !Equals [!Ref EnableAgentCore, 'true']
+  CreateGuardDutyResources: !Equals [!Ref EnableGuardDuty, 'true']
+
+Resources:
+  # ============================================================================
+  # KMS KEYS - One per service for encryption tests
+  # ============================================================================
+
+  BedrockKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Customer-managed key for Bedrock resources
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow Bedrock to use the key
+            Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+              - 'kms:CreateGrant'
+            Resource: '*'
+            Condition:
+              StringEquals:
+                'kms:ViaService': !Sub 'bedrock.${AWS::Region}.amazonaws.com'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-bedrock-key'
+        - Key: Purpose
+          Value: SecurityTesting
+
+  BedrockKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${EnvironmentName}-bedrock'
+      TargetKeyId: !Ref BedrockKMSKey
+
+  SageMakerKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Customer-managed key for SageMaker resources
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow SageMaker to use the key
+            Effect: Allow
+            Principal:
+              Service: sagemaker.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+              - 'kms:CreateGrant'
+              - 'kms:DescribeKey'
+            Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-sagemaker-key'
+        - Key: Purpose
+          Value: SecurityTesting
+
+  SageMakerKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${EnvironmentName}-sagemaker'
+      TargetKeyId: !Ref SageMakerKMSKey
+
+  AgentCoreKMSKey:
+    Type: AWS::KMS::Key
+    Condition: CreateAgentCoreResources
+    Properties:
+      Description: Customer-managed key for AgentCore resources
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow AgentCore to use the key
+            Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action:
+              - 'kms:Decrypt'
+              - 'kms:GenerateDataKey'
+              - 'kms:CreateGrant'
+              - 'kms:DescribeKey'
+            Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-agentcore-key'
+        - Key: Purpose
+          Value: SecurityTesting
+
+  AgentCoreKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Condition: CreateAgentCoreResources
+    Properties:
+      AliasName: !Sub 'alias/${EnvironmentName}-agentcore'
+      TargetKeyId: !Ref AgentCoreKMSKey
+
+  # ============================================================================
+  # VPC AND NETWORKING - Comprehensive setup for all checks
+  # ============================================================================
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpc'
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-igw'
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public Subnets for NAT Gateway and resources that need internet
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Ref AvailabilityZone1
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-public-subnet-1'
+        - Key: Type
+          Value: Public
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Ref AvailabilityZone2
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-public-subnet-2'
+        - Key: Type
+          Value: Public
+
+  # Private Subnets for secure resource deployment
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone: !Ref AvailabilityZone1
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-private-subnet-1'
+        - Key: Type
+          Value: Private
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.12.0/24
+      AvailabilityZone: !Ref AvailabilityZone2
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-private-subnet-2'
+        - Key: Type
+          Value: Private
+
+  # NAT Gateway for private subnet internet access
+  NATGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: AttachGateway
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-nat-eip'
+
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NATGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-nat-gateway'
+
+  # Route Tables
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-public-rt'
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-private-rt'
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  # Security Groups
+  DefaultSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${EnvironmentName}-default-sg'
+      GroupDescription: Default security group for test resources
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.0.0.0/16
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-default-sg'
+
+  # VPC Endpoints for Bedrock (BR-02 check - some present, some missing)
+  BedrockVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.bedrock-runtime'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref DefaultSecurityGroup
+
+  # Intentionally NOT creating bedrock-agent and bedrock-agent-runtime endpoints for BR-02 to fail
+
+  # VPC Endpoints for SageMaker
+  SageMakerAPIVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.sagemaker.api'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref DefaultSecurityGroup
+
+  SageMakerRuntimeVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.sagemaker.runtime'
+      VpcEndpointType: Interface
+      PrivateDnsEnabled: true
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref DefaultSecurityGroup
+
+  # S3 Gateway Endpoint (required for SageMaker and Bedrock)
+  S3VPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+        - !Ref PublicRouteTable
+
+  # ============================================================================
+  # IAM ROLES - Intentionally permissive for security check failures
+  # ============================================================================
+
+  # BR-01: Role with AmazonBedrockFullAccess (FAIL)
+  BedrockFullAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-bedrock-full-access-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonBedrockFullAccess'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-bedrock-full-access'
+        - Key: Purpose
+          Value: SecurityTestingFail
+
+  # BR-03: Role with overly permissive marketplace subscription access (FAIL)
+  MarketplaceOverlyPermissiveRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-marketplace-overpermissive-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: OverlyPermissiveMarketplace
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 'aws-marketplace:Subscribe'
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-marketplace-overpermissive'
+        - Key: Purpose
+          Value: SecurityTestingFail
+
+  # SM-02: Role with AmazonSageMakerFullAccess (FAIL)
+  SageMakerFullAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-sagemaker-full-access-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sagemaker.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonSageMakerFullAccess'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-sagemaker-full-access'
+        - Key: Purpose
+          Value: SecurityTestingFail
+
+  # Least-privilege SageMaker role for resources that should PASS
+  SageMakerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-sagemaker-execution-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - sagemaker.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonSageMakerCanvasFullAccess'
+      Policies:
+        - PolicyName: SageMakerS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                  - 's3:DeleteObject'
+                  - 's3:ListBucket'
+                Action:
+                  - 's3:*'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${SageMakerBucket}/*'
+                  - !Sub 'arn:aws:s3:::${SageMakerBucket}'
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'kms:Decrypt'
+                  - 'kms:GenerateDataKey'
+                Resource: !GetAtt SageMakerKMSKey.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-sagemaker-exec'
+        - Key: Purpose
+          Value: SecurityTestingPass
+
+  # AC-02: Role with wildcard AgentCore permissions (FAIL)
+  AgentCoreOverlyPermissiveRole:
+    Type: AWS::IAM::Role
+    Condition: CreateAgentCoreResources
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-agentcore-overpermissive-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: WildcardAgentCore
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'bedrock-agentcore:*'
+                  - 'bedrock-agentcore-control:*'
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-agentcore-overpermissive'
+        - Key: Purpose
+          Value: SecurityTestingFail
+
+  # ============================================================================
+  # S3 BUCKETS - For SageMaker and Bedrock logging
+  # ============================================================================
+
+  SageMakerBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${EnvironmentName}-sagemaker-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'aws:kms'
+              KMSMasterKeyID: !GetAtt SageMakerKMSKey.Arn
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-sagemaker-bucket'
+
+  BedrockLoggingBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${EnvironmentName}-bedrock-logs-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'aws:kms'
+              KMSMasterKeyID: !GetAtt BedrockKMSKey.Arn
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-bedrock-logs-bucket'
+
+  # ============================================================================
+  # CLOUDWATCH LOG GROUPS
+  # ============================================================================
+
+  SageMakerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/sagemaker/${EnvironmentName}'
+      RetentionInDays: 7
+      KmsKeyId: !GetAtt SageMakerKMSKey.Arn
+
+  BedrockLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/bedrock/${EnvironmentName}'
+      RetentionInDays: 7
+      KmsKeyId: !GetAtt BedrockKMSKey.Arn
+
+  # ============================================================================
+  # SAGEMAKER RESOURCES
+  # ============================================================================
+
+  # SM-01: Notebook with direct internet access (FAIL)
+  SageMakerNotebookWithInternet:
+    Type: AWS::SageMaker::NotebookInstance
+    Properties:
+      NotebookInstanceName: !Sub '${EnvironmentName}-notebook-with-internet'
+      InstanceType: ml.t3.medium
+      RoleArn: !GetAtt SageMakerFullAccessRole.Arn
+      DirectInternetAccess: Enabled
+      # Intentionally NO SubnetId - uses default network
+      RootAccess: Enabled  # SM-09: FAIL
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-notebook-fail'
+        - Key: Purpose
+          Value: SecurityTestingFail
+
+  # SM-01, SM-09, SM-10: Notebook with VPC, no direct internet, no root (PASS)
+  SageMakerNotebookSecure:
+    Type: AWS::SageMaker::NotebookInstance
+    Properties:
+      NotebookInstanceName: !Sub '${EnvironmentName}-notebook-secure'
+      InstanceType: ml.t3.medium
+      RoleArn: !GetAtt SageMakerExecutionRole.Arn
+      DirectInternetAccess: Disabled
+      SubnetId: !Ref PrivateSubnet1
+      SecurityGroupIds:
+        - !Ref DefaultSecurityGroup
+      RootAccess: Disabled
+      KmsKeyId: !GetAtt SageMakerKMSKey.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-notebook-pass'
+        - Key: Purpose
+          Value: SecurityTestingPass
+
+  # SM-03: Training job without encryption (FAIL)
+  SageMakerTrainingJobNoEncryption:
+    Type: AWS::SageMaker::TrainingJob
+    Properties:
+      TrainingJobName: !Sub '${EnvironmentName}-training-no-encryption'
+      RoleArn: !GetAtt SageMakerFullAccessRole.Arn
+      AlgorithmSpecification:
+        TrainingImage: !Sub '382416733822.dkr.ecr.${AWS::Region}.amazonaws.com/xgboost:latest'
+        TrainingInputMode: File
+      InputDataConfig:
+        - ChannelName: training
+          DataSource:
+            S3DataSource:
+              S3DataType: S3Prefix
+              S3Uri: !Sub 's3://${SageMakerBucket}/training-data/'
+              S3DataDistributionType: FullyReplicated
+          ContentType: text/csv
+      OutputDataConfig:
+        S3OutputPath: !Sub 's3://${SageMakerBucket}/output/'
+        # Intentionally NO KmsKeyId - FAIL SM-03
+      ResourceConfig:
+        InstanceType: ml.m5.xlarge
+        InstanceCount: 1
+        VolumeSizeInGB: 5
+      StoppingCondition:
+        MaxRuntimeInSeconds: 3600
+      # Intentionally NO EnableInterContainerTrafficEncryption - FAIL SM-03
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-training-fail'
+        - Key: Purpose
+          Value: SecurityTestingFail
+
+  # SM-11: Model without network isolation (FAIL)
+  SageMakerModelNoIsolation:
+    Type: AWS::SageMaker::Model
+    Properties:
+      ModelName: !Sub '${EnvironmentName}-model-no-isolation'
+      ExecutionRoleArn: !GetAtt SageMakerFullAccessRole.Arn
+      PrimaryContainer:
+        Image: !Sub '382416733822.dkr.ecr.${AWS::Region}.amazonaws.com/xgboost:latest'
+        ModelDataUrl: !Sub 's3://${SageMakerBucket}/models/model.tar.gz'
+      # Intentionally NO EnableNetworkIsolation - FAIL SM-11
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-model-fail'
+        - Key: Purpose
+          Value: SecurityTestingFail
+
+  # SM-11: Model with network isolation (PASS)
+  SageMakerModelWithIsolation:
+    Type: AWS::SageMaker::Model
+    Properties:
+      ModelName: !Sub '${EnvironmentName}-model-with-isolation'
+      ExecutionRoleArn: !GetAtt SageMakerExecutionRole.Arn
+      PrimaryContainer:
+        Image: !Sub '382416733822.dkr.ecr.${AWS::Region}.amazonaws.com/xgboost:latest'
+        ModelDataUrl: !Sub 's3://${SageMakerBucket}/models/model.tar.gz'
+      EnableNetworkIsolation: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-model-pass'
+        - Key: Purpose
+          Value: SecurityTestingPass
+
+  # SM-12: Endpoint with single instance (FAIL)
+  SageMakerEndpointConfigSingleInstance:
+    Type: AWS::SageMaker::EndpointConfig
+    Properties:
+      EndpointConfigName: !Sub '${EnvironmentName}-endpoint-single-instance'
+      ProductionVariants:
+        - VariantName: AllTraffic
+          ModelName: !GetAtt SageMakerModelNoIsolation.ModelName
+          InitialInstanceCount: 1  # FAIL SM-12
+          InstanceType: ml.t2.medium
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-endpoint-fail'
+        - Key: Purpose
+          Value: SecurityTestingFail
+
+  SageMakerEndpointSingleInstance:
+    Type: AWS::SageMaker::Endpoint
+    Properties:
+      EndpointName: !Sub '${EnvironmentName}-endpoint-single-instance'
+      EndpointConfigName: !GetAtt SageMakerEndpointConfigSingleInstance.EndpointConfigName
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-endpoint-fail'
+
+  # SM-12: Endpoint with multiple instances (PASS)
+  SageMakerEndpointConfigMultiInstance:
+    Type: AWS::SageMaker::EndpointConfig
+    Properties:
+      EndpointConfigName: !Sub '${EnvironmentName}-endpoint-multi-instance'
+      ProductionVariants:
+        - VariantName: AllTraffic
+          ModelName: !GetAtt SageMakerModelWithIsolation.ModelName
+          InitialInstanceCount: 2  # PASS SM-12
+          InstanceType: ml.t2.medium
+      KmsKeyId: !GetAtt SageMakerKMSKey.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-endpoint-pass'
+        - Key: Purpose
+          Value: SecurityTestingPass
+
+  SageMakerEndpointMultiInstance:
+    Type: AWS::SageMaker::Endpoint
+    Properties:
+      EndpointName: !Sub '${EnvironmentName}-endpoint-multi-instance'
+      EndpointConfigName: !GetAtt SageMakerEndpointConfigMultiInstance.EndpointConfigName
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-endpoint-pass'
+
+  # SM-05: Model Package Group for MLOps testing
+  SageMakerModelPackageGroup:
+    Type: AWS::SageMaker::ModelPackageGroup
+    Properties:
+      ModelPackageGroupName: !Sub '${EnvironmentName}-model-package-group'
+      ModelPackageGroupDescription: Test model package group for security assessment
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-model-package-group'
+
+  # SM-05: Feature Group (requires FeatureStore)
+  SageMakerFeatureGroup:
+    Type: AWS::SageMaker::FeatureGroup
+    Properties:
+      FeatureGroupName: !Sub '${EnvironmentName}-feature-group'
+      RecordIdentifierFeatureName: feature_id
+      EventTimeFeatureName: event_time
+      FeatureDefinitions:
+        - FeatureName: feature_id
+          FeatureType: String
+        - FeatureName: event_time
+          FeatureType: String
+        - FeatureName: feature_value
+          FeatureType: Fractional
+      OnlineStoreConfig:
+        EnableOnlineStore: true
+      OfflineStoreConfig:
+        S3StorageConfig:
+          S3Uri: !Sub 's3://${SageMakerBucket}/feature-store/'
+        DataCatalogConfig:
+          TableName: !Sub '${EnvironmentName}_features'
+          Database: default
+          Catalog: AwsDataCatalog
+      RoleArn: !GetAtt SageMakerExecutionRole.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-feature-group'
+
+  # SM-01, SM-08: SageMaker Domain (FAIL - public internet access, IAM auth)
+  SageMakerDomainFail:
+    Type: AWS::SageMaker::Domain
+    Properties:
+      DomainName: !Sub '${EnvironmentName}-domain-fail'
+      AuthMode: IAM  # FAIL SM-08 (should be SSO)
+      VpcId: !Ref VPC
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      DefaultUserSettings:
+        ExecutionRole: !GetAtt SageMakerFullAccessRole.Arn
+        SecurityGroups:
+          - !Ref DefaultSecurityGroup
+      AppNetworkAccessType: PublicInternetOnly  # FAIL SM-01
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-domain-fail'
+        - Key: Purpose
+          Value: SecurityTestingFail
+
+  # SM-01, SM-08: SageMaker Domain (PASS - VPC only, could have SSO)
+  SageMakerDomainPass:
+    Type: AWS::SageMaker::Domain
+    Properties:
+      DomainName: !Sub '${EnvironmentName}-domain-pass'
+      AuthMode: IAM  # Note: SSO requires manual Identity Center setup
+      VpcId: !Ref VPC
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      DefaultUserSettings:
+        ExecutionRole: !GetAtt SageMakerExecutionRole.Arn
+        SecurityGroups:
+          - !Ref DefaultSecurityGroup
+      AppNetworkAccessType: VpcOnly  # PASS SM-01
+      KmsKeyId: !GetAtt SageMakerKMSKey.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-domain-pass'
+        - Key: Purpose
+          Value: SecurityTestingPass
+
+  # SM-03: Training job WITH encryption (PASS)
+  SageMakerTrainingJobWithEncryption:
+    Type: AWS::SageMaker::TrainingJob
+    Properties:
+      TrainingJobName: !Sub '${EnvironmentName}-training-with-encryption'
+      RoleArn: !GetAtt SageMakerExecutionRole.Arn
+      AlgorithmSpecification:
+        TrainingImage: !Sub '382416733822.dkr.ecr.${AWS::Region}.amazonaws.com/xgboost:latest'
+        TrainingInputMode: File
+      InputDataConfig:
+        - ChannelName: training
+          DataSource:
+            S3DataSource:
+              S3DataType: S3Prefix
+              S3Uri: !Sub 's3://${SageMakerBucket}/training-data/'
+              S3DataDistributionType: FullyReplicated
+          ContentType: text/csv
+      OutputDataConfig:
+        S3OutputPath: !Sub 's3://${SageMakerBucket}/output/'
+        KmsKeyId: !GetAtt SageMakerKMSKey.Arn  # PASS SM-03
+      ResourceConfig:
+        InstanceType: ml.m5.xlarge
+        InstanceCount: 1
+        VolumeSizeInGB: 5
+        VolumeKmsKeyId: !GetAtt SageMakerKMSKey.Arn
+      StoppingCondition:
+        MaxRuntimeInSeconds: 3600
+      EnableInterContainerTrafficEncryption: true  # PASS SM-03
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref DefaultSecurityGroup
+        Subnets:
+          - !Ref PrivateSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-training-pass'
+        - Key: Purpose
+          Value: SecurityTestingPass
+
+  # SM-17: Processing Job (with encryption)
+  SageMakerProcessingJobSecure:
+    Type: AWS::SageMaker::ProcessingJob
+    Properties:
+      ProcessingJobName: !Sub '${EnvironmentName}-processing-secure'
+      RoleArn: !GetAtt SageMakerExecutionRole.Arn
+      AppSpecification:
+        ImageUri: !Sub '683313688378.dkr.ecr.${AWS::Region}.amazonaws.com/sagemaker-scikit-learn:0.23-1-cpu-py3'
+      ProcessingInputs:
+        - InputName: code
+          S3Input:
+            S3Uri: !Sub 's3://${SageMakerBucket}/processing-code/'
+            LocalPath: /opt/ml/processing/input/code
+            S3DataType: S3Prefix
+            S3InputMode: File
+      ProcessingOutputConfig:
+        Outputs:
+          - OutputName: output
+            S3Output:
+              S3Uri: !Sub 's3://${SageMakerBucket}/processing-output/'
+              LocalPath: /opt/ml/processing/output
+              S3UploadMode: EndOfJob
+        KmsKeyId: !GetAtt SageMakerKMSKey.Arn  # PASS SM-17
+      ProcessingResources:
+        ClusterConfig:
+          InstanceType: ml.m5.xlarge
+          InstanceCount: 1
+          VolumeSizeInGB: 10
+          VolumeKmsKeyId: !GetAtt SageMakerKMSKey.Arn
+      NetworkConfig:
+        EnableNetworkIsolation: true
+        VpcConfig:
+          SecurityGroupIds:
+            - !Ref DefaultSecurityGroup
+          Subnets:
+            - !Ref PrivateSubnet1
+      StoppingCondition:
+        MaxRuntimeInSeconds: 3600
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-processing-secure'
+        - Key: Purpose
+          Value: SecurityTestingPass
+
+  # SM-18: Transform Job (batch inference with encryption)
+  SageMakerTransformJobSecure:
+    Type: AWS::SageMaker::TransformJob
+    Properties:
+      TransformJobName: !Sub '${EnvironmentName}-transform-secure'
+      ModelName: !GetAtt SageMakerModelWithIsolation.ModelName
+      TransformInput:
+        DataSource:
+          S3DataSource:
+            S3DataType: S3Prefix
+            S3Uri: !Sub 's3://${SageMakerBucket}/transform-input/'
+        ContentType: text/csv
+      TransformOutput:
+        S3OutputPath: !Sub 's3://${SageMakerBucket}/transform-output/'
+        KmsKeyId: !GetAtt SageMakerKMSKey.Arn  # PASS SM-18
+      TransformResources:
+        InstanceType: ml.m5.xlarge
+        InstanceCount: 1
+        VolumeKmsKeyId: !GetAtt SageMakerKMSKey.Arn
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-transform-secure'
+        - Key: Purpose
+          Value: SecurityTestingPass
+
+  # ============================================================================
+  # ECR REPOSITORIES - For AC-05 testing
+  # ============================================================================
+
+  AgentCoreECRRepository:
+    Type: AWS::ECR::Repository
+    Condition: CreateAgentCoreResources
+    Properties:
+      RepositoryName: !Sub '${EnvironmentName}-agentcore-runtime'
+      EncryptionConfiguration:
+        EncryptionType: KMS
+        KmsKey: !GetAtt AgentCoreKMSKey.Arn
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: IMMUTABLE
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-agentcore-repo'
+        - Key: Purpose
+          Value: SecurityTestingPass
+
+  AgentCoreECRRepositoryNoEncryption:
+    Type: AWS::ECR::Repository
+    Condition: CreateAgentCoreResources
+    Properties:
+      RepositoryName: !Sub '${EnvironmentName}-agentcore-no-encryption'
+      EncryptionConfiguration:
+        EncryptionType: AES256  # FAIL AC-05 - uses AWS-managed key
+      ImageScanningConfiguration:
+        ScanOnPush: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-agentcore-repo-fail'
+        - Key: Purpose
+          Value: SecurityTestingFail
+
+  # ============================================================================
+  # CLOUDTRAIL - For BR-06 testing
+  # ============================================================================
+
+  CloudTrailBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${EnvironmentName}-cloudtrail-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-cloudtrail-bucket'
+
+  CloudTrailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CloudTrailBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AWSCloudTrailAclCheck
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: 's3:GetBucketAcl'
+            Resource: !GetAtt CloudTrailBucket.Arn
+          - Sid: AWSCloudTrailWrite
+            Effect: Allow
+            Principal:
+              Service: cloudtrail.amazonaws.com
+            Action: 's3:PutObject'
+            Resource: !Sub '${CloudTrailBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                's3:x-amz-acl': 'bucket-owner-full-control'
+
+  # BR-06: CloudTrail with Bedrock logging (PASS)
+  CloudTrailWithBedrock:
+    Type: AWS::CloudTrail::Trail
+    DependsOn: CloudTrailBucketPolicy
+    Properties:
+      TrailName: !Sub '${EnvironmentName}-trail'
+      S3BucketName: !Ref CloudTrailBucket
+      IsLogging: true
+      IsMultiRegionTrail: true
+      IncludeGlobalServiceEvents: true
+      EventSelectors:
+        - ReadWriteType: All
+          IncludeManagementEvents: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-cloudtrail'
+
+  # ============================================================================
+  # OUTPUTS
+  # ============================================================================
+
+Outputs:
+  VPCId:
+    Description: VPC ID for test resources
+    Value: !Ref VPC
+    Export:
+      Name: !Sub '${EnvironmentName}-vpc-id'
+
+  PrivateSubnet1Id:
+    Description: Private Subnet 1 ID
+    Value: !Ref PrivateSubnet1
+    Export:
+      Name: !Sub '${EnvironmentName}-private-subnet-1'
+
+  PrivateSubnet2Id:
+    Description: Private Subnet 2 ID
+    Value: !Ref PrivateSubnet2
+    Export:
+      Name: !Sub '${EnvironmentName}-private-subnet-2'
+
+  BedrockKMSKeyArn:
+    Description: Bedrock KMS Key ARN
+    Value: !GetAtt BedrockKMSKey.Arn
+    Export:
+      Name: !Sub '${EnvironmentName}-bedrock-kms-arn'
+
+  SageMakerKMSKeyArn:
+    Description: SageMaker KMS Key ARN
+    Value: !GetAtt SageMakerKMSKey.Arn
+    Export:
+      Name: !Sub '${EnvironmentName}-sagemaker-kms-arn'
+
+  SageMakerBucketName:
+    Description: SageMaker S3 Bucket Name
+    Value: !Ref SageMakerBucket
+    Export:
+      Name: !Sub '${EnvironmentName}-sagemaker-bucket'
+
+  BedrockLoggingBucketName:
+    Description: Bedrock Logging S3 Bucket Name
+    Value: !Ref BedrockLoggingBucket
+    Export:
+      Name: !Sub '${EnvironmentName}-bedrock-logs-bucket'
+
+  SageMakerNotebookFailName:
+    Description: SageMaker Notebook (Should Fail Checks)
+    Value: !GetAtt SageMakerNotebookWithInternet.NotebookInstanceName
+
+  SageMakerNotebookPassName:
+    Description: SageMaker Notebook (Should Pass Checks)
+    Value: !GetAtt SageMakerNotebookSecure.NotebookInstanceName
+
+  EndpointFailName:
+    Description: SageMaker Endpoint Single Instance (Should Fail SM-12)
+    Value: !GetAtt SageMakerEndpointSingleInstance.EndpointName
+
+  EndpointPassName:
+    Description: SageMaker Endpoint Multi Instance (Should Pass SM-12)
+    Value: !GetAtt SageMakerEndpointMultiInstance.EndpointName
+
+  DomainFailName:
+    Description: SageMaker Domain with Public Internet (Should Fail SM-01, SM-08)
+    Value: !GetAtt SageMakerDomainFail.DomainId
+
+  DomainPassName:
+    Description: SageMaker Domain VPC Only (Should Pass SM-01)
+    Value: !GetAtt SageMakerDomainPass.DomainId
+
+  TrainingJobPassName:
+    Description: Training Job with Encryption (Should Pass SM-03)
+    Value: !GetAtt SageMakerTrainingJobWithEncryption.TrainingJobName
+
+  ProcessingJobName:
+    Description: Processing Job with Encryption (Should Pass SM-17)
+    Value: !GetAtt SageMakerProcessingJobSecure.ProcessingJobName
+
+  TransformJobName:
+    Description: Transform Job with Encryption (Should Pass SM-18)
+    Value: !GetAtt SageMakerTransformJobSecure.TransformJobName
+
+  AgentCoreECRRepoPass:
+    Condition: CreateAgentCoreResources
+    Description: AgentCore ECR Repository with CMK (Should Pass AC-05)
+    Value: !GetAtt AgentCoreECRRepository.RepositoryUri
+
+  AgentCoreECRRepoFail:
+    Condition: CreateAgentCoreResources
+    Description: AgentCore ECR Repository without CMK (Should Fail AC-05)
+    Value: !GetAtt AgentCoreECRRepositoryNoEncryption.RepositoryUri
+
+  TestingInstructions:
+    Description: Instructions for running security assessments
+    Value: |
+      1. Deploy this template in us-west-2 or eu-west-1
+      2. Wait for all resources to be created (10-15 minutes)
+      3. Run your security assessment against this account
+      4. Expected results:
+         - FAIL: Notebooks with direct internet, roles with full access, single-instance endpoints
+         - PASS: Secure notebooks in VPC, least-privilege roles, multi-instance endpoints
+      5. Note: Some Bedrock features require manual configuration (guardrails, prompts)
+      6. Clean up: Delete this stack when testing is complete
