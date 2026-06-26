@@ -14,7 +14,6 @@ Metadata:
         Parameters:
           - EnvironmentName
           - EnableAgentCore
-          - EnableGuardDuty
     ParameterLabels:
       EnvironmentName:
         default: "Environment Name"
@@ -45,15 +44,8 @@ Parameters:
     AllowedValues: ['true', 'false']
     Description: Enable AgentCore resources (requires preview access)
 
-  EnableGuardDuty:
-    Type: String
-    Default: 'false'
-    AllowedValues: ['true', 'false']
-    Description: Enable GuardDuty (additional cost)
-
 Conditions:
   CreateAgentCoreResources: !Equals [!Ref EnableAgentCore, 'true']
-  CreateGuardDutyResources: !Equals [!Ref EnableGuardDuty, 'true']
 
 Resources:
   # ============================================================================
@@ -85,6 +77,20 @@ Resources:
             Condition:
               StringEquals:
                 'kms:ViaService': !Sub 'bedrock.${AWS::Region}.amazonaws.com'
+          - Sid: Allow CloudWatch Logs to use the Bedrock key
+            Effect: Allow
+            Principal:
+              Service: !Sub 'logs.${AWS::Region}.amazonaws.com'
+            Action:
+              - 'kms:Encrypt'
+              - 'kms:Decrypt'
+              - 'kms:ReEncrypt*'
+              - 'kms:GenerateDataKey*'
+              - 'kms:DescribeKey'
+            Resource: '*'
+            Condition:
+              ArnEquals:
+                'kms:EncryptionContext:aws:logs:arn': !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock/${EnvironmentName}'
       Tags:
         - Key: Name
           Value: !Sub '${EnvironmentName}-bedrock-key'
@@ -120,6 +126,20 @@ Resources:
               - 'kms:CreateGrant'
               - 'kms:DescribeKey'
             Resource: '*'
+          - Sid: Allow CloudWatch Logs to use the SageMaker key
+            Effect: Allow
+            Principal:
+              Service: !Sub 'logs.${AWS::Region}.amazonaws.com'
+            Action:
+              - 'kms:Encrypt'
+              - 'kms:Decrypt'
+              - 'kms:ReEncrypt*'
+              - 'kms:GenerateDataKey*'
+              - 'kms:DescribeKey'
+            Resource: '*'
+            Condition:
+              ArnEquals:
+                'kms:EncryptionContext:aws:logs:arn': !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/sagemaker/${EnvironmentName}'
       Tags:
         - Key: Name
           Value: !Sub '${EnvironmentName}-sagemaker-key'
@@ -404,7 +424,6 @@ Resources:
   BedrockFullAccessRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${EnvironmentName}-bedrock-full-access-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -424,7 +443,6 @@ Resources:
   MarketplaceOverlyPermissiveRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${EnvironmentName}-marketplace-overpermissive-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -450,7 +468,6 @@ Resources:
   SageMakerFullAccessRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${EnvironmentName}-sagemaker-full-access-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -460,6 +477,21 @@ Resources:
             Action: 'sts:AssumeRole'
       ManagedPolicyArns:
         - 'arn:aws:iam::aws:policy/AmazonSageMakerFullAccess'
+      Policies:
+        - PolicyName: SageMakerTestBucketAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:GetObject'
+                  - 's3:PutObject'
+                  - 's3:DeleteObject'
+                  - 's3:ListBucket'
+                  - 's3:GetBucketAcl'
+                Resource:
+                  - !Sub 'arn:aws:s3:::${SageMakerBucket}/*'
+                  - !Sub 'arn:aws:s3:::${SageMakerBucket}'
       Tags:
         - Key: Name
           Value: !Sub '${EnvironmentName}-sagemaker-full-access'
@@ -470,7 +502,6 @@ Resources:
   SageMakerExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${EnvironmentName}-sagemaker-execution-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -481,6 +512,7 @@ Resources:
             Action: 'sts:AssumeRole'
       ManagedPolicyArns:
         - 'arn:aws:iam::aws:policy/AmazonSageMakerCanvasFullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonSageMakerFeatureStoreAccess'
       Policies:
         - PolicyName: SageMakerS3Access
           PolicyDocument:
@@ -492,8 +524,7 @@ Resources:
                   - 's3:PutObject'
                   - 's3:DeleteObject'
                   - 's3:ListBucket'
-                Action:
-                  - 's3:*'
+                  - 's3:GetBucketAcl'
                 Resource:
                   - !Sub 'arn:aws:s3:::${SageMakerBucket}/*'
                   - !Sub 'arn:aws:s3:::${SageMakerBucket}'
@@ -508,18 +539,475 @@ Resources:
                   - 'kms:Decrypt'
                   - 'kms:GenerateDataKey'
                 Resource: !GetAtt SageMakerKMSKey.Arn
+              - Effect: Allow
+                Action:
+                  - 'ec2:CreateNetworkInterface'
+                  - 'ec2:CreateNetworkInterfacePermission'
+                  - 'ec2:DeleteNetworkInterface'
+                  - 'ec2:DescribeNetworkInterfaces'
+                  - 'ec2:DescribeSecurityGroups'
+                  - 'ec2:DescribeSubnets'
+                  - 'ec2:DescribeVpcs'
+                Resource: '*'
       Tags:
         - Key: Name
           Value: !Sub '${EnvironmentName}-sagemaker-exec'
         - Key: Purpose
           Value: SecurityTestingPass
 
+  # CloudFormation does not support TrainingJob/TransformJob resource types directly.
+  # Create those fixture jobs through a Lambda-backed custom resource instead.
+  SageMakerJobCustomResourceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: SageMakerJobCustomResourceAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'sagemaker:CreateTrainingJob'
+                  - 'sagemaker:DescribeTrainingJob'
+                  - 'sagemaker:StopTrainingJob'
+                  - 'sagemaker:CreateTransformJob'
+                  - 'sagemaker:DescribeTransformJob'
+                  - 'sagemaker:StopTransformJob'
+                  - 'sagemaker:CreateProcessingJob'
+                  - 'sagemaker:DescribeProcessingJob'
+                  - 'sagemaker:StopProcessingJob'
+                  - 'sagemaker:CreateEndpoint'
+                  - 'sagemaker:DescribeEndpoint'
+                  - 'sagemaker:DeleteEndpoint'
+                  - 'sagemaker:CreateDomain'
+                  - 'sagemaker:DescribeDomain'
+                  - 'sagemaker:DeleteDomain'
+                  - 'sagemaker:ListDomains'
+                  - 'sagemaker:AddTags'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 'iam:PassRole'
+                Resource:
+                  - !GetAtt SageMakerFullAccessRole.Arn
+                  - !GetAtt SageMakerExecutionRole.Arn
+                Condition:
+                  StringEquals:
+                    'iam:PassedToService': 'sagemaker.amazonaws.com'
+              - Effect: Allow
+                Action:
+                  - 'kms:CreateGrant'
+                  - 'kms:Decrypt'
+                  - 'kms:DescribeKey'
+                  - 'kms:Encrypt'
+                  - 'kms:GenerateDataKey'
+                Resource: !GetAtt SageMakerKMSKey.Arn
+              - Effect: Allow
+                Action:
+                  - 's3:ListBucket'
+                  - 's3:ListBucketVersions'
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - 's3:DeleteObject'
+                  - 's3:DeleteObjectVersion'
+                  - 's3:PutObject'
+                Resource: '*'
+
+  SageMakerJobCustomResourceFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt SageMakerJobCustomResourceRole.Arn
+      Timeout: 60
+      Code:
+        ZipFile: |
+          import hashlib
+          import json
+          import logging
+          import urllib.request
+
+          import boto3
+          from botocore.exceptions import ClientError
+
+          LOGGER = logging.getLogger()
+          LOGGER.setLevel(logging.INFO)
+          SM = boto3.client("sagemaker")
+          S3 = boto3.client("s3")
+
+
+          def send(event, context, status, data=None, physical_resource_id=None, reason=None):
+              body = json.dumps(
+                  {
+                      "Status": status,
+                      "Reason": reason or f"See CloudWatch Logs: {context.log_stream_name}",
+                      "PhysicalResourceId": physical_resource_id or context.log_stream_name,
+                      "StackId": event["StackId"],
+                      "RequestId": event["RequestId"],
+                      "LogicalResourceId": event["LogicalResourceId"],
+                      "NoEcho": False,
+                      "Data": data or {},
+                  }
+              ).encode("utf-8")
+              request = urllib.request.Request(
+                  event["ResponseURL"],
+                  data=body,
+                  method="PUT",
+                  headers={"content-type": "", "content-length": str(len(body))},
+              )
+              with urllib.request.urlopen(request) as response:
+                  LOGGER.info("CloudFormation response status: %s", response.status)
+
+
+          def props_for_hash(resource_properties):
+              return {
+                  key: value
+                  for key, value in resource_properties.items()
+                  if key != "ServiceToken"
+              }
+
+
+          def sanitize_name(name):
+              sanitized = "".join(
+                  character if character.isalnum() or character == "-" else "-"
+                  for character in name
+              ).strip("-")
+              return sanitized or "job"
+
+
+          def build_resource_name(base_name, stack_id, resource_properties, max_length=63):
+              stack_suffix = stack_id.rsplit("/", 1)[-1][:8]
+              props_hash = hashlib.sha1(
+                  json.dumps(
+                      props_for_hash(resource_properties),
+                      sort_keys=True,
+                      separators=(",", ":"),
+                  ).encode("utf-8")
+              ).hexdigest()[:8]
+              max_base_length = max_length - len(stack_suffix) - len(props_hash) - 2
+              base = sanitize_name(base_name)[:max_base_length].rstrip("-")
+              if not base:
+                  base = "job"
+              return f"{base}-{stack_suffix}-{props_hash}"
+
+
+          def is_missing(error):
+              code = error.response.get("Error", {}).get("Code", "")
+              message = error.response.get("Error", {}).get("Message", "")
+              return code in {"ValidationException", "ResourceNotFound", "404"} or "Could not find" in message
+
+
+          def normalize_types(value):
+              if isinstance(value, dict):
+                  return {key: normalize_types(item) for key, item in value.items()}
+              if isinstance(value, list):
+                  return [normalize_types(item) for item in value]
+              if isinstance(value, str):
+                  lowered = value.lower()
+                  if lowered == "true":
+                      return True
+                  if lowered == "false":
+                      return False
+                  if value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
+                      return int(value)
+              return value
+
+
+          def describe_job(resource_kind, resource_name):
+              if resource_kind == "TrainingJob":
+                  return SM.describe_training_job(TrainingJobName=resource_name)
+              if resource_kind == "TransformJob":
+                  return SM.describe_transform_job(TransformJobName=resource_name)
+              if resource_kind == "ProcessingJob":
+                  return SM.describe_processing_job(ProcessingJobName=resource_name)
+              if resource_kind == "Endpoint":
+                  return SM.describe_endpoint(EndpointName=resource_name)
+              if resource_kind == "Domain":
+                  return SM.describe_domain(DomainId=resource_name)
+              raise ValueError(f"Unsupported resource kind {resource_kind}")
+
+
+          def create_job(resource_kind, resource_name, job_config):
+              payload = normalize_types(dict(job_config))
+              if resource_kind == "TrainingJob":
+                  payload["TrainingJobName"] = resource_name
+                  SM.create_training_job(**payload)
+                  return
+              if resource_kind == "TransformJob":
+                  payload["TransformJobName"] = resource_name
+                  SM.create_transform_job(**payload)
+                  return
+              if resource_kind == "ProcessingJob":
+                  payload["ProcessingJobName"] = resource_name
+                  SM.create_processing_job(**payload)
+                  return
+              raise ValueError(f"Unsupported job kind {resource_kind}")
+
+
+          def ensure_job(resource_kind, resource_name, job_config):
+              try:
+                  describe_job(resource_kind, resource_name)
+                  LOGGER.info("%s %s already exists", resource_kind, resource_name)
+                  return resource_name
+              except ClientError as error:
+                  if not is_missing(error):
+                      raise
+              create_job(resource_kind, resource_name, job_config)
+              LOGGER.info("Created %s %s", resource_kind, resource_name)
+              return resource_name
+
+
+          def stop_job(resource_kind, resource_name):
+              try:
+                  if resource_kind == "TrainingJob":
+                      SM.stop_training_job(TrainingJobName=resource_name)
+                  elif resource_kind == "TransformJob":
+                      SM.stop_transform_job(TransformJobName=resource_name)
+                  elif resource_kind == "ProcessingJob":
+                      SM.stop_processing_job(ProcessingJobName=resource_name)
+                  else:
+                      raise ValueError(f"Unsupported job kind {resource_kind}")
+                  LOGGER.info("Stopped %s %s", resource_kind, resource_name)
+              except ClientError as error:
+                  if not is_missing(error):
+                      raise
+
+
+          def ensure_endpoint(endpoint_name, endpoint_config_name, tags=None):
+              try:
+                  describe_job("Endpoint", endpoint_name)
+                  LOGGER.info("Endpoint %s already exists", endpoint_name)
+                  return endpoint_name
+              except ClientError as error:
+                  if not is_missing(error):
+                      raise
+              payload = {
+                  "EndpointName": endpoint_name,
+                  "EndpointConfigName": endpoint_config_name,
+              }
+              if tags:
+                  payload["Tags"] = tags
+              SM.create_endpoint(**payload)
+              LOGGER.info("Created endpoint %s", endpoint_name)
+              return endpoint_name
+
+
+          def delete_endpoint(endpoint_name):
+              try:
+                  SM.delete_endpoint(EndpointName=endpoint_name)
+                  LOGGER.info("Deleted endpoint %s", endpoint_name)
+              except ClientError as error:
+                  if not is_missing(error):
+                      raise
+
+
+          def find_domain_id_by_name(domain_name):
+              next_token = None
+              while True:
+                  request = {"MaxResults": 100}
+                  if next_token:
+                      request["NextToken"] = next_token
+                  response = SM.list_domains(**request)
+                  for domain in response.get("Domains", []):
+                      if domain.get("DomainName") == domain_name:
+                          return domain.get("DomainId")
+                  next_token = response.get("NextToken")
+                  if not next_token:
+                      return None
+
+
+          def ensure_domain(domain_name, domain_config):
+              domain_id = find_domain_id_by_name(domain_name)
+              if domain_id:
+                  LOGGER.info("Domain %s already exists as %s", domain_name, domain_id)
+                  return domain_id
+
+              payload = normalize_types(dict(domain_config))
+              payload["DomainName"] = domain_name
+              response = SM.create_domain(**payload)
+              domain_arn = response.get("DomainArn", "")
+              domain_id = domain_arn.rsplit("/", 1)[-1] if domain_arn else ""
+              if not domain_id:
+                  domain_id = find_domain_id_by_name(domain_name) or domain_name
+              LOGGER.info("Created domain %s as %s", domain_name, domain_id)
+              return domain_id
+
+
+          def delete_domain(domain_id):
+              try:
+                  SM.delete_domain(
+                      DomainId=domain_id,
+                      RetentionPolicy={"HomeEfsFileSystem": "Delete"},
+                  )
+                  LOGGER.info("Deleted domain %s", domain_id)
+              except ClientError as error:
+                  if not is_missing(error):
+                      raise
+
+
+          def batched(items, size):
+              for index in range(0, len(items), size):
+                  yield items[index:index + size]
+
+
+          def delete_objects(bucket_name, objects):
+              for batch in batched(objects, 1000):
+                  S3.delete_objects(
+                      Bucket=bucket_name,
+                      Delete={"Objects": batch, "Quiet": True},
+                  )
+
+
+          def empty_bucket(bucket_name):
+              try:
+                  paginator = S3.get_paginator("list_object_versions")
+                  for page in paginator.paginate(Bucket=bucket_name):
+                      objects = [
+                          {"Key": version["Key"], "VersionId": version["VersionId"]}
+                          for version in page.get("Versions", [])
+                      ] + [
+                          {"Key": marker["Key"], "VersionId": marker["VersionId"]}
+                          for marker in page.get("DeleteMarkers", [])
+                      ]
+                      if objects:
+                          delete_objects(bucket_name, objects)
+              except ClientError as error:
+                  if not is_missing(error):
+                      raise
+                  return
+
+              paginator = S3.get_paginator("list_objects_v2")
+              for page in paginator.paginate(Bucket=bucket_name):
+                  objects = [{"Key": item["Key"]} for item in page.get("Contents", [])]
+                  if objects:
+                      delete_objects(bucket_name, objects)
+
+
+          def seed_bucket(bucket_name, objects):
+              for item in objects:
+                  S3.put_object(
+                      Bucket=bucket_name,
+                      Key=item["Key"],
+                      Body=item.get("Body", ""),
+                  )
+
+
+          def handler(event, context):
+              LOGGER.info("Received event: %s", json.dumps(event))
+              properties = event["ResourceProperties"]
+              physical_resource_id = event.get("PhysicalResourceId")
+              resource_kind = properties.get("ResourceKind")
+              if not resource_kind:
+                  resource_kind = f'{properties["JobType"]}Job'
+
+              try:
+                  if event["RequestType"] == "Delete":
+                      if physical_resource_id:
+                          if resource_kind in {"TrainingJob", "TransformJob", "ProcessingJob"}:
+                              stop_job(resource_kind, physical_resource_id)
+                          elif resource_kind == "Endpoint":
+                              delete_endpoint(physical_resource_id)
+                          elif resource_kind == "Domain":
+                              delete_domain(physical_resource_id)
+                          elif resource_kind == "BucketCleanup":
+                              empty_bucket(physical_resource_id)
+                          elif resource_kind == "SeedBucket":
+                              LOGGER.info("Seed bucket delete is a no-op for %s", physical_resource_id)
+                      send(
+                          event,
+                          context,
+                          "SUCCESS",
+                          {"PhysicalId": physical_resource_id or ""},
+                          physical_resource_id=physical_resource_id or context.log_stream_name,
+                      )
+                      return
+
+                  if resource_kind in {"TrainingJob", "TransformJob", "ProcessingJob"}:
+                      resource_name = build_resource_name(
+                          properties["BaseName"],
+                          event["StackId"],
+                          properties,
+                      )
+                      ensure_job(resource_kind, resource_name, properties["JobConfig"])
+                      data = {
+                          "JobName": resource_name,
+                          "ProcessingJobName": resource_name if resource_kind == "ProcessingJob" else "",
+                      }
+                  elif resource_kind == "Endpoint":
+                      resource_name = build_resource_name(
+                          properties["BaseName"],
+                          event["StackId"],
+                          properties,
+                      )
+                      ensure_endpoint(
+                          resource_name,
+                          properties["EndpointConfigName"],
+                          properties.get("Tags"),
+                      )
+                      data = {"EndpointName": resource_name}
+                  elif resource_kind == "Domain":
+                      domain_name = build_resource_name(
+                          properties["BaseName"],
+                          event["StackId"],
+                          properties,
+                      )
+                      resource_name = ensure_domain(domain_name, properties["DomainConfig"])
+                      data = {"DomainId": resource_name, "DomainName": domain_name}
+                  elif resource_kind == "BucketCleanup":
+                      resource_name = properties["BucketName"]
+                      data = {"BucketName": resource_name}
+                  elif resource_kind == "SeedBucket":
+                      resource_name = properties["BucketName"]
+                      seed_bucket(resource_name, properties["Objects"])
+                      data = {"BucketName": resource_name}
+                  else:
+                      raise ValueError(f"Unsupported resource kind {resource_kind}")
+
+                  if (
+                      event["RequestType"] == "Update"
+                      and physical_resource_id
+                      and physical_resource_id != resource_name
+                  ):
+                      if resource_kind in {"TrainingJob", "TransformJob", "ProcessingJob"}:
+                          stop_job(resource_kind, physical_resource_id)
+                      elif resource_kind == "Endpoint":
+                          delete_endpoint(physical_resource_id)
+                      elif resource_kind == "Domain":
+                          delete_domain(physical_resource_id)
+
+                  send(
+                      event,
+                      context,
+                      "SUCCESS",
+                      data,
+                      physical_resource_id=resource_name,
+                  )
+              except Exception as error:
+                  LOGGER.exception("Custom resource failure")
+                  send(
+                      event,
+                      context,
+                      "FAILED",
+                      {"Error": str(error)},
+                      physical_resource_id=physical_resource_id,
+                      reason=str(error),
+                  )
+
   # AC-02: Role with wildcard AgentCore permissions (FAIL)
   AgentCoreOverlyPermissiveRole:
     Type: AWS::IAM::Role
     Condition: CreateAgentCoreResources
     Properties:
-      RoleName: !Sub '${EnvironmentName}-agentcore-overpermissive-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -535,7 +1023,6 @@ Resources:
               - Effect: Allow
                 Action:
                   - 'bedrock-agentcore:*'
-                  - 'bedrock-agentcore-control:*'
                 Resource: '*'
       Tags:
         - Key: Name
@@ -620,7 +1107,6 @@ Resources:
   BedrockAgentRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${EnvironmentName}-bedrock-agent-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -654,7 +1140,9 @@ Resources:
 
   BedrockAgent:
     Type: AWS::Bedrock::Agent
-    DependsOn: BedrockLoggingBucket
+    DependsOn:
+      - BedrockLoggingBucket
+      - BedrockLoggingBucketCleanup
     Properties:
       AgentName: !Sub '${EnvironmentName}-test-agent'
       Description: Test agent for security assessment
@@ -676,7 +1164,6 @@ Resources:
   BedrockKnowledgeBaseRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${EnvironmentName}-kb-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -708,123 +1195,10 @@ Resources:
         - Key: Name
           Value: !Sub '${EnvironmentName}-kb-role'
 
-  # BR-13, BR-19: Bedrock Flow with guardrails (PASS)
-  BedrockFlowRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub '${EnvironmentName}-flow-role'
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: bedrock.amazonaws.com
-            Action: 'sts:AssumeRole'
-      Policies:
-        - PolicyName: FlowExecutionAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - 'bedrock:InvokeModel'
-                  - 'bedrock:InvokeModelWithResponseStream'
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - 'bedrock:InvokeAgent'
-                Resource: !GetAtt BedrockAgent.AgentArn
-      Tags:
-        - Key: Name
-          Value: !Sub '${EnvironmentName}-flow-role'
-
-  BedrockFlow:
-    Type: AWS::Bedrock::Flow
-    Properties:
-      Name: !Sub '${EnvironmentName}-test-flow'
-      Description: Test flow for security assessment with guardrail enforcement
-      ExecutionRoleArn: !GetAtt BedrockFlowRole.Arn
-      CustomerEncryptionKeyArn: !GetAtt BedrockKMSKey.Arn
-      DefinitionString: !Sub |
-        {
-          "nodes": [
-            {
-              "name": "InputNode",
-              "type": "Input",
-              "configuration": {
-                "input": {}
-              },
-              "outputs": [
-                {
-                  "name": "document",
-                  "type": "String"
-                }
-              ]
-            },
-            {
-              "name": "PromptNode",
-              "type": "Prompt",
-              "configuration": {
-                "prompt": {
-                  "sourceConfiguration": {
-                    "resource": {
-                      "promptArn": "${BedrockPrompt.Arn}"
-                    }
-                  }
-                }
-              },
-              "inputs": [
-                {
-                  "name": "question",
-                  "type": "String",
-                  "expression": "$.data"
-                }
-              ],
-              "outputs": [
-                {
-                  "name": "modelCompletion",
-                  "type": "String"
-                }
-              ]
-            },
-            {
-              "name": "OutputNode",
-              "type": "Output",
-              "configuration": {
-                "output": {}
-              },
-              "inputs": [
-                {
-                  "name": "document",
-                  "type": "String",
-                  "expression": "$.data"
-                }
-              ]
-            }
-          ],
-          "connections": [
-            {
-              "name": "InputToPrompt",
-              "source": "InputNode.document",
-              "target": "PromptNode.question",
-              "type": "Data"
-            },
-            {
-              "name": "PromptToOutput",
-              "source": "PromptNode.modelCompletion",
-              "target": "OutputNode.document",
-              "type": "Data"
-            }
-          ]
-        }
-      Tags:
-        Purpose: SecurityTestingPass
-
   # BR-08: Role without guardrail condition (FAIL for BR-10)
   BedrockAgentRoleWithoutGuardrail:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${EnvironmentName}-agent-role-no-guardrail'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -854,7 +1228,6 @@ Resources:
   SageMakerBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub '${EnvironmentName}-sagemaker-${AWS::AccountId}'
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -871,10 +1244,35 @@ Resources:
         - Key: Name
           Value: !Sub '${EnvironmentName}-sagemaker-bucket'
 
+  SageMakerBucketCleanup:
+    Type: Custom::SageMakerResource
+    Properties:
+      ServiceToken: !GetAtt SageMakerJobCustomResourceFunction.Arn
+      ResourceKind: BucketCleanup
+      BucketName: !Ref SageMakerBucket
+
+  SageMakerBucketSeedData:
+    Type: Custom::SageMakerResource
+    DependsOn: SageMakerBucketCleanup
+    Properties:
+      ServiceToken: !GetAtt SageMakerJobCustomResourceFunction.Arn
+      ResourceKind: SeedBucket
+      BucketName: !Ref SageMakerBucket
+      Objects:
+        - Key: training-data/sample.csv
+          Body: |
+            1,2,3
+            4,5,6
+        - Key: transform-input/sample.csv
+          Body: |
+            1,2,3
+        - Key: processing-code/placeholder.py
+          Body: |
+            print("placeholder")
+
   BedrockLoggingBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub '${EnvironmentName}-bedrock-logs-${AWS::AccountId}'
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -891,12 +1289,21 @@ Resources:
         - Key: Name
           Value: !Sub '${EnvironmentName}-bedrock-logs-bucket'
 
+  BedrockLoggingBucketCleanup:
+    Type: Custom::SageMakerResource
+    Properties:
+      ServiceToken: !GetAtt SageMakerJobCustomResourceFunction.Arn
+      ResourceKind: BucketCleanup
+      BucketName: !Ref BedrockLoggingBucket
+
   # ============================================================================
   # CLOUDWATCH LOG GROUPS
   # ============================================================================
 
   SageMakerLogGroup:
     Type: AWS::Logs::LogGroup
+    DependsOn:
+      - SageMakerKMSKeyAlias
     Properties:
       LogGroupName: !Sub '/aws/sagemaker/${EnvironmentName}'
       RetentionInDays: 7
@@ -904,6 +1311,8 @@ Resources:
 
   BedrockLogGroup:
     Type: AWS::Logs::LogGroup
+    DependsOn:
+      - BedrockKMSKeyAlias
     Properties:
       LogGroupName: !Sub '/aws/bedrock/${EnvironmentName}'
       RetentionInDays: 7
@@ -950,46 +1359,48 @@ Resources:
 
   # SM-03: Training job without encryption (FAIL)
   SageMakerTrainingJobNoEncryption:
-    Type: AWS::SageMaker::TrainingJob
+    Type: Custom::SageMakerJob
+    DependsOn: SageMakerBucketSeedData
     Properties:
-      TrainingJobName: !Sub '${EnvironmentName}-training-no-encryption'
-      RoleArn: !GetAtt SageMakerFullAccessRole.Arn
-      AlgorithmSpecification:
-        TrainingImage: !Sub '382416733822.dkr.ecr.${AWS::Region}.amazonaws.com/xgboost:latest'
-        TrainingInputMode: File
-      InputDataConfig:
-        - ChannelName: training
-          DataSource:
-            S3DataSource:
-              S3DataType: S3Prefix
-              S3Uri: !Sub 's3://${SageMakerBucket}/training-data/'
-              S3DataDistributionType: FullyReplicated
-          ContentType: text/csv
-      OutputDataConfig:
-        S3OutputPath: !Sub 's3://${SageMakerBucket}/output/'
-        # Intentionally NO KmsKeyId - FAIL SM-03
-      ResourceConfig:
-        InstanceType: ml.m5.xlarge
-        InstanceCount: 1
-        VolumeSizeInGB: 5
-      StoppingCondition:
-        MaxRuntimeInSeconds: 3600
-      # Intentionally NO EnableInterContainerTrafficEncryption - FAIL SM-03
-      Tags:
-        - Key: Name
-          Value: !Sub '${EnvironmentName}-training-fail'
-        - Key: Purpose
-          Value: SecurityTestingFail
+      ServiceToken: !GetAtt SageMakerJobCustomResourceFunction.Arn
+      JobType: Training
+      BaseName: !Sub '${EnvironmentName}-training-no-encryption'
+      JobConfig:
+        RoleArn: !GetAtt SageMakerFullAccessRole.Arn
+        AlgorithmSpecification:
+          TrainingImage: !Sub '683313688378.dkr.ecr.${AWS::Region}.amazonaws.com/sagemaker-xgboost:1.7-1'
+          TrainingInputMode: File
+        InputDataConfig:
+          - ChannelName: training
+            DataSource:
+              S3DataSource:
+                S3DataType: S3Prefix
+                S3Uri: !Sub 's3://${SageMakerBucket}/training-data/'
+                S3DataDistributionType: FullyReplicated
+            ContentType: text/csv
+        OutputDataConfig:
+          S3OutputPath: !Sub 's3://${SageMakerBucket}/output/'
+          # Intentionally NO KmsKeyId - FAIL SM-03
+        ResourceConfig:
+          InstanceType: ml.m5.xlarge
+          InstanceCount: 1
+          VolumeSizeInGB: 5
+        StoppingCondition:
+          MaxRuntimeInSeconds: 3600
+        # Intentionally NO EnableInterContainerTrafficEncryption - FAIL SM-03
+        Tags:
+          - Key: Name
+            Value: !Sub '${EnvironmentName}-training-fail'
+          - Key: Purpose
+            Value: SecurityTestingFail
 
   # SM-11: Model without network isolation (FAIL)
   SageMakerModelNoIsolation:
     Type: AWS::SageMaker::Model
     Properties:
-      ModelName: !Sub '${EnvironmentName}-model-no-isolation'
       ExecutionRoleArn: !GetAtt SageMakerFullAccessRole.Arn
       PrimaryContainer:
-        Image: !Sub '382416733822.dkr.ecr.${AWS::Region}.amazonaws.com/xgboost:latest'
-        ModelDataUrl: !Sub 's3://${SageMakerBucket}/models/model.tar.gz'
+        Image: !Sub '683313688378.dkr.ecr.${AWS::Region}.amazonaws.com/sagemaker-xgboost:1.7-1'
       # Intentionally NO EnableNetworkIsolation - FAIL SM-11
       Tags:
         - Key: Name
@@ -1001,11 +1412,9 @@ Resources:
   SageMakerModelWithIsolation:
     Type: AWS::SageMaker::Model
     Properties:
-      ModelName: !Sub '${EnvironmentName}-model-with-isolation'
       ExecutionRoleArn: !GetAtt SageMakerExecutionRole.Arn
       PrimaryContainer:
-        Image: !Sub '382416733822.dkr.ecr.${AWS::Region}.amazonaws.com/xgboost:latest'
-        ModelDataUrl: !Sub 's3://${SageMakerBucket}/models/model.tar.gz'
+        Image: !Sub '683313688378.dkr.ecr.${AWS::Region}.amazonaws.com/sagemaker-xgboost:1.7-1'
       EnableNetworkIsolation: true
       Tags:
         - Key: Name
@@ -1017,7 +1426,6 @@ Resources:
   SageMakerEndpointConfigSingleInstance:
     Type: AWS::SageMaker::EndpointConfig
     Properties:
-      EndpointConfigName: !Sub '${EnvironmentName}-endpoint-single-instance'
       ProductionVariants:
         - VariantName: AllTraffic
           ModelName: !GetAtt SageMakerModelNoIsolation.ModelName
@@ -1030,19 +1438,22 @@ Resources:
           Value: SecurityTestingFail
 
   SageMakerEndpointSingleInstance:
-    Type: AWS::SageMaker::Endpoint
+    Type: Custom::SageMakerResource
     Properties:
-      EndpointName: !Sub '${EnvironmentName}-endpoint-single-instance'
+      ServiceToken: !GetAtt SageMakerJobCustomResourceFunction.Arn
+      ResourceKind: Endpoint
+      BaseName: !Sub '${EnvironmentName}-endpoint-single-instance'
       EndpointConfigName: !GetAtt SageMakerEndpointConfigSingleInstance.EndpointConfigName
       Tags:
         - Key: Name
           Value: !Sub '${EnvironmentName}-endpoint-fail'
+        - Key: Purpose
+          Value: SecurityTestingFail
 
   # SM-12: Endpoint with multiple instances (PASS)
   SageMakerEndpointConfigMultiInstance:
     Type: AWS::SageMaker::EndpointConfig
     Properties:
-      EndpointConfigName: !Sub '${EnvironmentName}-endpoint-multi-instance'
       ProductionVariants:
         - VariantName: AllTraffic
           ModelName: !GetAtt SageMakerModelWithIsolation.ModelName
@@ -1056,13 +1467,17 @@ Resources:
           Value: SecurityTestingPass
 
   SageMakerEndpointMultiInstance:
-    Type: AWS::SageMaker::Endpoint
+    Type: Custom::SageMakerResource
     Properties:
-      EndpointName: !Sub '${EnvironmentName}-endpoint-multi-instance'
+      ServiceToken: !GetAtt SageMakerJobCustomResourceFunction.Arn
+      ResourceKind: Endpoint
+      BaseName: !Sub '${EnvironmentName}-endpoint-multi-instance'
       EndpointConfigName: !GetAtt SageMakerEndpointConfigMultiInstance.EndpointConfigName
       Tags:
         - Key: Name
           Value: !Sub '${EnvironmentName}-endpoint-pass'
+        - Key: Purpose
+          Value: SecurityTestingPass
 
   # SM-05: Model Package Group for MLOps testing
   SageMakerModelPackageGroup:
@@ -1077,6 +1492,7 @@ Resources:
   # SM-05: Feature Group (requires FeatureStore)
   SageMakerFeatureGroup:
     Type: AWS::SageMaker::FeatureGroup
+    DependsOn: SageMakerBucketCleanup
     Properties:
       FeatureGroupName: !Sub '${EnvironmentName}-feature-group'
       RecordIdentifierFeatureName: feature_id
@@ -1093,10 +1509,6 @@ Resources:
       OfflineStoreConfig:
         S3StorageConfig:
           S3Uri: !Sub 's3://${SageMakerBucket}/feature-store/'
-        DataCatalogConfig:
-          TableName: !Sub '${EnvironmentName}_features'
-          Database: default
-          Catalog: AwsDataCatalog
       RoleArn: !GetAtt SageMakerExecutionRole.Arn
       Tags:
         - Key: Name
@@ -1104,154 +1516,167 @@ Resources:
 
   # SM-01, SM-08: SageMaker Domain (FAIL - public internet access, IAM auth)
   SageMakerDomainFail:
-    Type: AWS::SageMaker::Domain
+    Type: Custom::SageMakerResource
     Properties:
-      DomainName: !Sub '${EnvironmentName}-domain-fail'
-      AuthMode: IAM  # FAIL SM-08 (should be SSO)
-      VpcId: !Ref VPC
-      SubnetIds:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-      DefaultUserSettings:
-        ExecutionRole: !GetAtt SageMakerFullAccessRole.Arn
-        SecurityGroups:
-          - !Ref DefaultSecurityGroup
-      AppNetworkAccessType: PublicInternetOnly  # FAIL SM-01
-      Tags:
-        - Key: Name
-          Value: !Sub '${EnvironmentName}-domain-fail'
-        - Key: Purpose
-          Value: SecurityTestingFail
+      ServiceToken: !GetAtt SageMakerJobCustomResourceFunction.Arn
+      ResourceKind: Domain
+      BaseName: !Sub '${EnvironmentName}-domain-fail'
+      DomainConfig:
+        AuthMode: IAM  # FAIL SM-08 (should be SSO)
+        VpcId: !Ref VPC
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+        DefaultUserSettings:
+          ExecutionRole: !GetAtt SageMakerFullAccessRole.Arn
+          SecurityGroups:
+            - !Ref DefaultSecurityGroup
+        AppNetworkAccessType: PublicInternetOnly  # FAIL SM-01
+        Tags:
+          - Key: Name
+            Value: !Sub '${EnvironmentName}-domain-fail'
+          - Key: Purpose
+            Value: SecurityTestingFail
 
   # SM-01, SM-08: SageMaker Domain (PASS - VPC only, could have SSO)
   SageMakerDomainPass:
-    Type: AWS::SageMaker::Domain
+    Type: Custom::SageMakerResource
     Properties:
-      DomainName: !Sub '${EnvironmentName}-domain-pass'
-      AuthMode: IAM  # Note: SSO requires manual Identity Center setup
-      VpcId: !Ref VPC
-      SubnetIds:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-      DefaultUserSettings:
-        ExecutionRole: !GetAtt SageMakerExecutionRole.Arn
-        SecurityGroups:
-          - !Ref DefaultSecurityGroup
-      AppNetworkAccessType: VpcOnly  # PASS SM-01
-      KmsKeyId: !GetAtt SageMakerKMSKey.Arn
-      Tags:
-        - Key: Name
-          Value: !Sub '${EnvironmentName}-domain-pass'
-        - Key: Purpose
-          Value: SecurityTestingPass
+      ServiceToken: !GetAtt SageMakerJobCustomResourceFunction.Arn
+      ResourceKind: Domain
+      BaseName: !Sub '${EnvironmentName}-domain-pass'
+      DomainConfig:
+        AuthMode: IAM  # Note: SSO requires manual Identity Center setup
+        VpcId: !Ref VPC
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+        DefaultUserSettings:
+          ExecutionRole: !GetAtt SageMakerExecutionRole.Arn
+          SecurityGroups:
+            - !Ref DefaultSecurityGroup
+        AppNetworkAccessType: VpcOnly  # PASS SM-01
+        KmsKeyId: !GetAtt SageMakerKMSKey.Arn
+        Tags:
+          - Key: Name
+            Value: !Sub '${EnvironmentName}-domain-pass'
+          - Key: Purpose
+            Value: SecurityTestingPass
 
   # SM-03: Training job WITH encryption (PASS)
   SageMakerTrainingJobWithEncryption:
-    Type: AWS::SageMaker::TrainingJob
+    Type: Custom::SageMakerJob
+    DependsOn: SageMakerBucketSeedData
     Properties:
-      TrainingJobName: !Sub '${EnvironmentName}-training-with-encryption'
-      RoleArn: !GetAtt SageMakerExecutionRole.Arn
-      AlgorithmSpecification:
-        TrainingImage: !Sub '382416733822.dkr.ecr.${AWS::Region}.amazonaws.com/xgboost:latest'
-        TrainingInputMode: File
-      InputDataConfig:
-        - ChannelName: training
-          DataSource:
-            S3DataSource:
-              S3DataType: S3Prefix
-              S3Uri: !Sub 's3://${SageMakerBucket}/training-data/'
-              S3DataDistributionType: FullyReplicated
-          ContentType: text/csv
-      OutputDataConfig:
-        S3OutputPath: !Sub 's3://${SageMakerBucket}/output/'
-        KmsKeyId: !GetAtt SageMakerKMSKey.Arn  # PASS SM-03
-      ResourceConfig:
-        InstanceType: ml.m5.xlarge
-        InstanceCount: 1
-        VolumeSizeInGB: 5
-        VolumeKmsKeyId: !GetAtt SageMakerKMSKey.Arn
-      StoppingCondition:
-        MaxRuntimeInSeconds: 3600
-      EnableInterContainerTrafficEncryption: true  # PASS SM-03
-      VpcConfig:
-        SecurityGroupIds:
-          - !Ref DefaultSecurityGroup
-        Subnets:
-          - !Ref PrivateSubnet1
-      Tags:
-        - Key: Name
-          Value: !Sub '${EnvironmentName}-training-pass'
-        - Key: Purpose
-          Value: SecurityTestingPass
+      ServiceToken: !GetAtt SageMakerJobCustomResourceFunction.Arn
+      JobType: Training
+      BaseName: !Sub '${EnvironmentName}-training-with-encryption'
+      JobConfig:
+        RoleArn: !GetAtt SageMakerExecutionRole.Arn
+        AlgorithmSpecification:
+          TrainingImage: !Sub '683313688378.dkr.ecr.${AWS::Region}.amazonaws.com/sagemaker-xgboost:1.7-1'
+          TrainingInputMode: File
+        InputDataConfig:
+          - ChannelName: training
+            DataSource:
+              S3DataSource:
+                S3DataType: S3Prefix
+                S3Uri: !Sub 's3://${SageMakerBucket}/training-data/'
+                S3DataDistributionType: FullyReplicated
+            ContentType: text/csv
+        OutputDataConfig:
+          S3OutputPath: !Sub 's3://${SageMakerBucket}/output/'
+          KmsKeyId: !GetAtt SageMakerKMSKey.Arn  # PASS SM-03
+        ResourceConfig:
+          InstanceType: ml.m5.xlarge
+          InstanceCount: 1
+          VolumeSizeInGB: 5
+          VolumeKmsKeyId: !GetAtt SageMakerKMSKey.Arn
+        StoppingCondition:
+          MaxRuntimeInSeconds: 3600
+        EnableInterContainerTrafficEncryption: true  # PASS SM-03
+        Tags:
+          - Key: Name
+            Value: !Sub '${EnvironmentName}-training-pass'
+          - Key: Purpose
+            Value: SecurityTestingPass
 
   # SM-17: Processing Job (with encryption)
   SageMakerProcessingJobSecure:
-    Type: AWS::SageMaker::ProcessingJob
+    Type: Custom::SageMakerResource
+    DependsOn: SageMakerBucketSeedData
     Properties:
-      ProcessingJobName: !Sub '${EnvironmentName}-processing-secure'
-      RoleArn: !GetAtt SageMakerExecutionRole.Arn
-      AppSpecification:
-        ImageUri: !Sub '683313688378.dkr.ecr.${AWS::Region}.amazonaws.com/sagemaker-scikit-learn:0.23-1-cpu-py3'
-      ProcessingInputs:
-        - InputName: code
-          S3Input:
-            S3Uri: !Sub 's3://${SageMakerBucket}/processing-code/'
-            LocalPath: /opt/ml/processing/input/code
-            S3DataType: S3Prefix
-            S3InputMode: File
-      ProcessingOutputConfig:
-        Outputs:
-          - OutputName: output
-            S3Output:
-              S3Uri: !Sub 's3://${SageMakerBucket}/processing-output/'
-              LocalPath: /opt/ml/processing/output
-              S3UploadMode: EndOfJob
-        KmsKeyId: !GetAtt SageMakerKMSKey.Arn  # PASS SM-17
-      ProcessingResources:
-        ClusterConfig:
-          InstanceType: ml.m5.xlarge
-          InstanceCount: 1
-          VolumeSizeInGB: 10
-          VolumeKmsKeyId: !GetAtt SageMakerKMSKey.Arn
-      NetworkConfig:
-        EnableNetworkIsolation: true
-        VpcConfig:
-          SecurityGroupIds:
-            - !Ref DefaultSecurityGroup
-          Subnets:
-            - !Ref PrivateSubnet1
-      StoppingCondition:
-        MaxRuntimeInSeconds: 3600
-      Tags:
-        - Key: Name
-          Value: !Sub '${EnvironmentName}-processing-secure'
-        - Key: Purpose
-          Value: SecurityTestingPass
+      ServiceToken: !GetAtt SageMakerJobCustomResourceFunction.Arn
+      ResourceKind: ProcessingJob
+      BaseName: !Sub '${EnvironmentName}-processing-secure'
+      JobConfig:
+        RoleArn: !GetAtt SageMakerExecutionRole.Arn
+        AppSpecification:
+          ImageUri: !Sub '683313688378.dkr.ecr.${AWS::Region}.amazonaws.com/sagemaker-scikit-learn:0.23-1-cpu-py3'
+        ProcessingInputs:
+          - InputName: code
+            S3Input:
+              S3Uri: !Sub 's3://${SageMakerBucket}/processing-code/'
+              LocalPath: /opt/ml/processing/input/code
+              S3DataType: S3Prefix
+              S3InputMode: File
+        ProcessingOutputConfig:
+          Outputs:
+            - OutputName: output
+              S3Output:
+                S3Uri: !Sub 's3://${SageMakerBucket}/processing-output/'
+                LocalPath: /opt/ml/processing/output
+                S3UploadMode: EndOfJob
+          KmsKeyId: !GetAtt SageMakerKMSKey.Arn  # PASS SM-17
+        ProcessingResources:
+          ClusterConfig:
+            InstanceType: ml.m5.large
+            InstanceCount: 1
+            VolumeSizeInGB: 10
+            VolumeKmsKeyId: !GetAtt SageMakerKMSKey.Arn
+        NetworkConfig:
+          EnableNetworkIsolation: true
+          VpcConfig:
+            SecurityGroupIds:
+              - !Ref DefaultSecurityGroup
+            Subnets:
+              - !Ref PrivateSubnet1
+        StoppingCondition:
+          MaxRuntimeInSeconds: 3600
+        Tags:
+          - Key: Name
+            Value: !Sub '${EnvironmentName}-processing-secure'
+          - Key: Purpose
+            Value: SecurityTestingPass
 
   # SM-18: Transform Job (batch inference with encryption)
   SageMakerTransformJobSecure:
-    Type: AWS::SageMaker::TransformJob
+    Type: Custom::SageMakerJob
+    DependsOn: SageMakerBucketSeedData
     Properties:
-      TransformJobName: !Sub '${EnvironmentName}-transform-secure'
-      ModelName: !GetAtt SageMakerModelWithIsolation.ModelName
-      TransformInput:
-        DataSource:
-          S3DataSource:
-            S3DataType: S3Prefix
-            S3Uri: !Sub 's3://${SageMakerBucket}/transform-input/'
-        ContentType: text/csv
-      TransformOutput:
-        S3OutputPath: !Sub 's3://${SageMakerBucket}/transform-output/'
-        KmsKeyId: !GetAtt SageMakerKMSKey.Arn  # PASS SM-18
-      TransformResources:
-        InstanceType: ml.m5.xlarge
-        InstanceCount: 1
-        VolumeKmsKeyId: !GetAtt SageMakerKMSKey.Arn
-      Tags:
-        - Key: Name
-          Value: !Sub '${EnvironmentName}-transform-secure'
-        - Key: Purpose
-          Value: SecurityTestingPass
+      ServiceToken: !GetAtt SageMakerJobCustomResourceFunction.Arn
+      JobType: Transform
+      BaseName: !Sub '${EnvironmentName}-transform-secure'
+      JobConfig:
+        ModelName: !GetAtt SageMakerModelWithIsolation.ModelName
+        TransformInput:
+          DataSource:
+            S3DataSource:
+              S3DataType: S3Prefix
+              S3Uri: !Sub 's3://${SageMakerBucket}/transform-input/'
+          ContentType: text/csv
+        TransformOutput:
+          S3OutputPath: !Sub 's3://${SageMakerBucket}/transform-output/'
+          KmsKeyId: !GetAtt SageMakerKMSKey.Arn  # PASS SM-18
+        TransformResources:
+          InstanceType: ml.m5.xlarge
+          InstanceCount: 1
+          VolumeKmsKeyId: !GetAtt SageMakerKMSKey.Arn
+        Tags:
+          - Key: Name
+            Value: !Sub '${EnvironmentName}-transform-secure'
+          - Key: Purpose
+            Value: SecurityTestingPass
 
   # ============================================================================
   # ECR REPOSITORIES - For AC-05 testing
@@ -1296,7 +1721,6 @@ Resources:
   CloudTrailBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub '${EnvironmentName}-cloudtrail-${AWS::AccountId}'
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -1333,10 +1757,19 @@ Resources:
               StringEquals:
                 's3:x-amz-acl': 'bucket-owner-full-control'
 
+  CloudTrailBucketCleanup:
+    Type: Custom::SageMakerResource
+    Properties:
+      ServiceToken: !GetAtt SageMakerJobCustomResourceFunction.Arn
+      ResourceKind: BucketCleanup
+      BucketName: !Ref CloudTrailBucket
+
   # BR-06: CloudTrail with Bedrock logging (PASS)
   CloudTrailWithBedrock:
     Type: AWS::CloudTrail::Trail
-    DependsOn: CloudTrailBucketPolicy
+    DependsOn:
+      - CloudTrailBucketPolicy
+      - CloudTrailBucketCleanup
     Properties:
       TrailName: !Sub '${EnvironmentName}-trail'
       S3BucketName: !Ref CloudTrailBucket
@@ -1423,7 +1856,7 @@ Outputs:
 
   TrainingJobPassName:
     Description: Training Job with Encryption (Should Pass SM-03)
-    Value: !GetAtt SageMakerTrainingJobWithEncryption.TrainingJobName
+    Value: !Ref SageMakerTrainingJobWithEncryption
 
   ProcessingJobName:
     Description: Processing Job with Encryption (Should Pass SM-17)
@@ -1431,7 +1864,7 @@ Outputs:
 
   TransformJobName:
     Description: Transform Job with Encryption (Should Pass SM-18)
-    Value: !GetAtt SageMakerTransformJobSecure.TransformJobName
+    Value: !Ref SageMakerTransformJobSecure
 
   AgentCoreECRRepoPass:
     Condition: CreateAgentCoreResources
@@ -1446,7 +1879,7 @@ Outputs:
   TestingInstructions:
     Description: Instructions for running security assessments
     Value: |
-      1. Deploy this template in us-west-2 or eu-west-1
+      1. Deploy this template in us-east-1
       2. Wait for all resources to be created (10-15 minutes)
       3. Run your security assessment against this account
       4. Expected results:
