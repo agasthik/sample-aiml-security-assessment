@@ -44,6 +44,9 @@ def resolve_regions():
     if not target_regions:
         return [current_region]
 
+    # Dead code: the "all" option was removed from the TargetRegions parameter
+    # in every deployment template and rejected in buildspec.yml, so this branch
+    # is no longer reachable. Retained as a defensive fallback only.
     if target_regions.lower() == "all":
         regions = get_available_regions()
         if not regions:

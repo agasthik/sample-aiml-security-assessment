@@ -146,7 +146,6 @@ This tool operates within the [AWS Shared Responsibility Model](https://aws.amaz
 5. **(Optional) Multi-Region**: Set `TargetRegions` to scan multiple regions:
    - Leave empty to scan only the deployment region (default)
    - Comma- or space-separated list (for example, `us-east-1,us-west-2,eu-west-1` or `us-east-1 us-west-2 eu-west-1`)
-   - `all` to scan all regions where the services are available
 6. Acknowledge IAM capabilities and click **Submit**.
 7. Once complete, CodeBuild automatically runs the assessment.
 8. View results: go to the stack **Outputs** tab → copy `AssessmentBucket` → open the report under the `/{account_id}/` prefix in that S3 bucket.
@@ -186,7 +185,6 @@ Both deployment modes support scanning multiple AWS regions in parallel via the 
 |-------|----------|
 | Empty (default) | Scans deployment region only — fully backward compatible |
 | Comma- or space-separated (for example, `us-east-1,us-west-2` or `us-east-1 us-west-2`) | Scans those regions in parallel |
-| `all` | Discovers and scans all regions where assessed services are available |
 
 Scanning uses a Step Functions Map state, so multiple regions execute in parallel with no additional time cost. Services unavailable in a region produce an informational N/A finding.
 

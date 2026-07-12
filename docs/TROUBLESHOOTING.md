@@ -47,7 +47,7 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 - Verify the S3 bucket for SAM artifacts exists and is accessible. If the `aws-sam-cli-managed-default` stack is stuck in `ROLLBACK_COMPLETE` or `DELETE_FAILED`, delete it and re-run CodeBuild
 - Look for IAM permission errors in the logs
 - Check if a previous deployment left orphaned resources
-- Check whether `TARGET_REGIONS` failed validation. It must be empty, `all`, or a comma- or space-separated list such as `us-east-1,us-west-2` or `us-east-1 us-west-2`
+- Check whether `TARGET_REGIONS` failed validation. It must be empty or a comma- or space-separated list such as `us-east-1,us-west-2` or `us-east-1 us-west-2`
 
 ### 4. AWS Step Functions Execution Failures
 
@@ -117,7 +117,6 @@ For full bucket cleanup guidance, see [Cleanup Guide](CLEANUP.md#emptying-and-de
 
 **Solutions:**
 - Leave `TargetRegions` empty to scan only the deployment region
-- Use `all` to scan the union of regions returned by boto3 for Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore
 - Use a comma- or space-separated list, such as `us-east-1,us-west-2,eu-west-1` or `us-east-1 us-west-2 eu-west-1`. The deployment normalizes the value before passing it to SAM
 - Confirm the services being assessed are available in each target region. If a service is unavailable or has no resources in a region, the report can show `N/A` or no resource-specific findings for that service and region
 - Confirm the account is opted in to any opt-in regions you include
@@ -280,7 +279,7 @@ You can automate regular assessments using Amazon EventBridge scheduled rules.
 
 **Q: What AWS regions are supported?**
 
-A: The framework is designed for standard AWS commercial regions where Amazon Bedrock, Amazon SageMaker AI, or Amazon Bedrock AgentCore are available. Leave `TargetRegions` empty for the deployment region, set it to `all` to resolve the union of assessed-service regions, or provide an explicit comma- or space-separated list. AWS GovCloud and AWS China regions may require template modifications.
+A: The framework is designed for standard AWS commercial regions where Amazon Bedrock, Amazon SageMaker AI, or Amazon Bedrock AgentCore are available. Leave `TargetRegions` empty for the deployment region, or provide an explicit comma- or space-separated list. AWS GovCloud and AWS China regions may require template modifications.
 
 **Q: Does this work if I don't have any AI/ML resources deployed yet?**
 

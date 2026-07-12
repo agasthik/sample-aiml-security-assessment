@@ -6107,6 +6107,10 @@ def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
 def _normalized_target_regions(value: str) -> List[str]:
     """Parse the CloudFormation TargetRegions parameter value."""
     value = (value or "").strip()
+    # The "all" comparison is dead code: the "all" option was removed from the
+    # TargetRegions parameter in every deployment template and rejected in
+    # buildspec.yml, so a value of "all" can no longer reach this function.
+    # Retained as a defensive fallback only.
     if not value or value.lower() == "all":
         return []
     return [region.strip() for region in re.split(r"[,\s]+", value) if region.strip()]
