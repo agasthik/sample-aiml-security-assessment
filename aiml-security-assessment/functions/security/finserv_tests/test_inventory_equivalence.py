@@ -506,7 +506,11 @@ def _build_mock_client(
             c.list_schedules.return_value = {"Schedules": []}
             return c
 
-        if service == "agentcore":
+        # The real client name is "bedrock-agentcore-control"; the previous
+        # "agentcore" branch never matched, so this client silently fell through
+        # to the catch-all MagicMock and FS-08's golden row was an artifact of
+        # unconfigured-mock behavior rather than a stubbed empty inventory.
+        if service == "bedrock-agentcore-control":
             c.list_agent_runtimes.return_value = {"agentRuntimes": []}
             return c
 
@@ -606,7 +610,12 @@ BASELINE: list[tuple[str, str, str, str, str]] = [
     ('FS-05', 'Bedrock CloudWatch Alarms Present', 'Passed', 'Medium', 'FFIEC CAT | DORA Art.6'),
     ('FS-06', 'AI/ML Service Budgets Configured', 'Passed', 'Medium', 'FFIEC CAT | SR 11-7'),
     ('FS-07', 'Agent Action Boundary Check', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT'),
-    ('FS-08', 'AgentCore Policy Engine Configured', 'Passed', 'High', 'SR 11-7 | MAS TRM 9.1'),
+    # Reviewed golden change: the fixture stubs an empty AgentCore runtime
+    # inventory, so the correct row is the not-applicable one. The previous
+    # ('AgentCore Policy Engine Configured', 'Passed', 'High') row could only be
+    # produced by reading authorizerConfiguration off a ListAgentRuntimes item
+    # that never carries it.
+    ('FS-08', 'No AgentCore Runtimes Found', 'N/A', 'Informational', 'SR 11-7 | MAS TRM 9.1'),
     ('FS-09', 'Agent Lambda Concurrency Limits Present', 'Passed', 'Medium', 'FFIEC CAT | SR 11-7'),
     ('FS-10', 'Human-in-the-Loop Check \u2014 No Agent Workflows Found', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-11', 'No Agent Rate Alarms Found', 'Failed', 'Medium', 'FFIEC CAT | DORA Art.6'),
@@ -660,7 +669,9 @@ BASELINE: list[tuple[str, str, str, str, str]] = [
     ('FS-62', 'ADVISORY: Data Currency Disclaimer \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-63', 'Foundation Model Lifecycle Management', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT | ISO 27001 A.12'),
     ('FS-65', 'KB Data Source Buckets Missing S3 Event Notifications', 'Failed', 'Medium', 'FFIEC CAT | DORA Art.6 | ISO 27001 A.12'),
-    ('FS-66', 'AgentCore End-User Identity Propagation Configured', 'Passed', 'High', 'NYDFS 500 | SR 11-7 | MAS TRM 9 | PCI-DSS'),
+    # Reviewed golden change, same cause as the FS-08 row above: the fixture
+    # stubs an empty AgentCore runtime inventory, so not-applicable is correct.
+    ('FS-66', 'No AgentCore Runtimes Found', 'N/A', 'Informational', 'NYDFS 500 | SR 11-7 | MAS TRM 9 | PCI-DSS'),
     ('FS-67', 'Agent Action-Group Lambdas May Lack Transaction Thresholds', 'Failed', 'High', 'SR 11-7 | FFIEC CAT | MAS TRM 9 | PCI-DSS'),
     ('FS-68', 'API Gateway Request Body Size Limits Configured', 'Passed', 'Medium', 'DORA Art.6 | FFIEC CAT | PCI-DSS | OWASP LLM Top 10'),
     ('FS-69', 'Prompt Input Validation Functions Present', 'Passed', 'Medium', 'NYDFS 500 | FFIEC CAT | OWASP LLM Top 10'),
