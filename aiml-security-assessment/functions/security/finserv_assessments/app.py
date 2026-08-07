@@ -798,10 +798,10 @@ def _no_regional_genai_resources_row(region: str) -> Dict[str, Any]:
     """Visible N/A row used when a target region has no GenAI resource footprint."""
     return create_finding(
         check_id="FS-00",
-        finding_name="FinServ Regional Scope Not Applicable",
+        finding_name="Responsible AI GRC — Regional Scope Not Applicable",
         finding_details=(
             f"No regional Bedrock, AgentCore, or SageMaker resources were found in {region}; "
-            "FinServ GenAI risk checks were not applied to this region."
+            "Responsible AI GRC checks were not applied to this region."
         ),
         resolution="No action required unless GenAI workloads are expected in this region.",
         reference=FINSERV_GUIDE_URL,

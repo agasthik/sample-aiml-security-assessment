@@ -48,6 +48,56 @@ FINSERV_GUIDE_URL = (
     "https://aws.amazon.com/blogs/security/"
     "introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/"
 )
+RESPONSIBLE_AI_LENS_URL = (
+    "https://docs.aws.amazon.com/wellarchitected/latest/responsible-ai-lens/"
+    "responsible-ai-lens.html"
+)
+
+# ---------------------------------------------------------------------------
+# Responsible AI GRC display labels.
+#
+# Single source of truth for every customer-visible label on this capability.
+# Before the rebrand the same capability appeared under five competing names
+# (FinServ, Financial Services, Financial Services Risk, Financial Services
+# GenAI Risk, Financial Services GenAI Risk Findings) across ten hardcoded
+# sites. Renaming through these constants keeps them from diverging again.
+#
+# The machine identities are deliberately NOT here: the "finserv" service slug,
+# the "#finserv" anchor, the data-service / data-filter-service /
+# data-scope-service attributes, and the industry-* CSS class names are
+# persisted contracts that archived reports and the consolidation tooling read.
+# Only the human-readable text changes.
+# ---------------------------------------------------------------------------
+RESPONSIBLE_AI_GRC_LABEL = "Responsible AI GRC"
+
+# The capability is cross-industry, so it is grouped by governance framework
+# rather than by industry. The industry-* CSS class names are unchanged.
+RESPONSIBLE_AI_GRC_NAV_HEADING = "By Governance Framework"
+RESPONSIBLE_AI_GRC_SCOPE_LABEL = "Governance Framework"
+
+RESPONSIBLE_AI_GRC_SCOPE_STATEMENT = (
+    "Responsible AI GRC comprises 64 automated checks that evaluate selected AWS "
+    "configuration evidence against project-authored technical controls informed "
+    "by the AWS User Guide to Governance, Risk, and Compliance for Responsible AI "
+    "Adoption and by AWS financial-services generative-AI risk guidance. The "
+    "controls originated as financial-services controls and were found applicable "
+    "across multiple industries. They do not establish regulatory compliance, "
+    "certify a system as responsible AI, or provide complete Responsible AI or GRC "
+    "coverage. Regulatory framework mappings are preliminary. Manual legal, "
+    "policy, model-risk, fairness, and use-case review remains required."
+)
+
+# Required disambiguation. This rename moves closer to the AWS Well-Architected
+# Responsible AI Lens than "FinServ" ever did, so the distinction is stated
+# wherever the name appears rather than left to be inferred.
+RESPONSIBLE_AI_LENS_DISAMBIGUATION = (
+    "<strong>Responsible AI GRC is not the "
+    f'<a href="{RESPONSIBLE_AI_LENS_URL}" target="_blank">AWS Well-Architected '
+    "Responsible AI Lens</a>.</strong> The Lens (November 2025) is a separate "
+    "architectural review framework with eight focus areas. These checks do not "
+    "implement, validate, or measure conformance to it, and passing them does not "
+    "indicate Lens alignment."
+)
 
 # OWASP Top 10 for LLM icon (no official AWS icon; shield outline).
 OWASP_ICON = (
@@ -846,7 +896,8 @@ def generate_html_report(
             "sagemaker": "SageMaker",
             "agentcore": "AgentCore",
             "agentic": "Agentic AI",
-            "finserv": "FinServ",
+            # Slug stays "finserv" (persisted contract); only the label changes.
+            "finserv": RESPONSIBLE_AI_GRC_LABEL,
         }
         return fixed_names.get(
             service_slug,
@@ -1100,48 +1151,55 @@ def generate_html_report(
     finserv_passed = service_stats.get("finserv", {}).get("passed", 0)
     finserv_na = service_stats.get("finserv", {}).get("na", 0)
     if finserv_total > 0:
+        # Labels below render "Responsible AI GRC". The finserv slug, the
+        # #finserv anchor, the data-*-service attributes, and every industry-*
+        # CSS class name are machine contracts and must NOT change — archived
+        # reports and the consolidation tooling depend on them.
         finserv_nav = (
             '<a href="#finserv" class="nav-item industry-item">'
             + FINSERV_ICON
-            + " Financial Services"
+            + f" {RESPONSIBLE_AI_GRC_LABEL}"
             + f'<span class="count">{finserv_total}</span></a>'
         )
         industry_nav = (
-            '<nav class="nav-section industry-nav"><h3>By Industry</h3>'
-            + finserv_nav
-            + "</nav>"
+            '<nav class="nav-section industry-nav">'
+            f"<h3>{RESPONSIBLE_AI_GRC_NAV_HEADING}</h3>" + finserv_nav + "</nav>"
         )
-        finserv_filter_option = '<option value="finserv">Financial Services</option>'
+        finserv_filter_option = (
+            f'<option value="finserv">{RESPONSIBLE_AI_GRC_LABEL}</option>'
+        )
         finserv_service_card = (
             '<div class="metric"><div class="metric-label">'
             + FINSERV_ICON_SMALL
-            + f' Financial Services Risk</div><div class="metric-value">{finserv_total}</div>'
+            + f' {RESPONSIBLE_AI_GRC_LABEL}</div><div class="metric-value">{finserv_total}</div>'
             + f'<div class="metric-sub">{finserv_failed} Failed \u00b7 {finserv_passed} Passed \u00b7 {finserv_na} N/A</div></div>'
         )
         finserv_scope_industry_block = (
             '<div class="scope-industry" data-scope-service="finserv">'
-            '<div class="scope-industry-label">Industry</div>'
+            f'<div class="scope-industry-label">{RESPONSIBLE_AI_GRC_SCOPE_LABEL}</div>'
             '<div class="scope-chip-row"><div class="scope-chip industry-chip">'
             + FINSERV_ICON_SMALL
-            + '<span style="font-size: 13px; font-weight: 500;">Financial Services GenAI Risk</span></div></div></div>'
+            + f'<span style="font-size: 13px; font-weight: 500;">{RESPONSIBLE_AI_GRC_LABEL}</span></div></div></div>'
         )
         finserv_scope_source = (
-            f" Financial Services GenAI Risk checks are based on "
-            f'<a href="{FINSERV_GUIDE_URL}" target="_blank">the AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption</a>.'
+            f" {RESPONSIBLE_AI_GRC_LABEL} checks are based on "
+            f'<a href="{FINSERV_GUIDE_URL}" target="_blank">the AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption</a>. '
+            f"{RESPONSIBLE_AI_LENS_DISAMBIGUATION}"
         )
         finserv_section = (
             '<section id="finserv" class="section">'
             '<div class="section-title">'
             + FINSERV_ICON
-            + "Financial Services GenAI Risk Findings</div>"
+            + f"{RESPONSIBLE_AI_GRC_LABEL} Findings</div>"
             + generate_assessment_summary(
                 "finserv",
                 finserv_total,
                 finserv_failed,
                 finserv_passed,
                 service_stats.get("finserv", {}).get("na", 0),
-                "Scope: this assessment records findings against each resolved CloudFormation TargetRegions entry. These checks are based on "
-                f'<a href="{FINSERV_GUIDE_URL}" target="_blank">the AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption</a>. Severities follow a documented Likelihood &times; Impact methodology.',
+                f"Scope: {RESPONSIBLE_AI_GRC_SCOPE_STATEMENT} This assessment records findings against each resolved CloudFormation TargetRegions entry. These checks are based on "
+                f'<a href="{FINSERV_GUIDE_URL}" target="_blank">the AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption</a>. Severities follow a documented Likelihood &times; Impact methodology. '
+                f"{RESPONSIBLE_AI_LENS_DISAMBIGUATION}",
             )
             + "</section>"
         )
