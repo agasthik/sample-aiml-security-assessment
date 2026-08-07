@@ -581,9 +581,9 @@ SEVERITY_REGISTER: Dict[str, str] = {
     "No Automated Reasoning Policies Found": "Medium",
     "Automated Reasoning Policies Found": "Medium",
     # --- FS-28 (denied topics = High) ---
-    "No Guardrails — Denied Topics Not Applicable": "Informational",
-    "No Guardrails With Denied Financial Topics": "High",
-    "Denied Topics Configured on CLASSIC Tier": "High",
+    "No Guardrails — Topic Policy Not Applicable": "Informational",
+    "No Guardrails With Topic Policies": "High",
+    "Topic Policies Configured on CLASSIC Tier": "High",
     "Guardrails With Topic Policies Found": "High",
     # --- FS-29 (advisory) ---
     "ADVISORY: Compliance Disclaimer — Manual Review Required": "Informational",
@@ -616,12 +616,14 @@ SEVERITY_REGISTER: Dict[str, str] = {
     "Guardrail Word Filters Configured": "Medium",
     # --- FS-39 (bias = High) ---
     "No SageMaker Clarify Bias Monitoring": "High",
-    "SageMaker Clarify Bias Monitoring Active": "High",
+    "SageMaker Clarify Bias Monitoring Schedules Found": "High",
+    "SageMaker Clarify Bias Monitoring Schedules Not Running": "High",
     # --- FS-40 (advisory) ---
     "ADVISORY: Bias Dataset Coverage — Manual Review Required": "Informational",
     # --- FS-41 (explainability = High) ---
     "No SageMaker Clarify Explainability Monitoring": "High",
-    "SageMaker Clarify Explainability Active": "High",
+    "SageMaker Clarify Explainability Monitoring Schedules Found": "High",
+    "SageMaker Clarify Explainability Schedules Not Running": "High",
     # --- FS-42 ---
     "No SageMaker Model Cards Found": "Medium",
     "SageMaker Model Cards Present": "Medium",
@@ -704,7 +706,7 @@ SEVERITY_REGISTER: Dict[str, str] = {
     # --- FS-67 (transaction thresholds = High) ---
     "No Agent Action-Group Lambda Functions Found": "Informational",
     "Agent Action-Group Lambdas May Lack Transaction Thresholds": "High",
-    "Agent Action-Group Lambdas Have Threshold Configuration": "High",
+    "Agent Action-Group Lambdas Have Threshold-Named Variables": "High",
     # --- FS-68 (body-size = Medium; now has N/A branch) ---
     "API Gateway Request Body Size Limits Not Enforced": "Medium",
     "API Gateway Request Body Size Limits — Not Applicable": "Informational",
@@ -745,6 +747,51 @@ def _could_not_assess_row(check_id: str, check_name: str, err: Any) -> Dict[str,
         status="N/A",
         compliance_frameworks=COMPLIANCE_MAP.get(check_id, ""),
     )
+
+
+def _self_lambda_name_prefix() -> str:
+    """Return the shared name prefix of this assessment's own Lambda functions.
+
+    The assessment deploys its functions as
+    ``aiml-security-{stack-name}-{Suffix}``. AWS_LAMBDA_FUNCTION_NAME gives the
+    running function's full physical name, so dropping the final ``-{Suffix}``
+    segment yields the prefix shared by every sibling assessment function.
+
+    Returns "" when the name does not match that shape (for example under a unit
+    test or a local invoke), in which case no self-exclusion is applied.
+    """
+    own_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "")
+    if not own_name.startswith("aiml-security-") or "-" not in own_name:
+        return ""
+    return own_name.rsplit("-", 1)[0] + "-"
+
+
+def _is_assessment_own_lambda(function_name: str) -> bool:
+    """True when function_name belongs to this assessment's own deployment.
+
+    Name-keyword heuristics elsewhere in this module match on fragments such as
+    "finserv" and "agent", which the assessment's own functions satisfy. Without
+    this exclusion the assessment reports findings against its own
+    infrastructure.
+    """
+    prefix = _self_lambda_name_prefix()
+    return bool(prefix) and function_name.startswith(prefix)
+
+
+def _describe_schedules(schedules: List[Dict[str, Any]], limit: int = 10) -> str:
+    """Render monitoring schedules as name(status, endpoint) for finding details.
+
+    Used by the SageMaker Clarify checks so a finding reports the observed
+    MonitoringScheduleStatus rather than implying a schedule is running.
+    """
+    parts = []
+    for s in schedules[:limit]:
+        name = s.get("MonitoringScheduleName", "<unnamed>")
+        status = s.get("MonitoringScheduleStatus") or "status unknown"
+        endpoint = s.get("EndpointName")
+        parts.append(f"{name} ({status}{f', endpoint {endpoint}' if endpoint else ''})")
+    suffix = "" if len(schedules) <= limit else f" and {len(schedules) - limit} more"
+    return f"Schedules: {'; '.join(parts)}{suffix}."
 
 
 def _no_regional_genai_resources_row(region: str) -> Dict[str, Any]:
@@ -2931,11 +2978,28 @@ def check_automated_reasoning_policies() -> Dict[str, Any]:
 
 def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
     """
-    FS-28 — Verify Bedrock Guardrails have denied topics configured for
-    regulated financial advice categories (investment advice, credit decisions).
+    FS-28 — Report whether Bedrock Guardrails have a topic policy configured,
+    and which denied-topic tier each uses.
+
+    Evidence collected: presence of ``topicPolicy.topics`` and the value of
+    ``topicPolicy.tier.tierName`` from GetGuardrail.
+
+    Deliberately NOT asserted:
+      - that the configured topics cover regulated financial advice,
+      - that topic definitions are complete or correctly scoped,
+      - that the policy applies to every relevant application,
+      - that each topic is enabled — ``inputEnabled`` and ``outputEnabled`` are
+        not inspected, so a present topic may be inactive on either path.
+    Topic coverage is a semantic question and stays a manual review.
+
     COMPLIANCE_PLACEHOLDER: [SR 11-7, FFIEC CAT, NYDFS 500, MAS TRM 9.2]
     """
-    findings = _empty_findings("Financial Denied Topics Check")
+    check_name = "Guardrail Topic Policy Check"
+    manual_review = (
+        "Topic-policy presence does not establish coverage of regulated financial "
+        "advice; review topic definitions and their input/output enablement manually."
+    )
+    findings = _empty_findings(check_name)
     try:
         guardrail_inv = require(inventory, "guardrails")
         guardrails = guardrail_inv.summaries
@@ -2944,7 +3008,7 @@ def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-28",
-                    finding_name="No Guardrails — Denied Topics Not Applicable",
+                    finding_name="No Guardrails — Topic Policy Not Applicable",
                     finding_details="No Bedrock Guardrails configured.",
                     resolution="Configure guardrails with denied topics for regulated financial content.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
@@ -2957,6 +3021,7 @@ def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
 
         guardrails_with_topics = []
         topics_classic_tier = []
+        topics_unknown_tier = []
         for g in guardrails:
             detail = guardrail_inv.detail_by_id[g["id"]]
             if isinstance(detail, _Unavailable):
@@ -2964,22 +3029,26 @@ def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
             topic_policy = detail.get("topicPolicy", {})
             if topic_policy.get("topics"):
                 guardrails_with_topics.append(g["name"])
-                # Denied topics also support tiers (GA June 2025). STANDARD tier
-                # adds broader language support and improved detection but requires
-                # cross-region inference. topicPolicy.tier.tierName in GetGuardrail.
-                tier = topic_policy.get("tier", {}).get("tierName", "CLASSIC")
+                # Denied topics support tiers (GA June 2025). STANDARD adds broader
+                # language support and improved detection but requires cross-region
+                # inference. An ABSENT tier is reported as unknown rather than
+                # assumed CLASSIC — defaulting it would report an assumption as an
+                # observation.
+                tier = topic_policy.get("tier", {}).get("tierName")
                 if tier == "CLASSIC":
                     topics_classic_tier.append(g["name"])
+                elif not tier:
+                    topics_unknown_tier.append(g["name"])
 
         if not guardrails_with_topics:
             findings["status"] = "WARN"
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-28",
-                    finding_name="No Guardrails With Denied Financial Topics",
+                    finding_name="No Guardrails With Topic Policies",
                     finding_details=(
-                        "No guardrails have topic policies configured. "
-                        "GenAI may provide regulated financial advice without controls."
+                        "No guardrails have topic policies configured, so no denied-topic "
+                        "control is in place on any guardrail."
                     ),
                     resolution=(
                         "Add denied topics to guardrails for:\n"
@@ -3003,13 +3072,13 @@ def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-28",
-                    finding_name="Denied Topics Configured on CLASSIC Tier",
+                    finding_name="Topic Policies Configured on CLASSIC Tier",
                     finding_details=(
                         f"Guardrails with topic policies: {', '.join(guardrails_with_topics)}. "
-                        f"The following use the CLASSIC tier: {', '.join(topics_classic_tier)}. "
+                        f"The following report the CLASSIC tier: {', '.join(topics_classic_tier)}. "
                         "CLASSIC tier supports English, French, and Spanish only. The STANDARD tier "
                         "(GA June 2025) provides broader language support and improved detection for "
-                        "denied topics."
+                        f"denied topics. {manual_review}"
                     ),
                     resolution=(
                         "Verify topics cover regulated financial advice categories. For multilingual "
@@ -3027,11 +3096,20 @@ def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
                 )
             )
         else:
+            tier_note = ""
+            if topics_unknown_tier:
+                tier_note = (
+                    " Tier not reported by GetGuardrail for: "
+                    f"{', '.join(topics_unknown_tier)} (tier unknown, not assumed CLASSIC)."
+                )
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-28",
                     finding_name="Guardrails With Topic Policies Found",
-                    finding_details=f"Guardrails with topic policies: {', '.join(guardrails_with_topics)}.",
+                    finding_details=(
+                        f"Guardrails with topic policies: {', '.join(guardrails_with_topics)}."
+                        f"{tier_note} {manual_review}"
+                    ),
                     resolution=(
                         "Verify topics cover regulated financial advice categories. "
                         "When authoring or updating denied-topic policies, use existing compliance "
@@ -3045,7 +3123,7 @@ def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
                 )
             )
     except Exception as e:
-        return _error_findings("Financial Denied Topics Check", e)
+        return _error_findings(check_name, e)
     return findings
 
 
@@ -3734,11 +3812,29 @@ def check_guardrail_word_filters(inventory) -> Dict[str, Any]:
 
 def check_sagemaker_clarify_bias() -> Dict[str, Any]:
     """
-    FS-39 — Verify SageMaker Clarify bias detection jobs are configured for
-    production models making financial decisions.
+    FS-39 — Report presence and schedule status of SageMaker Clarify model-bias
+    monitoring schedules.
+
+    Evidence collected: ListMonitoringSchedules entries where MonitoringType is
+    ModelBias, plus each entry's MonitoringScheduleStatus and EndpointName.
+
+    Deliberately NOT asserted:
+      - association with production financial-decision models,
+      - which protected attributes are evaluated,
+      - which bias metrics and thresholds are configured,
+      - that violations trigger alerting or remediation,
+      - ECOA or Fair Housing conformance.
+    Note that MonitoringScheduleStatus has no "Active" value; the running state
+    is "Scheduled". Findings therefore report the observed status verbatim.
+
     COMPLIANCE_PLACEHOLDER: [SR 11-7, FFIEC CAT, ECOA, Fair Housing Act]
     """
-    findings = _empty_findings("SageMaker Clarify Bias Check")
+    check_name = "SageMaker Clarify Bias Check"
+    manual_review = (
+        "Schedule presence does not establish protected-attribute coverage, "
+        "threshold adequacy, or fair-lending conformance; review manually."
+    )
+    findings = _empty_findings(check_name)
     try:
         sm = boto3.client("sagemaker", config=boto3_config)
         schedules = _paginate(
@@ -3747,6 +3843,16 @@ def check_sagemaker_clarify_bias() -> Dict[str, Any]:
 
         bias_schedules = [
             s for s in schedules if s.get("MonitoringType") == "ModelBias"
+        ]
+        running = [
+            s
+            for s in bias_schedules
+            if s.get("MonitoringScheduleStatus") == "Scheduled"
+        ]
+        not_running = [
+            s
+            for s in bias_schedules
+            if s.get("MonitoringScheduleStatus") != "Scheduled"
         ]
 
         if not bias_schedules:
@@ -3777,24 +3883,59 @@ def check_sagemaker_clarify_bias() -> Dict[str, Any]:
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-39",
-                    finding_name="SageMaker Clarify Bias Monitoring Active",
-                    finding_details=f"Found {len(bias_schedules)} model bias monitoring schedule(s).",
-                    resolution="No action required.",
+                    finding_name="SageMaker Clarify Bias Monitoring Schedules Found",
+                    finding_details=(
+                        f"Found {len(bias_schedules)} model bias monitoring schedule(s); "
+                        f"{len(running)} with status Scheduled. "
+                        + _describe_schedules(bias_schedules)
+                        + " "
+                        + manual_review
+                    ),
+                    resolution="No action required for schedule presence.",
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-monitor-bias-drift.html",
                     severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-39"],
                 )
             )
+            if not_running:
+                findings["status"] = "WARN"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="FS-39",
+                        finding_name="SageMaker Clarify Bias Monitoring Schedules Not Running",
+                        finding_details=(
+                            "Model bias monitoring schedules exist but are not in the "
+                            "Scheduled state, so bias monitoring is not currently running: "
+                            + _describe_schedules(not_running)
+                        ),
+                        resolution=(
+                            "Investigate and restart the affected monitoring schedules, then "
+                            "confirm they reach the Scheduled state."
+                        ),
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-monitor-bias-drift.html",
+                        severity="High",
+                        status="Failed",
+                        compliance_frameworks=COMPLIANCE_MAP["FS-39"],
+                    )
+                )
     except Exception as e:
-        return _error_findings("SageMaker Clarify Bias Check", e)
+        return _error_findings(check_name, e)
     return findings
 
 
 def check_bedrock_evaluation_bias_datasets() -> Dict[str, Any]:
     """
-    FS-40 — Check whether Bedrock Model Evaluation includes bias-specific
-    test datasets for GenAI models used in financial decisions.
+    FS-40 — Advisory prompt for a manual bias-dataset coverage review.
+
+    Evidence collected: none. Bedrock does not expose model-evaluation dataset
+    content through any API, so this check makes zero API calls and always
+    returns a single advisory N/A row carrying the ADVISORY: prefix.
+
+    This is a manual bias-dataset coverage review, never automated validation.
+    Do not describe it as verifying, validating, or testing anything. Whether
+    any evaluation jobs exist at all is assessed separately by FS-15.
+
     COMPLIANCE_PLACEHOLDER: [SR 11-7, FFIEC CAT, ECOA]
     """
     findings = _empty_findings("Bedrock Bias Evaluation Datasets Check")
@@ -3829,11 +3970,30 @@ def check_bedrock_evaluation_bias_datasets() -> Dict[str, Any]:
 
 def check_sagemaker_clarify_explainability() -> Dict[str, Any]:
     """
-    FS-41 — Verify SageMaker Clarify explainability jobs are configured to
-    provide model decision explanations for adverse action notices.
+    FS-41 — Report presence and schedule status of SageMaker Clarify
+    model-explainability monitoring schedules.
+
+    Evidence collected: ListMonitoringSchedules entries where MonitoringType is
+    ModelExplainability, plus each entry's MonitoringScheduleStatus and
+    EndpointName.
+
+    Deliberately NOT asserted:
+      - that explanations support adverse-action notices,
+      - that SHAP features map to human-readable reason codes,
+      - that explanations are stored or delivered to applicants,
+      - ECOA conformance.
+    Adverse-action reason generation is an application concern and stays a
+    manual review. As with FS-39, MonitoringScheduleStatus has no "Active"
+    value; the running state is "Scheduled".
+
     COMPLIANCE_PLACEHOLDER: [SR 11-7, FFIEC CAT, ECOA Adverse Action]
     """
-    findings = _empty_findings("SageMaker Clarify Explainability Check")
+    check_name = "SageMaker Clarify Explainability Check"
+    manual_review = (
+        "Schedule presence does not establish that explanations are generated, "
+        "mapped to reason codes, stored, or delivered; review manually."
+    )
+    findings = _empty_findings(check_name)
     try:
         sm = boto3.client("sagemaker", config=boto3_config)
         schedules = _paginate(
@@ -3842,6 +4002,16 @@ def check_sagemaker_clarify_explainability() -> Dict[str, Any]:
 
         explainability_schedules = [
             s for s in schedules if s.get("MonitoringType") == "ModelExplainability"
+        ]
+        running = [
+            s
+            for s in explainability_schedules
+            if s.get("MonitoringScheduleStatus") == "Scheduled"
+        ]
+        not_running = [
+            s
+            for s in explainability_schedules
+            if s.get("MonitoringScheduleStatus") != "Scheduled"
         ]
 
         if not explainability_schedules:
@@ -3871,17 +4041,44 @@ def check_sagemaker_clarify_explainability() -> Dict[str, Any]:
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-41",
-                    finding_name="SageMaker Clarify Explainability Active",
-                    finding_details=f"Found {len(explainability_schedules)} explainability monitoring schedule(s).",
-                    resolution="No action required.",
+                    finding_name="SageMaker Clarify Explainability Monitoring Schedules Found",
+                    finding_details=(
+                        f"Found {len(explainability_schedules)} explainability monitoring "
+                        f"schedule(s); {len(running)} with status Scheduled. "
+                        + _describe_schedules(explainability_schedules)
+                        + " "
+                        + manual_review
+                    ),
+                    resolution="No action required for schedule presence.",
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability.html",
                     severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-41"],
                 )
             )
+            if not_running:
+                findings["status"] = "WARN"
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="FS-41",
+                        finding_name="SageMaker Clarify Explainability Schedules Not Running",
+                        finding_details=(
+                            "Explainability monitoring schedules exist but are not in the "
+                            "Scheduled state, so explanations are not currently being produced: "
+                            + _describe_schedules(not_running)
+                        ),
+                        resolution=(
+                            "Investigate and restart the affected monitoring schedules, then "
+                            "confirm they reach the Scheduled state."
+                        ),
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/clarify-model-explainability.html",
+                        severity="High",
+                        status="Failed",
+                        compliance_frameworks=COMPLIANCE_MAP["FS-41"],
+                    )
+                )
     except Exception as e:
-        return _error_findings("SageMaker Clarify Explainability Check", e)
+        return _error_findings(check_name, e)
     return findings
 
 
@@ -5802,16 +5999,39 @@ def check_agentcore_end_user_identity_propagation() -> Dict[str, Any]:
 
 def check_agent_financial_transaction_thresholds(inventory) -> Dict[str, Any]:
     """
-    FS-67 — Check AgentCore Policy Engine or action-group Lambda functions
-    enforce maximum transaction-value limits to prevent runaway or unauthorized
-    high-value financial transactions initiated by agents.
+    FS-67 — Report whether Lambda functions that look like agent action groups
+    carry environment variables suggesting a transaction-value threshold.
+
+    Evidence collected: Lambda function names matched against the keyword list
+    below, and the NAMES of their environment variables. Variable values are
+    never read.
+
+    This is a configuration HINT, not enforcement. Deliberately NOT asserted:
+      - that a matched function performs financial transactions,
+      - that any threshold is enforced anywhere in code,
+      - that a configured value is safe or appropriate,
+      - that an AgentCore policy rule caps transaction amounts.
+    A threshold implemented in code or in a policy rule is invisible here, and
+    conversely an unrelated variable such as MAX_RETRIES or LIMIT=0 satisfies
+    the heuristic. Both directions are false signals.
+
+    Behavioral dependency: this check's scope is determined by resource NAMING.
+    Changing the keyword list, or renaming customer functions, changes which
+    resources are assessed. The assessment excludes its own Lambda functions,
+    which would otherwise self-report via the "finserv" and "agent" keywords.
+
     COMPLIANCE_PLACEHOLDER: [SR 11-7, MAS TRM 9.1, FFIEC CAT, PCI-DSS]
     """
-    findings = _empty_findings("Agent Financial Transaction Value Thresholds Check")
+    check_name = "Agent Financial Transaction Value Thresholds Check"
+    heuristic_note = (
+        "Name-and-variable-name matching is a heuristic prompt for manual "
+        "verification, not evidence that a limit is enforced."
+    )
+    findings = _empty_findings(check_name)
     try:
         functions = require(inventory, "lambda_functions")
 
-        # Look for agent action-group Lambda functions
+        # Scope is name-driven; see the docstring's behavioral-dependency note.
         action_group_lambdas = [
             f
             for f in functions
@@ -5826,6 +6046,7 @@ def check_agent_financial_transaction_thresholds(inventory) -> Dict[str, Any]:
                     "transaction",
                 ]
             )
+            and not _is_assessment_own_lambda(f["FunctionName"])
         ]
 
         if not action_group_lambdas:
@@ -5898,12 +6119,19 @@ def check_agent_financial_transaction_thresholds(inventory) -> Dict[str, Any]:
                 findings["csv_data"].append(
                     create_finding(
                         check_id="FS-67",
-                        finding_name="Agent Action-Group Lambdas Have Threshold Configuration",
+                        finding_name="Agent Action-Group Lambdas Have Threshold-Named Variables",
                         finding_details=(
-                            f"Found {len(action_group_lambdas)} agent action-group Lambda(s) with "
-                            "threshold/limit environment variables present."
+                            f"Found {len(action_group_lambdas)} agent action-group Lambda(s) each "
+                            "carrying at least one environment variable whose NAME contains "
+                            "threshold, limit, or max. Variable values were not read, so this does "
+                            "not show that a transaction limit exists or is enforced — an "
+                            "unrelated variable such as MAX_RETRIES, or a LIMIT of 0, satisfies "
+                            f"this heuristic. {heuristic_note}"
                         ),
-                        resolution="Verify threshold values are appropriate for your financial risk tolerance.",
+                        resolution=(
+                            "Confirm each variable actually caps transaction value, that the "
+                            "handler enforces it, and that the value suits your risk tolerance."
+                        ),
                         reference="https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_GatewayPolicyEngineConfiguration.html",
                         severity="High",
                         status="Passed",
@@ -5911,7 +6139,7 @@ def check_agent_financial_transaction_thresholds(inventory) -> Dict[str, Any]:
                     )
                 )
     except Exception as e:
-        return _error_findings("Agent Financial Transaction Value Thresholds Check", e)
+        return _error_findings(check_name, e)
     return findings
 
 

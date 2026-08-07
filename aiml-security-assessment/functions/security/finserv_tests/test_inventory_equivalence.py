@@ -632,7 +632,7 @@ BASELINE: list[tuple[str, str, str, str, str]] = [
     ('FS-26', 'No OpenSearch Serverless Network Policies', 'Failed', 'High', 'NYDFS 500 | FFIEC CAT | PCI-DSS 1.3'),
     ('FS-27', 'Contextual Grounding Enabled on Guardrails', 'Passed', 'High', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-27', 'No Automated Reasoning Policies Found', 'Failed', 'Medium', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
-    ('FS-28', 'Denied Topics Configured on CLASSIC Tier', 'Passed', 'High', 'SR 11-7 | FFIEC CAT | NYDFS 500 | MAS TRM 9.2'),
+    ('FS-28', 'Topic Policies Configured on CLASSIC Tier', 'Passed', 'High', 'SR 11-7 | FFIEC CAT | NYDFS 500 | MAS TRM 9.2'),
     ('FS-29', 'ADVISORY: Compliance Disclaimer \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | NYDFS 500 | MAS TRM 9.2'),
     ('FS-30', 'ADVISORY: Compliance Dataset Coverage \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | NYDFS 500'),
     ('FS-31', 'Knowledge Base Data Sources Recently Synced', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT'),

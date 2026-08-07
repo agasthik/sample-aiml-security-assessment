@@ -1532,7 +1532,7 @@ class TestFS28GuardrailDeniedTopicsFinancial:
         result = app.check_guardrail_denied_topics_financial(inv)
         _assert_finding_structure(result)
         assert any(
-            r["Finding"] == "Denied Topics Configured on CLASSIC Tier"
+            r["Finding"] == "Topic Policies Configured on CLASSIC Tier"
             and r["Severity"] == "High"
             for r in result["csv_data"]
         )
