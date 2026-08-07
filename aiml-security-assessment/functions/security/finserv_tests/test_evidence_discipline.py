@@ -256,7 +256,9 @@ class TestFS67IsAHintAndExcludesItself:
                     "Environment": {"Variables": {}},
                 },
                 {
-                    "FunctionName": "aiml-security-aiml-sec-123456789012-OWASPAssessment",
+                    # Synthetic Lambda name, not a credential. detect-secrets
+                    # reads it as a base64 high-entropy string.
+                    "FunctionName": "aiml-security-aiml-sec-123456789012-OWASPAssessment",  # pragma: allowlist secret
                     "Environment": {"Variables": {}},
                 },
             ]

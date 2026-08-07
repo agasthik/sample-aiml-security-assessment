@@ -1,5 +1,12 @@
 name: AI/ML Security Assessment Tests
 
+# Least privilege. This workflow only reads the repository and uploads an
+# artifact, so it needs no write scopes. Five of the seven workflows already
+# declared this; python-tests.yml did not, which checkov CKV2_GHA_1 flags as an
+# implicit write-all token.
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main, develop]

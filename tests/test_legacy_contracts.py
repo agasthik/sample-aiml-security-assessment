@@ -65,7 +65,12 @@ _CfnLoader.add_multi_constructor("!", _cfn_multi_constructor)
 
 def _load_template(path):
     with open(path) as handle:
-        return yaml.load(handle, Loader=_CfnLoader)
+        # _CfnLoader subclasses yaml.SafeLoader and adds only a multi-constructor
+        # that turns CloudFormation short-form intrinsics (!Sub, !Ref, !GetAtt)
+        # into plain dicts, so no arbitrary object instantiation is possible.
+        # yaml.safe_load() cannot be used here: it hardcodes SafeLoader and gives
+        # no way to register the intrinsic handler these templates require.
+        return yaml.load(handle, Loader=_CfnLoader)  # nosec B506
 
 
 @pytest.fixture(scope="module")
