@@ -59,7 +59,10 @@ jobs:
 
       - name: Run ASH scan on changed files
         if: steps.changed-files.outputs.any_changed == 'true'
+        # pipefail is required: without it this step reports tee's exit status,
+        # so a failing scan would pass the gate.
         run: |
+          set -o pipefail
           cd /tmp/ash-scan
           ash --mode container 2>&1 | tee /tmp/ash-output.log
 
