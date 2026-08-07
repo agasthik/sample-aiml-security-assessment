@@ -8,10 +8,10 @@ underlying BR/SM/AC/FS checks it is derived from.
   and the category-specific remediation pages linked from that page.
 - **Opt-in:** Set `EnableOWASPAssessment=true` on the deployment stack.
 - **Report location:** New "By Compliance Standard" sidebar section, alongside
-  the existing "By Lens" (Agentic AI) and "By Industry" (Financial Services)
-  sections.
-- **FinServ auto-runs when OWASP is enabled.** ~2/3 of the OWASP mapping rows
-  (and all of LLM05) derive from the FinServ (FS-XX) checks. To guarantee
+  the existing "By Lens" (Agentic AI) and "By Governance Framework"
+  (Responsible AI GRC) sections.
+- **Responsible AI GRC auto-runs when OWASP is enabled.** ~2/3 of the OWASP
+  mapping rows (and all of LLM05) derive from the `FS-*` checks. To guarantee
   full OWASP coverage, the state machine automatically runs the FinServ
   Lambda whenever `EnableOWASPAssessment=true`, even when
   `EnableFinServAssessment=false`. In that case, FinServ findings are used

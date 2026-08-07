@@ -104,14 +104,25 @@ aws s3 rb "s3://${BUCKET_NAME}"
 
 For full bucket cleanup guidance, see [Cleanup Guide](CLEANUP.md#emptying-and-deleting-versioned-s3-buckets).
 
-### 6. Financial Services Checks Do Not Appear in the Report
+### 6. Responsible AI GRC Checks Do Not Appear in the Report
 
-**Symptoms:** The report does not include the **Financial Services** section or
+**Symptoms:** The report does not include the **Responsible AI GRC** section or
 any `FS-` findings.
 
+> **Note on names.** The capability is displayed as **Responsible AI GRC**, but its
+> machine identifiers still say `FinServ` and are preserved deliberately, so search
+> the console for those: the `EnableFinServAssessment` parameter, the
+> `ENABLE_FINSERV` environment variable, the `enableFinServ` execution input, the
+> `FinServSecurityAssessmentFunction` logical ID, the
+> `aiml-security-<stack>-FinServAssessment` Lambda, the four Step Functions states
+> `FinServ Enabled?`, `FinServ Security Assessment`, `FinServ Assessment
+> Incomplete`, and `FinServ Assessment Skipped`, the `$.finservError` result path,
+> the `finserv` report slug with its `#finserv` anchor, and
+> `finserv_security_report_*.csv`.
+
 **Expected when OWASP-only:** If `EnableOWASPAssessment=true` and
-`EnableFinServAssessment=false`, FinServ still runs as an OWASP source
-dependency, but the Financial Services section, `FS-` rows, and
+`EnableFinServAssessment=false`, the `FS-*` assessment still runs as an OWASP
+source dependency, but the Responsible AI GRC section, `FS-` rows, and
 `finserv_security_report_*.csv` are intentionally omitted from the
 customer-facing report bucket.
 
@@ -366,7 +377,7 @@ A: Minimal ongoing costs:
 
 A: Currently, all 71 core checks and 27 Agentic AI Security checks run by
 default to provide comprehensive coverage. If `EnableFinServAssessment` is
-enabled, the 64 optional Financial Services GenAI risk checks also run. If
+enabled, the 64 optional Responsible AI GRC checks also run. If
 `EnableOWASPAssessment` is enabled, the 12 optional OWASP Top 10 for LLM checks
 run; FinServ also runs as a hidden source dependency when OWASP needs `FS-*`
 mappings, but its UI rows and raw CSV are omitted from the customer-facing
@@ -441,7 +452,7 @@ A: Performance factors:
 - **API throttling**: AWS API rate limits may slow down assessments in large environments
 - **Concurrent executions**: Multi-account assessments run in parallel (configurable through the `ConcurrentAccountScans` parameter)
 - **Region scope**: Multi-region scans multiply the amount of service inventory collected
-- **Financial Services and OWASP checks**: Enabling `EnableFinServAssessment` adds the optional `FS-` checks; enabling `EnableOWASPAssessment` adds the optional `OW-` checks and may also run FinServ as a source dependency, increasing run time
+- **Responsible AI GRC and OWASP checks**: Enabling `EnableFinServAssessment` adds the optional `FS-` checks; enabling `EnableOWASPAssessment` adds the optional `OW-` checks and may also run the `FS-*` assessment as a source dependency, increasing run time
 
 If assessments consistently timeout, increase `CodeBuildTimeout`, reduce `TargetRegions`, reduce the account batch size with `MultiAccountListOverride`, or lower concurrency if throttling is the bottleneck. Lambda timeout changes require editing the SAM templates.
 

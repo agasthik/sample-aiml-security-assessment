@@ -1,6 +1,10 @@
 # Security Checks Reference
 
-This document provides a comprehensive reference for all 174 security checks performed by the AI/ML Security Assessment framework (71 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, 27 Agentic AI Security checks, 64 Financial Services GenAI Risk checks, and 12 OWASP Top 10 for LLM checks).
+This document provides a comprehensive reference for all 174 security checks performed by the AI/ML Security Assessment framework (71 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, 27 Agentic AI Security checks, 64 Responsible AI GRC checks, and 12 OWASP Top 10 for LLM checks).
+
+Sources differ by bucket and are not interchangeable: the core Bedrock, SageMaker, and AgentCore checks derive from the AWS Well-Architected **Generative AI Lens** security best practices (`gensec*`); the Agentic AI Security checks from the AWS Well-Architected **Agentic AI Lens**; the `FS-*` **Responsible AI GRC** checks from the AWS GRC User Guide; and the `OW-*` checks from the OWASP Top 10 for LLM. The AWS Well-Architected **Responsible AI Lens** is not a source for any of them — see [Responsible AI GRC — scope, sources, and compatibility](RESPONSIBLE_AI_GRC_SCOPE.md).
+
+The 64 Responsible AI GRC checks occupy 69 `FS-*` numbers: 64 ship as standalone checks and 5 are merged into upstream Bedrock/SageMaker checks. `FS-00` is additionally emitted at runtime but is not a control. Per-control provenance, including which controls are project extensions rather than guide-derived, is recorded in [`provenance.json`](../aiml-security-assessment/functions/security/finserv_assessments/provenance.json).
 
 ## Table of Contents
 
@@ -12,7 +16,7 @@ This document provides a comprehensive reference for all 174 security checks per
 - [Amazon Bedrock Security Checks (33)](#amazon-bedrock-security-checks-33)
 - [Amazon Bedrock AgentCore Security Checks (13)](#amazon-bedrock-agentcore-security-checks-13)
 - [Agentic AI Security Checks (27)](#agentic-ai-security-checks-27)
-- [Financial Services GenAI Risk Checks (64)](#financial-services-genai-risk-checks-64-additional-5-upstream-extensions)
+- [Responsible AI GRC Checks (64)](#responsible-ai-grc-checks-64-additional-5-upstream-extensions)
 - [OWASP Top 10 for LLM Checks (12)](#owasp-top-10-for-llm-checks-12)
 
 ---
@@ -27,7 +31,7 @@ The framework evaluates your AI/ML workloads against AWS security best practices
 | Amazon Bedrock | 33 | Guardrails, content filters, sensitive-information/PII filters, contextual grounding, automated reasoning, encryption (custom, imported, knowledge base, batch inference output), VPC endpoints, IAM permissions, agent guardrail association and least privilege, logging, CloudWatch alarms, cross-account policies, model evaluation, prompt flow validation, RAG evaluation, service quotas, Lambda code scanning (Amazon Inspector) |
 | Amazon Bedrock AgentCore | 13 | VPC configuration, encryption, observability, resource policies |
 | Agentic AI Security | 27 | Bounded autonomy, agent identity, tool authorization, guardrail enforcement, prompt/input protection, memory privacy, auditability, abuse protection |
-| Financial Services GenAI Risk | 64 | Unbounded consumption, excessive agency, supply chain, training data poisoning, vector weaknesses, non-compliant output, misinformation, harmful output, biased output, PII disclosure, hallucination, prompt injection, improper output handling, off-topic output, out-of-date training data |
+| Responsible AI GRC | 64 | Unbounded consumption, excessive agency, supply chain, training data poisoning, vector weaknesses, non-compliant output, misinformation, harmful output, biased output, PII disclosure, hallucination, prompt injection, improper output handling, off-topic output, out-of-date training data |
 | OWASP Top 10 for LLM | 12 | LLM01 Prompt Injection, LLM02 Sensitive Info Disclosure, LLM03 Supply Chain, LLM04 Data/Model Poisoning, LLM05 Improper Output Handling, LLM06 Excessive Agency, LLM07 System Prompt Leakage, LLM08 Vector/Embedding Weaknesses, LLM09 Misinformation, LLM10 Unbounded Consumption |
 
 ---
@@ -42,7 +46,7 @@ Each security check has a unique identifier with a service prefix:
 | **BR-XX** | Amazon Bedrock | BR-01, BR-33 |
 | **AC-XX** | Amazon Bedrock AgentCore | AC-01, AC-13 |
 | **AG-XX** | Agentic AI Security | AG-01, AG-27 |
-| **FS-XX** | Financial Services GenAI Risk | FS-01, FS-69 |
+| **FS-XX** | Responsible AI GRC | FS-01, FS-69 |
 | **OW-XX** | OWASP Top 10 for LLM | OW-01, OW-12 |
 
 ---
@@ -678,10 +682,10 @@ with scope limited to the Security pillar.
 
 ---
 
-## Financial Services GenAI Risk Checks (64 additional, 5 upstream extensions)
+## Responsible AI GRC Checks (64 additional, 5 upstream extensions)
 
-These 64 standalone checks (FS-XX) extend the framework with Financial Services
-risk-management controls derived from the
+These 64 standalone checks (FS-XX) extend the framework with cross-industry AI
+governance, risk, and compliance controls derived from the
 [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://aws.amazon.com/blogs/security/introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/).
 An additional 5 FS checks are contributed as extensions to existing SM-07,
 SM-22, SM-23, BR-04, and BR-06 (see in-file extension notes).

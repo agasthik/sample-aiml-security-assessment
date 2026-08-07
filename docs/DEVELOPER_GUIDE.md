@@ -44,7 +44,7 @@
 
 ## Architecture Overview
 
-The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 71 core security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, plus 27 always-on Agentic AI Security checks, with optional 64-check Financial Services GenAI risk and 12-check OWASP Top 10 for LLM assessments, generating interactive HTML reports with findings and remediation guidance.
+The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 71 core security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, plus 27 always-on Agentic AI Security checks, with optional 64-check Responsible AI GRC and 12-check OWASP Top 10 for LLM assessments, generating interactive HTML reports with findings and remediation guidance.
 
 ### Security Design Principles
 
@@ -107,7 +107,7 @@ sample-aiml-security-assessment/
 │   │   ├── bedrock_assessments/      # Bedrock security checks (33)
 │   │   ├── sagemaker_assessments/    # SageMaker security checks (25)
 │   │   ├── agentcore_assessments/    # AgentCore security checks (13)
-│   │   ├── finserv_assessments/      # Optional Financial Services GenAI risk checks (64)
+│   │   ├── finserv_assessments/      # Optional Responsible AI GRC checks (64)
 │   │   ├── owasp_assessments/        # Optional OWASP Top 10 for LLM checks (12)
 │   │   ├── finserv_tests/            # FinServ-specific unit and coverage tests
 │   │   ├── iam_permission_caching/   # AWS IAM permissions cache
@@ -227,7 +227,7 @@ sample-aiml-security-assessment/
 
 ## Assessment Structure
 
-The framework includes **71 core security checks** across three AI/ML services, plus **27 always-on Agentic AI Security checks**, **64 optional Financial Services GenAI risk checks** when `EnableFinServAssessment` is enabled, and **12 optional OWASP Top 10 for LLM checks** when `EnableOWASPAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
+The framework includes **71 core security checks** across three AI/ML services, plus **27 always-on Agentic AI Security checks**, **64 optional Responsible AI GRC checks** when `EnableFinServAssessment` is enabled, and **12 optional OWASP Top 10 for LLM checks** when `EnableOWASPAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
 
 ### AWS Lambda Functions
 
@@ -242,7 +242,9 @@ Each core service assessment AWS Lambda function:
 7. Uploads results to Amazon S3 with region-suffixed filename
 8. Returns findings summary to AWS Step Functions
 
-The Financial Services assessment Lambda is different. It is deployed in both SAM templates, but Step Functions invokes it only from the first region iteration (`RegionIndex == 0`) when the execution input includes `"enableFinServ": "true"` or `"enableOWASP": "true"`. The OWASP path uses FinServ findings as hidden source rows unless FinServ was explicitly enabled. FinServ receives the full `TargetRegions` list and emits findings with Region values so the report can display the same regional filters as the core services.
+The Responsible AI GRC assessment Lambda is different. It is deployed in both SAM templates, but Step Functions invokes it only from the first region iteration (`RegionIndex == 0`) when the execution input includes `"enableFinServ": "true"` or `"enableOWASP": "true"`. The OWASP path uses `FS-*` findings as hidden source rows unless the capability was explicitly enabled. It receives the full `TargetRegions` list and emits findings with Region values so the report can display the same regional filters as the core services.
+
+> **Display names versus compatibility contracts.** The capability is displayed as **Responsible AI GRC**, but every machine-facing identifier still says `FinServ`: the `EnableFinServAssessment` parameter, the `ENABLE_FINSERV` environment variable, the `enableFinServ` execution input, the `FinServSecurityAssessmentFunction` logical ID, the `aiml-security-${AWS::StackName}-FinServAssessment` physical name, all four `FinServ ...` Step Functions state names, the `$.finservError` result path, the `finserv` report slug with its `#finserv` anchor and `data-*-service` attributes, the `industry-*` CSS class names, the `finserv_security_report_*.csv` object name, and the `FS-*` check IDs. These are persisted or cross-process contracts read by archived reports, the OWASP mappings, and customer automation, so they are preserved permanently in this release. Renaming any of them requires a major release with a migration guide — see [Responsible AI GRC — scope, sources, and compatibility](RESPONSIBLE_AI_GRC_SCOPE.md#compatibility-policy).
 
 **Additional Functions:**
 
@@ -507,7 +509,7 @@ sam local invoke ComprehendSecurityAssessmentFunction --event testfile.json
 - **Handle Exceptions**: Implement proper error handling and logging
 - **Follow Least Privilege**: Only request necessary permissions
 - **Standardize Findings**: Use the `create_finding()` function for consistent output
-- **Check ID Convention**: Use service prefixes for check IDs (BR-XX for Amazon Bedrock, SM-XX for Amazon SageMaker AI, AC-XX for Amazon Bedrock AgentCore, AG-XX for Agentic AI Security, FS-XX for Financial Services GenAI risk checks)
+- **Check ID Convention**: Use service prefixes for check IDs (BR-XX for Amazon Bedrock, SM-XX for Amazon SageMaker AI, AC-XX for Amazon Bedrock AgentCore, AG-XX for Agentic AI Security, FS-XX for Responsible AI GRC checks)
 - **Status Semantics**: Use correct status values:
   - `Passed`: Resources were checked and met the assessed best practice
   - `Failed`: Resources were checked and found non-compliant
@@ -594,7 +596,7 @@ For detailed troubleshooting guidance, common issues, and debugging tips, see th
 
 ### Current Status
 
-- **AI/ML Assessment**: 71 core checks across three services, 27 always-on Agentic AI Security checks, plus 64 optional Financial Services GenAI risk checks and 12 optional OWASP Top 10 for LLM checks (see [Security Checks Reference](SECURITY_CHECKS.md))
+- **AI/ML Assessment**: 71 core checks across three services, 27 always-on Agentic AI Security checks, plus 64 optional Responsible AI GRC checks and 12 optional OWASP Top 10 for LLM checks (see [Security Checks Reference](SECURITY_CHECKS.md))
 
 ### Potential Additions
 

@@ -1,9 +1,24 @@
 # FinServ GenAI Risk Checks (FS-01 to FS-69)
 
-This document is the complete reference for the Financial Services (FS-XX) GenAI security
-checks derived from the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI
+This document is the complete reference for the **Responsible AI GRC** (`FS-XX`) checks —
+cross-industry technical controls for AI governance, risk, and compliance — derived from the
+[AWS User Guide to Governance, Risk, and Compliance for Responsible AI
 Adoption](https://aws.amazon.com/blogs/security/introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/)
-(referred to throughout as "the Responsible AI GRC guide"). It combines the shared reference material
+(referred to throughout as "the AWS GRC User Guide").
+
+> **Responsible AI GRC is not the
+> [AWS Well-Architected Responsible AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/responsible-ai-lens/responsible-ai-lens.html).**
+> The Lens (November 2025) is a separate architectural review framework with eight focus areas. These
+> checks do not implement, validate, or measure conformance to it. See
+> [Responsible AI GRC — scope, sources, and compatibility](RESPONSIBLE_AI_GRC_SCOPE.md).
+
+These controls originated as financial-services controls and were found applicable across multiple
+industries; the AWS GRC User Guide itself dropped "within Financial Services Industries" from its
+title in the 2026-05-13 update. Financial-services provenance is recorded below as **origin and
+traceability**, not as scope. The `FS-` identifier prefix is retained permanently as a compatibility
+contract.
+
+This document combines the shared reference material
 (severity rubric, guide traceability, upstream-overlap table, compliance mapping) with the full
 set of check definitions, organised into three parts:
 
@@ -19,6 +34,26 @@ Of the 69 FS numbers, **64 ship as standalone checks**; 5 (FS-17, FS-18, FS-19, 
 are merged into upstream SM/BR checks and appear here as upstream-extension notes. See
 [Relationship to upstream SM/BR/AC checks](#relationship-to-upstream-smbrac-checks) for the
 consolidation table.
+
+### FS-00 — Regional Scope Not Applicable (not a control)
+
+`FS-00` is **not a check**. It is a visible `N/A` row emitted for any target region where no
+Bedrock, AgentCore, or SageMaker resources were found, so the report distinguishes "not applicable
+here" from "not assessed". It is absent from the check registry and from the compliance mapping, and
+therefore carries an empty `Compliance_Frameworks` value.
+
+| Field | Detail |
+| ------- | -------- |
+| Check ID | `FS-00` |
+| Finding | Responsible AI GRC — Regional Scope Not Applicable |
+| Severity | Informational |
+| Status | N/A |
+| Detection | Absence of regional Bedrock, AgentCore, and SageMaker resources in the region under assessment. |
+| Remediation | None required unless GenAI workloads are expected in that region. |
+
+It is recorded in
+[`provenance.json`](../aiml-security-assessment/functions/security/finserv_assessments/provenance.json)
+with `not_a_control: true`, because registry-based audits would otherwise miss it entirely.
 
 Each check includes how it is **detected** (the AWS API calls or configuration inspected) and
 how a failure is **remediated** (the specific AWS actions to take). Severities follow a
@@ -49,16 +84,17 @@ Checks:
 
 ## About the source
 
-The 69 FS checks are derived from the [AWS User Guide to Governance, Risk, and Compliance for
+The 69 FS numbers (64 standalone checks plus 5 merged into upstream checks) are derived from the
+[AWS User Guide to Governance, Risk, and Compliance for
 Responsible AI Adoption](https://aws.amazon.com/blogs/security/introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/)
-(referred to throughout as "the Responsible AI GRC guide").
+(referred to throughout as "the AWS GRC User Guide").
 
 Each check includes how it is **detected** (the AWS API calls or configuration inspected)
 and how a failure is **remediated** (the specific AWS actions to take).
 
 ## Guide traceability
 
-The Responsible AI GRC guide organizes AI-specific risks into **15 categories** (§1.2.1 through
+The AWS GRC User Guide organizes AI-specific risks into **15 categories** (§1.2.1 through
 §1.2.15). Every check below is tagged with one of:
 
 - **[Guide §x.y.z]** — mitigation is explicitly listed in that guide section's "Mitigations or controls"
@@ -93,7 +129,7 @@ and [`SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md`](./SECURITY_CHECKS_FINSERV_S
 ## Validation note
 
 Detection and remediation guidance in this document was systematically validated against the
-Responsible AI GRC guide, current AWS documentation, API references, and AWS announcements as
+AWS GRC User Guide, current AWS documentation, API references, and AWS announcements as
 of April 2026. IAM action names were verified against the AWS Service Authorization Reference
 for [Amazon Bedrock](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrock.html),
 [Amazon Bedrock AgentCore](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrockagentcore.html),
@@ -137,8 +173,8 @@ Because `aws-samples` is an OSPO-managed organization, pushes to your personal f
 
 The upstream [sample-aiml-security-assessment](https://github.com/aws-samples/sample-aiml-security-assessment)
 framework already provides 71 core security checks (SM-01 to SM-25, BR-01 to BR-33, AC-01 to AC-13) and 27 always-on Agentic AI Security checks (AG-01 to AG-27).
-The 69 FS checks in this document are **additive**: they enhance the upstream with FinServ-specific
-detection and remediation guidance drawn from the Responsible AI GRC guide. A few FS
+The 69 FS numbers in this document are **additive**: they enhance the upstream with FinServ-specific
+detection and remediation guidance drawn from the AWS GRC User Guide. A few FS
 checks overlap with upstream checks — in those cases, the FS check adds FinServ-specific depth
 (e.g., protected-attribute facets, regulatory cadence requirements, denied-topic content for
 financial advice). The table below surfaces each overlap with a systematic recommendation based
@@ -1127,7 +1163,7 @@ Each FS check maps to one or more FinServ regulatory frameworks (preliminary map
 
 ### Additional Controls — Material Gaps (FS-64 to FS-69)
 
-These checks address mitigations explicitly called out in the Responsible AI GRC guide that were
+These checks address mitigations explicitly called out in the AWS GRC User Guide that were
 not covered by the original checks in the upstream AIML Security Assessment (BR/SM/AC).
 FS-64 is merged into upstream BR-04 (see extension note below); FS-65 to FS-69 ship as
 standalone checks.
@@ -1165,7 +1201,7 @@ standalone checks.
 | Field | Detail |
 | ------- | -------- |
 | Severity | High (deleted bucket) / Medium (notifications) |
-| Guide ref | [Guide §1.2.3] — "Use integrity monitoring on knowledge base data sources to detect unauthorized modifications... For example on S3 data sources use Amazon S3 event notification to track changes to documents." **Note:** This check overlaps with FS-33; FS-33 verifies notifications are *enabled* on the bucket, while FS-65 verifies that notifications are *routed to an alerting destination* (SNS/Lambda/EventBridge rule with a target). In the final PR to aws-samples these two checks may be consolidated into a single check at the reviewer's discretion. |
+| Guide ref | [Guide §1.2.3] — "Use integrity monitoring on knowledge base data sources to detect unauthorized modifications... For example on S3 data sources use Amazon S3 event notification to track changes to documents." **Note:** This check overlaps with FS-33; FS-33 verifies notifications are *enabled* on the bucket, while FS-65 verifies that notifications are *routed to an alerting destination* (SNS/Lambda/EventBridge rule with a target). |
 | Description | Checks that S3 event notifications on KB data-source buckets are routed to an alerting destination (EventBridge rule with SNS/Lambda target, or direct SNS/SQS/Lambda notification) — not just enabled with no consumer. |
 | Detection | Identifies KB data-source S3 buckets via `ListDataSources` and `GetDataSource` (via the `bedrock-agent` boto3 client; IAM actions `bedrock:ListDataSources` and `bedrock:GetDataSource`). For each bucket, calls `s3:GetBucketNotificationConfiguration` and checks for the presence of `EventBridgeConfiguration`, `TopicConfigurations`, `QueueConfigurations`, or `LambdaFunctionConfigurations`. Flags buckets with no notifications configured. |
 | Remediation | 1. Enable EventBridge notifications on each KB data-source bucket: `aws s3api put-bucket-notification-configuration --bucket <name> --notification-configuration '{"EventBridgeConfiguration":{}}'`. 2. Create an EventBridge rule matching S3 event detail types `"Object Created"` and `"Object Deleted"` for the bucket (note: when S3 sends events to **EventBridge**, the event detail types are `Object Created`/`Object Deleted`; the `s3:ObjectCreated:*` and `s3:ObjectRemoved:*` wildcard names are used only for **direct** SNS/SQS/Lambda notification configurations, not for EventBridge rule patterns). 3. Route events to an SNS topic or Lambda function for alerting. 4. Integrate alerts into your security incident response workflow. |
