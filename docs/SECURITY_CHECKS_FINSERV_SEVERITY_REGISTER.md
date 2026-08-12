@@ -115,6 +115,7 @@ severity comes from the NOT_APPLICABLE disposition rule (§3.4).
 | FS-16 | ECR Repositories Without Image Scanning | FAIL | 3 | 2 | **High** | keep |
 | FS-16 | ECR Image Scanning Enabled | PASS | 3 | 2 | **High** | keep |
 | FS-16 | ECR Image Scanning Covered by Inspector Enhanced Scanning | PASS | 3 | 2 | **High** | Δ new row: Inspector enhanced ECR scanning is an equivalent control, so `scanOnPush=false` alone is no longer a FAIL |
+| FS-16 | COULD NOT ASSESS: ECR Image Scanning Check | NA-CouldNotAssess | – | – | **Low** | Δ new row: `inspector2:BatchGetAccountStatus` denied while repositories without scan-on-push exist — unknown Inspector coverage must not default to FAIL |
 
 † **Resolved in REQ-10a:** FS-15 now treats "no eval jobs" as **Failed** (real control); FS-30/35/40
 are converted to **advisory** (they cannot inspect dataset content). See the REQ-10 section below.

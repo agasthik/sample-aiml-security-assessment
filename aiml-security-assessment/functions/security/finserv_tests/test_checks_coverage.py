@@ -416,6 +416,95 @@ class TestFS16EcrScanningWarn:
         _assert_structure(result)
         assert result["status"] == "WARN"
 
+    @staticmethod
+    def _clients(
+        repos_without_scanning=True, inspector_error=None, inspector_state=None
+    ):
+        ecr = MagicMock()
+        ecr.describe_repositories.return_value = {
+            "repositories": [
+                {
+                    "repositoryName": "ml-model-repo",
+                    "imageScanningConfiguration": {
+                        "scanOnPush": not repos_without_scanning
+                    },
+                }
+            ]
+        }
+
+        sts = MagicMock()
+        sts.get_caller_identity.return_value = {"Account": "123456789012"}
+
+        inspector = MagicMock()
+        if inspector_error is not None:
+            inspector.batch_get_account_status.side_effect = inspector_error
+        else:
+            inspector.batch_get_account_status.return_value = {
+                "accounts": [{"resourceState": {"ecr": {"status": inspector_state}}}]
+            }
+
+        def factory(service, **kwargs):
+            return {"ecr": ecr, "sts": sts, "inspector2": inspector}.get(
+                service, MagicMock()
+            )
+
+        return factory
+
+    @patch("finserv_app.boto3.client")
+    def test_inspector_lookup_denied_is_could_not_assess_not_failed(self, mock_client):
+        """BatchGetAccountStatus denied while a repo has no scan-on-push → the
+        check must not default an unknown Inspector state to "not enabled".
+        Whether Inspector covers the repository is unknown, so this must be
+        COULD NOT ASSESS rather than a Failed finding."""
+        mock_client.side_effect = self._clients(
+            repos_without_scanning=True,
+            inspector_error=_client_error("AccessDeniedException"),
+        )
+        result = app.check_ecr_image_scanning()
+        _assert_structure(result)
+        assert any(
+            r["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+            for r in result["csv_data"]
+        )
+        assert not any(r["Status"] == "Failed" for r in result["csv_data"])
+
+    @patch("finserv_app.boto3.client")
+    def test_inspector_lookup_denied_but_all_repos_scanned_is_still_passed(
+        self, mock_client
+    ):
+        """An Inspector lookup failure is irrelevant when every repository
+        already has scan-on-push enabled — nothing is unknown in that case."""
+        mock_client.side_effect = self._clients(
+            repos_without_scanning=False,
+            inspector_error=_client_error("AccessDeniedException"),
+        )
+        result = app.check_ecr_image_scanning()
+        _assert_structure(result)
+        assert any(
+            r["Finding"] == "ECR Image Scanning Enabled" and r["Status"] == "Passed"
+            for r in result["csv_data"]
+        )
+        assert not any(
+            r["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+            for r in result["csv_data"]
+        )
+
+    @patch("finserv_app.boto3.client")
+    def test_inspector_confirmed_disabled_is_still_failed(self, mock_client):
+        """Inspector genuinely DISABLED (not unknown) with an unscanned repo →
+        the original Failed path must still work."""
+        mock_client.side_effect = self._clients(
+            repos_without_scanning=True, inspector_state="DISABLED"
+        )
+        result = app.check_ecr_image_scanning()
+        _assert_structure(result)
+        assert result["status"] == "WARN"
+        assert any(
+            r["Finding"] == "ECR Repositories Without Image Scanning"
+            and r["Status"] == "Failed"
+            for r in result["csv_data"]
+        )
+
 
 # =========================================================================
 # FS-20 — lines 1238-1266: feature store warn/pass paths

@@ -556,6 +556,7 @@ SEVERITY_REGISTER: Dict[str, str] = {
     "ECR Repositories Without Image Scanning": "High",
     "ECR Image Scanning Enabled": "High",
     "ECR Image Scanning Covered by Inspector Enhanced Scanning": "High",
+    "COULD NOT ASSESS: ECR Image Scanning Check": "Low",
     # --- FS-20 ---
     "No SageMaker Feature Groups Found": "Informational",
     "Feature Groups Without Offline Store": "Medium",
@@ -2195,6 +2196,17 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
     Inspector-enabled account — verified live against an account with
     resourceState.ecr=ENABLED and five repositories at scanOnPush=false.
 
+    A subsequent revision fixed that but introduced a related defect: a
+    ClientError from BatchGetAccountStatus was caught and the Inspector state
+    set to an "UNKNOWN (...)" string, which then compared unequal to
+    "ENABLED" the same way "DISABLED" would. So a permissions gap on the
+    Inspector call was indistinguishable from Inspector genuinely being off,
+    and any repository without scan-on-push produced a Failed finding even
+    though whether Inspector covered it was never actually determined. The
+    Inspector lookup failure is now tracked separately and reported as
+    COULD NOT ASSESS whenever it is the reason a repository cannot be
+    classified, rather than defaulting to "not enabled".
+
     Deliberately NOT asserted:
       - that any image has actually been scanned,
       - that scan findings have been triaged or remediated,
@@ -2227,7 +2239,13 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
         # repositories, superseding per-repository scan-on-push. Reporting
         # scanOnPush=false as a failure without checking it produces a false
         # positive on every repository in an Inspector-enabled account.
+        #
+        # inspector_unknown_reason is kept separate from inspector_ecr_state so
+        # a lookup failure can never be compared equal or unequal to "ENABLED" —
+        # collapsing it into a state string is what let a permissions gap on
+        # this call default to "not enabled" and produce a false Failed finding.
         inspector_ecr_state = None
+        inspector_unknown_reason: Optional[str] = None
         try:
             inspector = boto3.client("inspector2", config=boto3_config)
             account_id = boto3.client("sts", config=boto3_config).get_caller_identity()[
@@ -2239,9 +2257,9 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
                     entry.get("resourceState", {}).get("ecr", {}).get("status")
                 )
         except ClientError as e:
-            inspector_ecr_state = f"UNKNOWN ({e.response['Error']['Code']})"
+            inspector_unknown_reason = e.response["Error"]["Code"]
         except Exception as e:  # noqa: BLE001 - Inspector is advisory context here
-            inspector_ecr_state = f"UNKNOWN ({type(e).__name__})"
+            inspector_unknown_reason = type(e).__name__
 
         enhanced_scanning = inspector_ecr_state == "ENABLED"
 
@@ -2251,7 +2269,33 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
             if not r.get("imageScanningConfiguration", {}).get("scanOnPush", False)
         ]
 
-        if repos_without_scanning and enhanced_scanning:
+        if repos_without_scanning and inspector_unknown_reason:
+            # Whether Inspector covers these repositories is unknown, not
+            # false — reporting Failed here would be exactly the false
+            # failure this check exists to avoid.
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-16",
+                    finding_name=f"{COULD_NOT_ASSESS_PREFIX}ECR Image Scanning Check",
+                    finding_details=(
+                        f"{len(repos_without_scanning)} repository(ies) do not set scan-on-push "
+                        f"({', '.join(sorted(repos_without_scanning)[:10])}), and whether Amazon "
+                        "Inspector enhanced scanning covers them could not be determined "
+                        f"(BatchGetAccountStatus failed: {inspector_unknown_reason}). This is a "
+                        "permissions or availability gap, not evidence that these repositories "
+                        "are unscanned."
+                    ),
+                    resolution=(
+                        "Ensure the assessment role has inspector2:BatchGetAccountStatus "
+                        "permission, then re-run the assessment."
+                    ),
+                    reference="https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning.html",
+                    severity="Low",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-16"],
+                )
+            )
+        elif repos_without_scanning and enhanced_scanning:
             # Covered by Inspector: report as passed, naming the compensating
             # control rather than raising a High finding the operator cannot act on.
             findings["csv_data"].append(
