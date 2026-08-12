@@ -304,7 +304,7 @@
         "that individual tool calls receive action-level authorization. An inbound authorizer gates *callers of the runtime endpoint*; it is not a tool-level authorization control. Policy semantics require manual review."
       ],
       "implementing_functions": [
-        "check_agentcore_policy_engine"
+        "check_agentcore_runtime_inbound_authorizer"
       ],
       "regulatory_mapping_source": [
         "SR 11-7",

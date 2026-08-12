@@ -1541,7 +1541,7 @@ def check_bedrock_agent_action_boundaries(permission_cache) -> Dict[str, Any]:
     return findings
 
 
-def check_agentcore_policy_engine() -> Dict[str, Any]:
+def check_agentcore_runtime_inbound_authorizer() -> Dict[str, Any]:
     """
     FS-08 — Report whether each Bedrock AgentCore runtime has an inbound
     authorizer configured.
@@ -7607,7 +7607,7 @@ def build_finserv_checks(permission_cache, inventory=None):
             "FS-07",
             functools.partial(check_bedrock_agent_action_boundaries, permission_cache),
         ),
-        ("FS-08", check_agentcore_policy_engine),
+        ("FS-08", check_agentcore_runtime_inbound_authorizer),
         ("FS-09", functools.partial(check_agent_transaction_limits, inventory)),
         ("FS-10", check_human_in_the_loop_for_high_risk_actions),
         ("FS-11", check_agent_rate_alarms),

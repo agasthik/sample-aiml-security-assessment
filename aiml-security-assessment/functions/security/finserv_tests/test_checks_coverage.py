@@ -180,7 +180,7 @@ class TestFS08AgentcoreReraise:
         c = MagicMock()
         c.list_agent_runtimes.side_effect = _client_error("ServiceUnavailableException")
         mock_client.return_value = c
-        result = app.check_agentcore_policy_engine()
+        result = app.check_agentcore_runtime_inbound_authorizer()
         _assert_structure(result)
         assert result["status"] == "ERROR"
 

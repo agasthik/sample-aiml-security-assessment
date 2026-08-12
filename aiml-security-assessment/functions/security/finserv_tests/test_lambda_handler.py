@@ -408,7 +408,7 @@ class TestAllCheckFunctionsImportable:
         "check_cloudwatch_token_alarms",
         "check_aws_budgets_for_aiml",
         "check_bedrock_agent_action_boundaries",
-        "check_agentcore_policy_engine",
+        "check_agentcore_runtime_inbound_authorizer",
         "check_agent_transaction_limits",
         "check_human_in_the_loop_for_high_risk_actions",
         "check_agent_rate_alarms",

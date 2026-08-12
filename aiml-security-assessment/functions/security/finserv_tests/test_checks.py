@@ -688,7 +688,7 @@ class TestFS07AgentActionBoundaries:
         assert result["status"] == "ERROR"
 
 
-class TestFS08AgentcorePolicyEngine:
+class TestFS08AgentCoreRuntimeInboundAuthorizer:
     """FS-08 — AgentCore runtime inbound authorizer check.
 
     ListAgentRuntimes does not return authorizerConfiguration; only
@@ -716,7 +716,7 @@ class TestFS08AgentcorePolicyEngine:
             "authorizerConfiguration": {"customJWTAuthorizer": {}},
         }
         mock_client.return_value = c
-        result = app.check_agentcore_policy_engine()
+        result = app.check_agentcore_runtime_inbound_authorizer()
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
         c.get_agent_runtime.assert_called_once_with(agentRuntimeId="rt1-id")
@@ -728,7 +728,7 @@ class TestFS08AgentcorePolicyEngine:
         c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
         c.get_agent_runtime.return_value = dict(self.LIST_ITEM)
         mock_client.return_value = c
-        result = app.check_agentcore_policy_engine()
+        result = app.check_agentcore_runtime_inbound_authorizer()
         _assert_finding_structure(result)
         assert result["status"] == "WARN"
 
@@ -754,7 +754,7 @@ class TestFS08AgentcorePolicyEngine:
             },
         }
         mock_client.return_value = c
-        result = app.check_agentcore_policy_engine()
+        result = app.check_agentcore_runtime_inbound_authorizer()
         statuses = {r["Status"] for r in result["csv_data"]}
         assert "Passed" in statuses
         assert "Failed" not in statuses
@@ -766,7 +766,7 @@ class TestFS08AgentcorePolicyEngine:
         c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
         c.get_agent_runtime.return_value = dict(self.LIST_ITEM)
         mock_client.return_value = c
-        result = app.check_agentcore_policy_engine()
+        result = app.check_agentcore_runtime_inbound_authorizer()
         blob = " ".join(
             f"{r['Finding']} {r['Finding_Details']} {r['Resolution']}"
             for r in result["csv_data"]
@@ -788,7 +788,7 @@ class TestFS08AgentcorePolicyEngine:
             "authorizerConfiguration": {"customJWTAuthorizer": {}},
         }
         mock_client.return_value = c
-        result = app.check_agentcore_policy_engine()
+        result = app.check_agentcore_runtime_inbound_authorizer()
         _assert_finding_structure(result)
         assert c.list_agent_runtimes.call_count == 2
         assert c.get_agent_runtime.call_count == 2
@@ -799,7 +799,7 @@ class TestFS08AgentcorePolicyEngine:
         c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
         c.get_agent_runtime.side_effect = _client_error("AccessDeniedException")
         mock_client.return_value = c
-        result = app.check_agentcore_policy_engine()
+        result = app.check_agentcore_runtime_inbound_authorizer()
         _assert_finding_structure(result)
         names = [r["Finding"] for r in result["csv_data"]]
         assert any(n.startswith(app.COULD_NOT_ASSESS_PREFIX) for n in names)
@@ -812,7 +812,7 @@ class TestFS08AgentcorePolicyEngine:
         c = MagicMock()
         c.list_agent_runtimes.return_value = {"agentRuntimes": []}
         mock_client.return_value = c
-        result = app.check_agentcore_policy_engine()
+        result = app.check_agentcore_runtime_inbound_authorizer()
         _assert_finding_structure(result)
         assert any(r["Status"] == "N/A" for r in result["csv_data"])
         c.get_agent_runtime.assert_not_called()
@@ -822,14 +822,14 @@ class TestFS08AgentcorePolicyEngine:
         c = MagicMock()
         c.list_agent_runtimes.side_effect = _client_error("AccessDeniedException")
         mock_client.return_value = c
-        result = app.check_agentcore_policy_engine()
+        result = app.check_agentcore_runtime_inbound_authorizer()
         _assert_finding_structure(result)
         assert any(r["Status"] == "N/A" for r in result["csv_data"])
 
     @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("agentcore error")
-        result = app.check_agentcore_policy_engine()
+        result = app.check_agentcore_runtime_inbound_authorizer()
         assert result["status"] == "ERROR"
 
 
