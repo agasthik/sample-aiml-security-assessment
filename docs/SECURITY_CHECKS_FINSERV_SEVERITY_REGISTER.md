@@ -68,10 +68,11 @@ Medium (FS-02 was High); no `Critical` (capped at High).
 | FS-07 | Agent Action Boundary Check | NA-NotApplicable | – | – | **Informational** | keep |
 | FS-07 | Bedrock Agent Overly Broad Action Permissions | FAIL | 3 | 2 | **High** | keep |
 | FS-07 | Agent Action Boundaries Look Appropriate | PASS | 3 | 2 | **High** | keep |
-| FS-08 | AgentCore Policy Engine — Access Check | NA-CouldNotAssess | – | – | **Low** | keep |
+| FS-08 | AgentCore Runtime Inbound Authorizer — Access Check | NA-CouldNotAssess | – | – | **Low** | keep |
 | FS-08 | No AgentCore Runtimes Found | NA-NotApplicable | – | – | **Informational** | keep |
-| FS-08 | AgentCore Runtimes Missing Policy Engine | FAIL | 3 | 2 | **High** | keep |
-| FS-08 | AgentCore Policy Engine Configured | PASS | 3 | 2 | **High** | keep |
+| FS-08 | AgentCore Runtimes Without Inbound Authorizer | FAIL | 3 | 2 | **High** | keep |
+| FS-08 | AgentCore Runtimes With Inbound Authorizer Configured | PASS | 3 | 2 | **High** | keep |
+| FS-08 | COULD NOT ASSESS: AgentCore Runtime Inbound Authorizer Check | NA-CouldNotAssess | – | – | **Low** | keep |
 | FS-09 | Agent Lambda Functions Without Concurrency Limits | FAIL | 2 | 2 | **Medium** | keep |
 | FS-09 | Agent Lambda Concurrency Limits Present | PASS (computed) | 2 | 2 | **Medium** | keep |
 | FS-10 | Human-in-the-Loop Check — No Agent Workflows Found | NA-NotApplicable | – | – | **Informational** | Δ Medium→Info |

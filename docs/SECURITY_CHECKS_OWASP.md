@@ -166,7 +166,7 @@ Maps from:
 | AC-02 | AgentCore IAM least privilege |
 | AC-10 | AgentCore resource-based policies |
 | FS-07 | Agent execution role least privilege (FinServ) |
-| FS-08 | AgentCore Gateway Policy Engine ENFORCE |
+| FS-08 | AgentCore runtime inbound authorizer (FinServ) |
 | FS-09 | Agent tool concurrency limits |
 | FS-10 | Step Functions HITL callback tasks |
 | FS-67 | Agent transaction thresholds in Cedar / config |

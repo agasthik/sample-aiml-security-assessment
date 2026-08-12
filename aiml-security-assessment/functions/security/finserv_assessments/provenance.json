@@ -282,7 +282,7 @@
     },
     {
       "check_id": "FS-08",
-      "title": "AgentCore Policy Engine and Observability",
+      "title": "AgentCore Runtime Inbound Authorizer",
       "source_id": "aws-grc-user-guide",
       "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
       "source_version_or_date": "updated 2026-05-13",
@@ -290,9 +290,9 @@
       "source_section": "§1.2.9",
       "source_page": null,
       "derivation_type": "direct-derived",
-      "source_excerpt_summary": "\"Use Amazon Bedrock AgentCore to manage complex tasks and connect securely\"; \"Define and enforce explicit action boundaries\"; **\"Implement audit logging of all actions taken by AI agents, including the reasoning chain that led to each action.\"** (The audit-logging mitigation's guide reference is \"Observe your agent applications on Amazon Bedrock AgentCore Observability.\")",
+      "source_excerpt_summary": "\"Use Amazon Bedrock AgentCore to manage complex tasks and connect securely\". An inbound authorizer gates callers of the runtime endpoint. The section's action-boundary and audit-logging mitigations are **not** implemented by this check.",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "(a) Calls `ListGateways` and `GetGateway` (via the `bedrock-agentcore-control` boto3 client; IAM actions are `bedrock-agentcore:ListGateways` and `bedrock-agentcore:GetGateway`); inspects `policyEngineConfiguration.arn` and `policyEngineConfiguration.mode` (must be `ENFORCE` for production). (b) Calls `ListAgentRuntimes` (IAM action `bedrock-agentcore:ListAgentRuntimes`) and inspects each runtime's `authorizerConfiguration.customJWTAuthorizer` for inbound auth. (c) Verifies **AgentCore Observability** is enabled by (i) checking that CloudWatch Transaction Search is on via `xray:GetTraceSegment",
+      "inspected_aws_evidence": "Calls `ListAgentRuntimes` (paginated, via the `bedrock-agentcore-control` boto3 client; IAM action `bedrock-agentcore:ListAgentRuntimes`) for the runtime inventory, then `GetAgentRuntime` per runtime (IAM action `bedrock-agentcore:GetAgentRuntime`) to read `authorizerConfiguration` — the list operation does not return that field. Runtimes with an `authorizerConfiguration` are reported Passed; those without are reported Failed; a runtime that cannot be described is reported as COULD NOT ASSESS rather than counted either way.",
       "unsupported_assertions": [
         "that an AgentCore Policy Engine resource exists",
         "that policies are associated with every relevant tool",
@@ -2214,9 +2214,9 @@
       "source_section": "§1.2.9",
       "source_page": null,
       "derivation_type": "direct-derived",
-      "source_excerpt_summary": "\"Enforce transaction value thresholds and action boundaries on agent tool calls (for example to cap financial transaction amounts).\"",
+      "source_excerpt_summary": "\"Enforce transaction value thresholds and action boundaries on agent tool calls (for example to cap financial transaction amounts).\" This check reports a naming hint only; it does not observe enforcement.",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "(a) Calls `ListGateways` (via the `bedrock-agentcore-control` boto3 client; IAM action `bedrock-agentcore:ListGateways`) and for each inspects attached Policy Engine Cedar policies for transaction-value constraints (policies referencing amount, limit, or threshold context attributes). (b) Calls `lambda:ListFunctions` and filters for agent action-group Lambda functions. Inspects each function's environment variables for threshold-related keys (e.g., `MAX_TRANSACTION_AMOUNT`, `TRANSACTION_LIMIT`). Flags gateways and functions with no threshold configuration.",
+      "inspected_aws_evidence": "Reads the shared Lambda inventory (`ListFunctions`; IAM action `lambda:ListFunctions`) and selects functions whose name contains any of `agent`, `action`, `tool`, `bedrock`, `finserv` or `transaction`, excluding the assessment's own functions. For each match, inspects only the **names** of environment variables for `threshold`, `limit` or `max`. Variable values are never read, and no AgentCore Gateway or Policy Engine API is called.",
       "unsupported_assertions": [
         "that a matched function performs financial transactions",
         "that any threshold is enforced anywhere in code",
