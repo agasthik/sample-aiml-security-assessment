@@ -4586,6 +4586,15 @@ def check_cloudwatch_log_pii_masking() -> Dict[str, Any]:
         "No CloudWatch Logs Data Protection Policies", because a log-group
         policy is invisible to DescribeAccountPolicies.
 
+    A subsequent revision fixed both of those but introduced a third: a
+    ClientError from DescribeAccountPolicies or GetDataProtectionPolicy was
+    caught and treated as "no policy found" for that call, so an access-denied
+    permissions gap on either API silently became a Failed finding indistin-
+    guishable from a genuinely unprotected log group. Both calls are now
+    tracked tri-state (found / confirmed absent / unknown), and a Failed
+    verdict requires that both were confirmed absent — an unknown side, with
+    no policy found on the other, is reported as COULD NOT ASSESS instead.
+
     Deliberately NOT asserted:
       - that the configured data identifiers cover every PII type in the logs,
       - that masking is working on log content already delivered,
@@ -4689,25 +4698,70 @@ def check_cloudwatch_log_pii_masking() -> Dict[str, Any]:
 
         # CloudWatch delivery is in use: a policy may be attached at account
         # scope or directly to the log group. Either satisfies the control.
-        account_policies = []
+        #
+        # A ClientError on either call means that side is UNKNOWN, not that it
+        # found no policy — collapsing "denied" into "empty" would turn a
+        # permissions gap into a false Failed finding, indistinguishable from a
+        # genuinely unprotected log group. Both sides are tracked as tri-state
+        # (found / confirmed absent / unknown) so a denial on one side cannot
+        # manufacture a Failed verdict, while a policy found on the other side
+        # still yields a legitimate Passed regardless of the denial.
+        account_policies: List[Dict[str, Any]] = []
+        account_policies_unknown: Optional[str] = None
         try:
             account_policies = logs.describe_account_policies(
                 policyType="DATA_PROTECTION_POLICY"
             ).get("accountPolicies", [])
-        except ClientError:
-            account_policies = []
+        except ClientError as e:
+            account_policies_unknown = e.response["Error"]["Code"]
 
         # GetDataProtectionPolicy does NOT raise for a log group without a
         # policy: it returns a response with no policyDocument member. Testing
         # the response for truthiness would always succeed because of
         # ResponseMetadata, so the presence of policyDocument is the signal.
+        # A ClientError here means the group-level policy is unknown, not that
+        # it is absent.
         group_policy = None
+        group_policy_unknown: Optional[str] = None
         try:
             response = logs.get_data_protection_policy(logGroupIdentifier=log_group)
             if response.get("policyDocument"):
                 group_policy = response
-        except ClientError:
-            group_policy = None
+        except ClientError as e:
+            group_policy_unknown = e.response["Error"]["Code"]
+
+        if not (group_policy or account_policies) and (
+            account_policies_unknown or group_policy_unknown
+        ):
+            # Neither side found a policy, and at least one side is unknown
+            # rather than confirmed absent, so "no policy exists" is not
+            # established. Reporting Failed here would be exactly the false
+            # failure this check exists to avoid.
+            unknown = []
+            if account_policies_unknown:
+                unknown.append(f"DescribeAccountPolicies ({account_policies_unknown})")
+            if group_policy_unknown:
+                unknown.append(f"GetDataProtectionPolicy ({group_policy_unknown})")
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-43",
+                    finding_name=f"{COULD_NOT_ASSESS_PREFIX}{check_name}",
+                    finding_details=(
+                        "Unable to determine whether CloudWatch log group "
+                        f"{log_group} has a data protection policy: {' and '.join(unknown)} "
+                        "failed. This is a permissions gap, not evidence that no policy exists."
+                    ),
+                    resolution=(
+                        "Ensure the assessment role has logs:DescribeAccountPolicies and "
+                        "logs:GetDataProtectionPolicy permission."
+                    ),
+                    reference=reference,
+                    severity="Low",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-43"],
+                )
+            )
+            return findings
 
         if group_policy or account_policies:
             scope = []

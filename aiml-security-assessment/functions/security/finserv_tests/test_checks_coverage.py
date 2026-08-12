@@ -1609,6 +1609,7 @@ class TestFS43CloudwatchPiiPaths:
         account_policies=None,
         group_policy=None,
         describe_error=None,
+        group_error=None,
         logging_error=None,
     ):
         bedrock = MagicMock()
@@ -1631,11 +1632,14 @@ class TestFS43CloudwatchPiiPaths:
         # GetDataProtectionPolicy does NOT raise for a log group without a
         # policy; it returns a response with no policyDocument member. Only
         # ResponseMetadata comes back, so truthiness of the response is useless.
-        logs.get_data_protection_policy.return_value = (
-            {"policyDocument": group_policy, "ResponseMetadata": {}}
-            if group_policy
-            else {"ResponseMetadata": {}}
-        )
+        if group_error is not None:
+            logs.get_data_protection_policy.side_effect = group_error
+        else:
+            logs.get_data_protection_policy.return_value = (
+                {"policyDocument": group_policy, "ResponseMetadata": {}}
+                if group_policy
+                else {"ResponseMetadata": {}}
+            )
 
         def factory(service, **kwargs):
             return {"bedrock": bedrock, "logs": logs}.get(service, MagicMock())
@@ -1657,16 +1661,79 @@ class TestFS43CloudwatchPiiPaths:
         )
 
     @patch("finserv_app.boto3.client")
-    def test_client_error_on_describe_policies_treated_as_no_policies(
+    def test_describe_policies_denied_with_no_group_policy_is_could_not_assess(
         self, mock_client
     ):
-        """DescribeAccountPolicies denied and no log-group policy → WARN."""
+        """DescribeAccountPolicies denied and no log-group policy found → the
+        account-scoped side is UNKNOWN, not confirmed empty, so this must be
+        COULD NOT ASSESS rather than a Failed finding. A denial is a permissions
+        gap, not evidence that no policy exists."""
         mock_client.side_effect = self._clients(
             self._CW, describe_error=_client_error("AccessDeniedException")
         )
         result = app.check_cloudwatch_log_pii_masking()
         _assert_structure(result)
-        assert result["status"] == "WARN"
+        assert any(
+            r["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+            for r in result["csv_data"]
+        )
+        assert not any(r["Status"] == "Failed" for r in result["csv_data"])
+
+    @patch("finserv_app.boto3.client")
+    def test_group_policy_lookup_denied_with_no_account_policy_is_could_not_assess(
+        self, mock_client
+    ):
+        """GetDataProtectionPolicy denied and no account-scoped policy found →
+        the log-group side is UNKNOWN, so this must be COULD NOT ASSESS."""
+        mock_client.side_effect = self._clients(
+            self._CW, group_error=_client_error("AccessDeniedException")
+        )
+        result = app.check_cloudwatch_log_pii_masking()
+        _assert_structure(result)
+        assert any(
+            r["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+            for r in result["csv_data"]
+        )
+        assert not any(r["Status"] == "Failed" for r in result["csv_data"])
+
+    @patch("finserv_app.boto3.client")
+    def test_both_policy_lookups_denied_is_could_not_assess(self, mock_client):
+        """Both calls denied → COULD NOT ASSESS, never Failed."""
+        mock_client.side_effect = self._clients(
+            self._CW,
+            describe_error=_client_error("AccessDeniedException"),
+            group_error=_client_error("ThrottlingException"),
+        )
+        result = app.check_cloudwatch_log_pii_masking()
+        _assert_structure(result)
+        assert any(
+            r["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+            for r in result["csv_data"]
+        )
+        assert not any(r["Status"] == "Failed" for r in result["csv_data"])
+
+    @patch("finserv_app.boto3.client")
+    def test_describe_policies_denied_but_group_policy_found_is_still_passed(
+        self, mock_client
+    ):
+        """A denial on the account-scoped lookup must not block a legitimate
+        Passed verdict when the log-group-scoped policy IS found."""
+        mock_client.side_effect = self._clients(
+            self._CW,
+            describe_error=_client_error("AccessDeniedException"),
+            group_policy='{"Name":"dp"}',
+        )
+        result = app.check_cloudwatch_log_pii_masking()
+        _assert_structure(result)
+        assert any(
+            r["Finding"] == "CloudWatch Logs Data Protection Policies Present"
+            and r["Status"] == "Passed"
+            for r in result["csv_data"]
+        )
+        assert not any(
+            r["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+            for r in result["csv_data"]
+        )
 
     @patch("finserv_app.boto3.client")
     def test_pass_account_scoped_policy(self, mock_client):
