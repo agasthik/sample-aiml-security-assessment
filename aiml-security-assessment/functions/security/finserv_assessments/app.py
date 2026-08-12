@@ -490,6 +490,10 @@ _DISPOSITION_SEVERITY = {
 # (test_severity_register.py) asserts every emitted severity matches this map.
 # Entries: finding_name -> (severity, disposition). I/L rationale lives in the doc.
 SEVERITY_REGISTER: Dict[str, str] = {
+    # --- FS-00 (not a control: the regional not-applicable row. Registered so
+    #     severity drift on it is caught, since FS-00 is absent from the check
+    #     registry and a registry-based audit cannot see it.) ---
+    "Responsible AI GRC — Regional Scope Not Applicable": "Informational",
     # --- FS-01 (Shield = Low; WAF = Medium) ---
     "AWS Shield Advanced Not Enabled": "Low",
     "AWS Shield Advanced Enabled": "Low",

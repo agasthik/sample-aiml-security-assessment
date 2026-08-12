@@ -2,10 +2,13 @@
 
 This register is the **single source of truth** for the severity of every FinServ finding. It is
 derived by applying [`SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md`](./SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md) (Likelihood × Impact →
-ASFF label; §3.4 disposition rules; §3.5 family bands) to the **182 `create_finding` rows / 65
-check IDs** extracted from `finserv_assessments/app.py`. (181 of those rows carry a static
-finding-name and appear in the table below; the 182nd is the shared `_could_not_assess_row`
-helper, whose name is built at runtime from the calling check.)
+ASFF label; §3.4 disposition rules; §3.5 family bands) to the **183 `create_finding` rows / 65
+check IDs** extracted from `finserv_assessments/app.py`. 182 of those call sites carry a static
+finding-name; they reduce to **175 distinct names**, which are the 181 rows in the tables below
+(a few names, such as `No Knowledge Bases Found`, are shared by several check IDs and so appear
+once per check). The 183rd is the shared `_could_not_assess_row` helper, whose name is built at
+runtime from the calling check and is therefore validated by the disposition rule (§3.4) rather
+than by name.
 
 During implementation this becomes `SEVERITY_REGISTER` in `app.py` (keyed by finding-name) and the
 `test_severity_register.py` drift-guard asserts each emitted `severity=` equals the value here.
@@ -39,6 +42,18 @@ Medium (FS-02 was High); no `Critical` (capped at High).
 ---
 
 ## Register
+
+### FS-00 — not a control
+
+Emitted by `_no_regional_genai_resources_row` and persisted to the CSV, so it needs a
+severity, but FS-00 is deliberately absent from the check registry and from the
+compliance mapping (see the FS-00 section of
+[`SECURITY_CHECKS_FINSERV.md`](./SECURITY_CHECKS_FINSERV.md)). There is no I×L: the
+severity comes from the NOT_APPLICABLE disposition rule (§3.4).
+
+| Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
+| --- | --- | --- | --- | --- | --- | --- |
+| FS-00 | Responsible AI GRC — Regional Scope Not Applicable | NA-NotApplicable | – | – | **Informational** | Δ added: the row was emitted but unregistered, so drift on it was undetectable |
 
 ### Category 1 — Unbounded Consumption (cost / rate-limiting family → Medium; Shield → Low)
 
@@ -142,9 +157,9 @@ are converted to **advisory** (they cannot inspect dataset content). See the REQ
 | FS-27 | Automated Reasoning Policies — Access Check | NA-CouldNotAssess | – | – | **Low** | keep |
 | FS-27 | No Automated Reasoning Policies Found | FAIL | 2 | 2 | **Medium** | keep |
 | FS-27 | Automated Reasoning Policies Found | PASS | 2 | 2 | **Medium** | keep |
-| FS-28 | No Guardrails — Denied Topics Not Applicable | NA-NotApplicable | – | – | **Informational** | Δ Medium→Info |
-| FS-28 | No Guardrails With Denied Financial Topics | FAIL | 3 | 2 | **High** | keep |
-| FS-28 | Denied Topics Configured on CLASSIC Tier | PASS | 3 | 2 | **High** | Δ Low→High; tier note → details ‡ |
+| FS-28 | No Guardrails — Topic Policy Not Applicable | NA-NotApplicable | – | – | **Informational** | Δ Medium→Info; renamed to the emitted name (the check reads `topicPolicy`) |
+| FS-28 | No Guardrails With Topic Policies | FAIL | 3 | 2 | **High** | Δ renamed from "No Guardrails With Denied Financial Topics": the check confirms a topic policy exists, never that the denied topics are financial |
+| FS-28 | Topic Policies Configured on CLASSIC Tier | PASS | 3 | 2 | **High** | Δ Low→High; tier note → details ‡; renamed to the emitted name |
 | FS-28 | Guardrails With Topic Policies Found | PASS | 3 | 2 | **High** | Δ Medium→High |
 | FS-29 | ADVISORY: Compliance Disclaimer — Manual Review Required | NA-Advisory | – | – | **Informational** | keep |
 | FS-30 | ADVISORY: Compliance Dataset Coverage — Manual Review Required | NA-Advisory | – | – | **Informational** | Δ to advisory (REQ-10a): can't verify dataset content; replaces N/A+PASS |
@@ -191,10 +206,12 @@ recommendation lives in the finding details.
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
 | --- | --- | --- | --- | --- | --- | --- |
 | FS-39 | No SageMaker Clarify Bias Monitoring | FAIL | 3 | 2 | **High** | keep |
-| FS-39 | SageMaker Clarify Bias Monitoring Active | PASS | 3 | 2 | **High** | keep |
+| FS-39 | SageMaker Clarify Bias Monitoring Schedules Not Running | FAIL | 3 | 2 | **High** | Δ row was absent from this register; the code emits it when a bias schedule exists but is not in the Scheduled state, which is a distinct failure from having no schedule |
+| FS-39 | SageMaker Clarify Bias Monitoring Schedules Found | PASS | 3 | 2 | **High** | Δ renamed from "SageMaker Clarify Bias Monitoring Active": the check observes schedule existence, and running state is reported by the row above |
 | FS-40 | ADVISORY: Bias Dataset Coverage — Manual Review Required | NA-Advisory | – | – | **Informational** | Δ to advisory (REQ-10a): can't verify dataset content; replaces N/A+PASS |
 | FS-41 | No SageMaker Clarify Explainability Monitoring | FAIL | 3 | 2 | **High** | keep |
-| FS-41 | SageMaker Clarify Explainability Active | PASS | 3 | 2 | **High** | keep |
+| FS-41 | SageMaker Clarify Explainability Schedules Not Running | FAIL | 3 | 2 | **High** | Δ row was absent from this register; the code emits it when an explainability schedule exists but is not in the Scheduled state |
+| FS-41 | SageMaker Clarify Explainability Monitoring Schedules Found | PASS | 3 | 2 | **High** | Δ renamed from "SageMaker Clarify Explainability Active": the check observes schedule existence, and running state is reported by the row above |
 | FS-42 | No SageMaker Model Cards Found | NA-NotApplicable | – | – | **Informational** | Δ Medium/FAIL→Informational/NA: a Bedrock-only estate legitimately has no SageMaker model cards, so absence is not a finding |
 | FS-42 | SageMaker Model Cards Not Approved | FAIL | 2 | 2 | **Medium** | Δ new row: `ModelCardStatus` is now assessed |
 | FS-42 | SageMaker Model Cards Approved | PASS | 2 | 2 | **Medium** | Δ renamed from "SageMaker Model Cards Present": card presence alone was not the control |
@@ -294,11 +311,12 @@ recommendation lives in the finding details.
 | FS-65 | KB Data Source S3 Event Notifications Configured | PASS | 2 | 2 | **Medium** | keep |
 | FS-66 | AgentCore Identity Propagation — Access Check | NA-CouldNotAssess | – | – | **Low** | keep |
 | FS-66 | No AgentCore Runtimes Found | NA-NotApplicable | – | – | **Informational** | keep |
-| FS-66 | AgentCore Runtimes Missing End-User Identity Propagation | FAIL | 3 | 2 | **High** | keep |
-| FS-66 | AgentCore End-User Identity Propagation Configured | PASS | 3 | 2 | **High** | Δ Low→High (match FAIL) |
+| FS-66 | AgentCore Runtimes Without JWT Authorizer | FAIL | 3 | 2 | **High** | Δ renamed from "AgentCore Runtimes Missing End-User Identity Propagation": the check reads `authorizerConfiguration`, which shows whether inbound JWT authorization is configured, not whether an end-user identity reaches downstream calls |
+| FS-66 | AgentCore Runtimes With JWT Authorizer Configured | PASS | 3 | 2 | **High** | Δ Low→High (match FAIL); renamed to the emitted name for the same reason as the FAIL row above |
+| FS-66 | COULD NOT ASSESS: AgentCore End-User Identity Propagation Check | NA-CouldNotAssess | – | – | **Low** | Δ row was absent from this register; emitted when the runtime detail cannot be read (distinct from the inbound-authorizer access check above) |
 | FS-67 | No Agent Action-Group Lambda Functions Found | NA-NotApplicable | – | – | **Informational** | Δ High→Info |
 | FS-67 | Agent Action-Group Lambdas May Lack Transaction Thresholds | FAIL | 3 | 2 | **High** | keep |
-| FS-67 | Agent Action-Group Lambdas Have Threshold Configuration | PASS | 3 | 2 | **High** | keep |
+| FS-67 | Agent Action-Group Lambdas Have Threshold-Named Variables | PASS | 3 | 2 | **High** | Δ renamed from "Agent Action-Group Lambdas Have Threshold Configuration": the check matches Lambda environment variable NAMES and cannot see whether a threshold value is set or enforced |
 | FS-68 | API Gateway Request Body Size Limits Not Enforced | FAIL | 2 | 2 | **Medium** | keep |
 | FS-68 | API Gateway Request Body Size Limits — Not Applicable | NA-NotApplicable | – | – | **Informational** | new branch (REQ-4) |
 | FS-68 | API Gateway Request Body Size Limits Configured | PASS | 2 | 2 | **Medium** | keep |
