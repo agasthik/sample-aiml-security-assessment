@@ -7363,8 +7363,24 @@ def detect_finserv_regional_footprint(region: str) -> Optional[bool]:
 
     Returns:
         True when Bedrock, AgentCore, or SageMaker resources exist
-        False when supported probes succeed and return no resources
-        None when permissions/API errors prevent a confident decision
+        False when EVERY probe either succeeds with an empty result or is not
+            available in this region (i.e. no probe is indeterminate)
+        None when at least one probe's result is indeterminate (permissions or
+            unexpected errors), even if other probes succeeded empty
+
+    A region is only ever reported as empty (False) when the full picture is
+    known. An earlier revision returned False as soon as ANY probe succeeded
+    empty, even when another probe in the same loop was indeterminate — so an
+    AccessDenied on, say, SageMaker while Bedrock Guardrails happened to be
+    empty produced a confident "no resources" verdict from a partially unknown
+    picture. Downstream, that classifies the region as empty, which strips it
+    from `_stamp_regions` and instead emits an FS-00 "no regional resources
+    found" row — a false claim, and if it happens for every target region it
+    suppresses every FinServ finding across the whole assessment (which
+    `_apply_region_scope` reports as "no resources found" rather than as the
+    indeterminate/could-not-assess condition it actually is). `None` now takes
+    priority over any confirmed-empty probe result whenever at least one probe
+    could not be resolved, matching the contract stated above.
     """
     bedrock = boto3.client("bedrock", config=boto3_config, region_name=region)
     bedrock_agent = boto3.client(
@@ -7408,18 +7424,17 @@ def detect_finserv_regional_footprint(region: str) -> Optional[bool]:
     ]
 
     indeterminate = False
-    successful_empty_probe = False
     for probe_label, probe_func in probes:
         probe_result = _probe_regional_resource_list(probe_label, probe_func)
         if probe_result is True:
             return True
-        if probe_result is False:
-            successful_empty_probe = True
         if probe_result is None:
             indeterminate = True
 
-    if successful_empty_probe:
-        return False
+    # False is only correct when every probe was resolved (empty or N/A in
+    # this region) — a mix of "confirmed empty" and "indeterminate" must not
+    # collapse to False, since that would hide a real footprint that an
+    # unresolved probe could not rule out.
     return None if indeterminate else False
 
 

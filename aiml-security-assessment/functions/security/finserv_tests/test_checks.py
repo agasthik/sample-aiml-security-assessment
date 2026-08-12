@@ -3750,6 +3750,76 @@ class TestFinservRegionalFootprint:
 
         assert app.detect_finserv_regional_footprint("eu-west-1") is None
 
+    @patch("finserv_app.boto3.client")
+    def test_detect_returns_none_on_a_mix_of_empty_and_indeterminate_probes(
+        self, mock_client
+    ):
+        """One probe succeeds empty, the rest are denied → the overall picture
+        is still indeterminate, not "no resources found". An earlier revision
+        returned False as soon as ANY probe succeeded empty, so a real
+        footprint an unresolved probe could not rule out (here: SageMaker,
+        AgentCore, and the rest of Bedrock) was silently hidden and the region
+        was reported as having no GenAI resources at all."""
+        bedrock = MagicMock()
+        bedrock.list_guardrails.return_value = {"guardrails": []}  # confirmed empty
+        bedrock_agent = MagicMock()
+        bedrock_agent.list_agents.side_effect = _client_error("AccessDeniedException")
+        bedrock_agent.list_knowledge_bases.side_effect = _client_error(
+            "AccessDeniedException"
+        )
+        agentcore = MagicMock()
+        agentcore.list_agent_runtimes.side_effect = _client_error(
+            "AccessDeniedException"
+        )
+        sagemaker = MagicMock()
+        sagemaker.list_endpoints.side_effect = _client_error("AccessDeniedException")
+        sagemaker.list_models.side_effect = _client_error("AccessDeniedException")
+        sagemaker.list_feature_groups.side_effect = _client_error(
+            "AccessDeniedException"
+        )
+        mock_client.side_effect = self._client_factory(
+            {
+                "bedrock": bedrock,
+                "bedrock-agent": bedrock_agent,
+                "bedrock-agentcore-control": agentcore,
+                "sagemaker": sagemaker,
+            }
+        )
+
+        assert app.detect_finserv_regional_footprint("ap-southeast-1") is None
+
+    @patch("finserv_app.boto3.client")
+    def test_detect_returns_none_when_the_last_probe_is_indeterminate(
+        self, mock_client
+    ):
+        """The inverse ordering: every probe up to the last succeeds empty, and
+        only the final probe is denied. The result must still be None — the
+        bug depended on which probe ran first setting a flag that a later
+        probe's flag could not override, so both orderings must be checked."""
+        bedrock = MagicMock()
+        bedrock.list_guardrails.return_value = {"guardrails": []}
+        bedrock_agent = MagicMock()
+        bedrock_agent.list_agents.return_value = {"agentSummaries": []}
+        bedrock_agent.list_knowledge_bases.return_value = {"knowledgeBaseSummaries": []}
+        agentcore = MagicMock()
+        agentcore.list_agent_runtimes.return_value = {"agentRuntimes": []}
+        sagemaker = MagicMock()
+        sagemaker.list_endpoints.return_value = {"Endpoints": []}
+        sagemaker.list_models.return_value = {"Models": []}
+        sagemaker.list_feature_groups.side_effect = _client_error(
+            "AccessDeniedException"
+        )
+        mock_client.side_effect = self._client_factory(
+            {
+                "bedrock": bedrock,
+                "bedrock-agent": bedrock_agent,
+                "bedrock-agentcore-control": agentcore,
+                "sagemaker": sagemaker,
+            }
+        )
+
+        assert app.detect_finserv_regional_footprint("ap-southeast-2") is None
+
     @patch("finserv_app.detect_finserv_regional_footprint")
     def test_partition_keeps_indeterminate_regions_in_scope(self, mock_detect):
         mock_detect.side_effect = [None, False, True]
