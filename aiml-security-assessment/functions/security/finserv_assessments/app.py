@@ -3659,6 +3659,11 @@ def check_source_attribution_in_guardrails() -> Dict[str, Any]:
     """
     FS-32 — Advisory check: verify application implements source attribution
     (citations) in GenAI responses to enable fact-checking.
+    Evidence collected: none. Whether citations reach the end user depends on the
+    application passing the right arguments to RetrieveAndGenerate at query time
+    and then rendering the returned ``citations`` — neither the request nor the
+    rendering is visible to any AWS configuration API, so this check makes zero
+    API calls and always returns a single advisory N/A row.
     COMPLIANCE_PLACEHOLDER: [SR 11-7, FFIEC CAT, MAS TRM 9.2]
     """
     findings = _empty_findings("Source Attribution Check")

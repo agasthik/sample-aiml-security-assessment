@@ -1030,7 +1030,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Use source attribution in RAG-based response for end users to verify provenance of information\" (§1.2.3); \"Use source attribution in RAG-based response for end users to verify currency of information\" (§1.2.10).",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Advisory check — inspects application code or configuration for use of the `citations` field in `RetrieveAndGenerate` API responses. Checks Lambda environment variables for attribution-related settings.",
+      "inspected_aws_evidence": "Advisory, and makes no API calls. Emits a single `ADVISORY:` row prompting a manual review that citations are shown to end users. Application code is NOT inspected and Lambda environment variables are NOT read. Source attribution is a property of the application's own data-plane `RetrieveAndGenerate` request and of how it renders the returned `citations` member; the assessment never invokes that operation, and neither the request arguments nor the rendering is exposed by any AWS configuration API. A Lambda environment variable naming an attribution setting would be a naming convention, not evi",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
