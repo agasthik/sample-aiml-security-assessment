@@ -359,10 +359,12 @@ Resources:
                   - budgets:ViewBudget
                   # Logs account policies (FS-05, FS-11, FS-43)
                   - logs:DescribeAccountPolicies
+                  - logs:GetDataProtectionPolicy
                   # Bedrock — models, data sources, reasoning (FS-07, FS-15, FS-27..50)
                   - bedrock:ListFoundationModels
                   - bedrock:ListDataSources
                   - bedrock:GetDataSource
+                  - bedrock:ListIngestionJobs
                   - bedrock:ListAutomatedReasoningPolicies
                   - bedrock:ListTagsForResource
                   # Lambda concurrency / agent transaction checks (FS-09, FS-67, FS-69)
@@ -379,9 +381,11 @@ Resources:
                   - s3:ListAllMyBuckets
                   - s3:GetBucketNotification
                   # OpenSearch Serverless — KB vector store (FS-25, FS-26)
+                  - aoss:ListCollections
                   - aoss:ListSecurityPolicies
                   # Macie — PII detection on training data (FS-44)
                   - macie2:GetMacieSession
+                  - macie2:GetAutomatedDiscoveryConfiguration
                   # EventBridge — KB integrity monitoring (FS-33, FS-65)
                   - events:ListRules
                   # EventBridge Scheduler — KB sync schedules (FS-61)

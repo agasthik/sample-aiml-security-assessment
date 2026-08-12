@@ -145,8 +145,21 @@ def _granted_actions(path):
         return set(_ACTION_RE.findall(fh.read()))
 
 
-@pytest.mark.parametrize("template", _TEMPLATES, ids=lambda p: os.path.basename(p))
+@pytest.mark.parametrize(
+    "template",
+    _AGENTCORE_PERMISSION_TEMPLATES,
+    ids=lambda p: os.path.basename(p),
+)
 def test_required_finserv_actions_are_granted(template):
+    """Covers all 5 grant sources, including deployment/2-aiml-security-codebuild.yaml.
+
+    That 5th template grants FinServ actions too (see its "FinServ GenAI Risk
+    Assessment Permissions" block) but was excluded from this test's parametrize list
+    until a 4-action gap there (aoss:ListCollections, bedrock:ListIngestionJobs,
+    logs:GetDataProtectionPolicy, macie2:GetAutomatedDiscoveryConfiguration) shipped
+    undetected. Scoping this test to only 4 of the 5 templates was the root cause,
+    not just the missing grants — fixed here rather than only in the template.
+    """
     assert os.path.exists(template), f"template not found: {template}"
     granted = _granted_actions(template)
     missing = sorted(a for a in REQUIRED_FINSERV_ACTIONS if a not in granted)
