@@ -557,6 +557,7 @@ Resources:
               Effect: Allow
               Action:
                 - logs:DescribeAccountPolicies
+                - logs:GetDataProtectionPolicy # FS-43
                 - logs:DescribeLogGroups
               Resource: '*'
             - Sid: BedrockPermissions
@@ -580,6 +581,7 @@ Resources:
                 - bedrock:GetKnowledgeBase
                 - bedrock:ListDataSources
                 - bedrock:GetDataSource
+                - bedrock:ListIngestionJobs # FS-31
               Resource: '*'
             - Sid: BedrockAgentCorePermissions
               Effect: Allow
@@ -631,11 +633,13 @@ Resources:
               Effect: Allow
               Action:
                 - aoss:ListSecurityPolicies
+                - aoss:ListCollections # FS-25
               Resource: '*'
             - Sid: MaciePermissions
               Effect: Allow
               Action:
                 - macie2:GetMacieSession
+                - macie2:GetAutomatedDiscoveryConfiguration # FS-44
               Resource: '*'
             - Sid: EventsConfigPermissions
               Effect: Allow

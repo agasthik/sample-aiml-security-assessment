@@ -551,10 +551,12 @@ SEVERITY_REGISTER: Dict[str, str] = {
     "No ECR Repositories Found": "Informational",
     "ECR Repositories Without Image Scanning": "High",
     "ECR Image Scanning Enabled": "High",
+    "ECR Image Scanning Covered by Inspector Enhanced Scanning": "High",
     # --- FS-20 ---
     "No SageMaker Feature Groups Found": "Informational",
     "Feature Groups Without Offline Store": "Medium",
-    "Feature Store Offline Store Active": "Medium",
+    "Feature Groups With Offline Store Configured": "Medium",
+    "COULD NOT ASSESS: Feature Store Rollback Check": "Low",
     # --- FS-21 (training-data integrity = High) ---
     "No Training Data Buckets Identified": "Informational",
     "Training Data Buckets Without Versioning": "High",
@@ -566,9 +568,10 @@ SEVERITY_REGISTER: Dict[str, str] = {
     "No Knowledge Bases Found": "Informational",
     "ADVISORY: Knowledge Base Metadata Filtering — Manual Review Required": "Informational",
     # --- FS-25 (KB encryption = High) ---
-    "No OpenSearch Serverless Encryption Policies": "Informational",
-    "OpenSearch Serverless Encryption Not Using Customer-Managed Keys": "High",
-    "OpenSearch Serverless Encryption Policies Present": "High",
+    "No OpenSearch Serverless Collections Found": "Informational",
+    "OpenSearch Serverless Collections Using AWS-Owned Encryption Keys": "High",
+    "OpenSearch Serverless Collections Using Customer-Managed Keys": "High",
+    "COULD NOT ASSESS: OpenSearch Serverless Encryption Check": "Low",
     # --- FS-26 (VPC isolation = High) ---
     "No OpenSearch Serverless Network Policies": "High",
     "OpenSearch Serverless Collections Not VPC-Restricted": "High",
@@ -590,8 +593,11 @@ SEVERITY_REGISTER: Dict[str, str] = {
     # --- FS-30 (advisory — cannot inspect dataset content) ---
     "ADVISORY: Compliance Dataset Coverage — Manual Review Required": "Informational",
     # --- FS-31 ---
+    "No Knowledge Base Data Sources Found": "Informational",
     "Knowledge Base Data Sources Past Review Threshold": "Medium",
+    "Knowledge Base Data Sources Never Successfully Synced": "Medium",
     "Knowledge Base Data Sources Recently Synced": "Medium",
+    "COULD NOT ASSESS: Knowledge Base Data Source Sync Check": "Low",
     # --- FS-32 (advisory) ---
     "ADVISORY: Source Attribution — Manual Review Required": "Informational",
     # --- FS-33 (distinct risks: deleted bucket High, versioning Medium) ---
@@ -624,15 +630,22 @@ SEVERITY_REGISTER: Dict[str, str] = {
     "No SageMaker Clarify Explainability Monitoring": "High",
     "SageMaker Clarify Explainability Monitoring Schedules Found": "High",
     "SageMaker Clarify Explainability Schedules Not Running": "High",
-    # --- FS-42 ---
-    "No SageMaker Model Cards Found": "Medium",
-    "SageMaker Model Cards Present": "Medium",
-    # --- FS-43 (log data protection = High) ---
+    # --- FS-42 (absence is Informational: Bedrock-only estates have no model cards) ---
+    "No SageMaker Model Cards Found": "Informational",
+    "SageMaker Model Cards Not Approved": "Medium",
+    "SageMaker Model Cards Approved": "Medium",
+    # --- FS-43 (log data protection = High; N/A when logs never reach CloudWatch) ---
+    "Bedrock Invocation Logging Not Enabled": "Informational",
+    "Bedrock Invocation Logs Not Delivered to CloudWatch Logs": "Informational",
     "No CloudWatch Logs Data Protection Policies": "High",
     "CloudWatch Logs Data Protection Policies Present": "High",
+    "COULD NOT ASSESS: CloudWatch Log PII Masking Check": "Low",
     # --- FS-44 (Macie = High) ---
     "Amazon Macie Not Enabled": "High",
-    "Amazon Macie Enabled": "High",
+    "Amazon Macie Enabled but Automated Discovery Disabled": "High",
+    "Amazon Macie Automated Discovery Enabled": "High",
+    "COULD NOT ASSESS: Macie Automated Discovery Status": "Low",
+    "COULD NOT ASSESS: Amazon Macie PII Scanning Check": "Low",
     # --- FS-45 (PII filters = High) ---
     "No Guardrails — PII Filters Not Applicable": "Informational",
     "No Guardrails With PII Filters": "High",
@@ -692,9 +705,10 @@ SEVERITY_REGISTER: Dict[str, str] = {
     "Automated KB Sync Schedules Present": "Medium",
     # --- FS-62 (advisory) ---
     "ADVISORY: Data Currency Disclaimer — Manual Review Required": "Informational",
-    # --- FS-63 ---
-    "Legacy Models Without Lifecycle Management": "Medium",
-    "Foundation Model Lifecycle Management": "Medium",
+    # --- FS-63 (verdict keys off account-side governance, not the region catalogue) ---
+    "No Foundation Model Lifecycle Governance Detected": "Medium",
+    "Foundation Model Lifecycle Governance Detected": "Medium",
+    "COULD NOT ASSESS: Foundation Model Lifecycle Policy Check": "Low",
     # --- FS-65 (distinct risks) ---
     "KB Data Source Buckets Missing S3 Event Notifications": "Medium",
     "KB Data Source S3 Event Notifications Configured": "Medium",
@@ -2163,8 +2177,26 @@ def check_bedrock_model_evaluation_adversarial() -> Dict[str, Any]:
 
 def check_ecr_image_scanning() -> Dict[str, Any]:
     """
-    FS-16 — Verify ECR repositories used for custom model containers have
-    image scanning enabled (supply chain vulnerability detection).
+    FS-16 — Report whether ECR repositories that may hold model containers are
+    covered by vulnerability scanning, from either mechanism.
+
+    Evidence collected: DescribeRepositories for
+    ``imageScanningConfiguration.scanOnPush`` per repository, plus
+    inspector2 BatchGetAccountStatus for ``resourceState.ecr.status``.
+
+    Both mechanisms must be considered together. Amazon Inspector enhanced
+    scanning is account-wide and continuously scans ECR repositories,
+    superseding per-repository scan-on-push. An earlier revision read only
+    scanOnPush and therefore raised a High finding for every repository in an
+    Inspector-enabled account — verified live against an account with
+    resourceState.ecr=ENABLED and five repositories at scanOnPush=false.
+
+    Deliberately NOT asserted:
+      - that any image has actually been scanned,
+      - that scan findings have been triaged or remediated,
+      - that a repository holds model containers at all (scope is every
+        repository in the region, not only AI/ML ones).
+
     COMPLIANCE_PLACEHOLDER: [ISO 27001 A.12.6, FFIEC CAT, DORA Art.6]
     """
     findings = _empty_findings("ECR Image Scanning Check")
@@ -2187,13 +2219,59 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
             )
             return findings
 
+        # Inspector enhanced scanning is account-wide and continuously scans ECR
+        # repositories, superseding per-repository scan-on-push. Reporting
+        # scanOnPush=false as a failure without checking it produces a false
+        # positive on every repository in an Inspector-enabled account.
+        inspector_ecr_state = None
+        try:
+            inspector = boto3.client("inspector2", config=boto3_config)
+            account_id = boto3.client("sts", config=boto3_config).get_caller_identity()[
+                "Account"
+            ]
+            status = inspector.batch_get_account_status(accountIds=[account_id])
+            for entry in status.get("accounts", []):
+                inspector_ecr_state = (
+                    entry.get("resourceState", {}).get("ecr", {}).get("status")
+                )
+        except ClientError as e:
+            inspector_ecr_state = f"UNKNOWN ({e.response['Error']['Code']})"
+        except Exception as e:  # noqa: BLE001 - Inspector is advisory context here
+            inspector_ecr_state = f"UNKNOWN ({type(e).__name__})"
+
+        enhanced_scanning = inspector_ecr_state == "ENABLED"
+
         repos_without_scanning = [
             r["repositoryName"]
             for r in repos
             if not r.get("imageScanningConfiguration", {}).get("scanOnPush", False)
         ]
 
-        if repos_without_scanning:
+        if repos_without_scanning and enhanced_scanning:
+            # Covered by Inspector: report as passed, naming the compensating
+            # control rather than raising a High finding the operator cannot act on.
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-16",
+                    finding_name="ECR Image Scanning Covered by Inspector Enhanced Scanning",
+                    finding_details=(
+                        f"Amazon Inspector enhanced scanning for ECR is ENABLED account-wide, so all "
+                        f"{len(repos)} repository(ies) are continuously scanned. "
+                        f"{len(repos_without_scanning)} repository(ies) do not set scan-on-push "
+                        f"({', '.join(sorted(repos_without_scanning)[:10])}), which is expected when "
+                        "enhanced scanning supersedes basic scanning."
+                    ),
+                    resolution=(
+                        "No action required while Inspector enhanced scanning stays enabled. "
+                        "If it is disabled, enable scan-on-push per repository."
+                    ),
+                    reference="https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning.html",
+                    severity="High",
+                    status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-16"],
+                )
+            )
+        elif repos_without_scanning:
             findings["status"] = "WARN"
             findings["csv_data"].append(
                 create_finding(
@@ -2201,7 +2279,10 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
                     finding_name="ECR Repositories Without Image Scanning",
                     finding_details=(
                         f"{len(repos_without_scanning)} ECR repo(s) without scan-on-push: "
-                        f"{', '.join(repos_without_scanning[:10])}."
+                        f"{', '.join(sorted(repos_without_scanning)[:10])}. "
+                        f"Amazon Inspector enhanced scanning for ECR is not enabled "
+                        f"(state: {inspector_ecr_state}), so these repositories have no "
+                        "vulnerability scanning from either mechanism."
                     ),
                     resolution=(
                         "Enable scan-on-push for all ECR repositories containing model containers. "
@@ -2218,7 +2299,10 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
                 create_finding(
                     check_id="FS-16",
                     finding_name="ECR Image Scanning Enabled",
-                    finding_details=f"All {len(repos)} ECR repo(s) have scan-on-push enabled.",
+                    finding_details=(
+                        f"All {len(repos)} ECR repo(s) have scan-on-push enabled. "
+                        f"Inspector enhanced scanning for ECR state: {inspector_ecr_state}."
+                    ),
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-scanning.html",
                     severity="High",
@@ -2244,8 +2328,26 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
 
 def check_feature_store_rollback_capability() -> Dict[str, Any]:
     """
-    FS-20 — Check SageMaker Feature Store for versioning/offline store
-    configuration that enables rollback of poisoned feature data.
+    FS-20 — Report whether each SageMaker Feature Group has an offline store,
+    which is the precondition for rolling back poisoned feature data.
+
+    Evidence collected: ListFeatureGroups for the inventory, then
+    DescribeFeatureGroup per group to read ``OfflineStoreConfig``.
+
+    Field note: ``OfflineStoreStatus`` is NOT a usable signal. It is absent
+    from ListFeatureGroups summaries and from DescribeFeatureGroup responses
+    even for groups that do have an offline store — verified against a live
+    account where a group with a valid OfflineStoreConfig S3Uri returned no
+    OfflineStoreStatus at all. An earlier revision tested
+    ``OfflineStoreStatus.Status != "Active"``, which therefore flagged every
+    group and made the passing branch unreachable.
+
+    Deliberately NOT asserted:
+      - that offline-store data is retained, versioned, or complete,
+      - that a rollback has ever been tested,
+      - that the offline store bucket is protected against deletion.
+    Offline-store presence is a precondition for rollback, not evidence of it.
+
     COMPLIANCE_PLACEHOLDER: [SR 11-7, FFIEC CAT]
     """
     findings = _empty_findings("Feature Store Rollback Check")
@@ -2268,11 +2370,46 @@ def check_feature_store_rollback_capability() -> Dict[str, Any]:
             )
             return findings
 
-        groups_without_offline = [
-            g["FeatureGroupName"]
-            for g in groups
-            if g.get("OfflineStoreStatus", {}).get("Status") != "Active"
-        ]
+        # OfflineStoreStatus is absent from ListFeatureGroups summaries AND from
+        # DescribeFeatureGroup responses even for groups that do have an offline
+        # store (verified against a live account), so it cannot decide this.
+        # The authoritative signal is the presence of OfflineStoreConfig, which
+        # only DescribeFeatureGroup returns.
+        groups_without_offline: List[str] = []
+        groups_with_offline: List[str] = []
+        undetermined: List[str] = []
+        for g in groups:
+            name = g["FeatureGroupName"]
+            try:
+                detail = sm.describe_feature_group(FeatureGroupName=name)
+            except ClientError as e:
+                undetermined.append(f"{name} ({e.response['Error']['Code']})")
+                continue
+            except Exception as e:  # noqa: BLE001 - per-group isolation
+                undetermined.append(f"{name} ({type(e).__name__})")
+                continue
+            if detail.get("OfflineStoreConfig"):
+                groups_with_offline.append(name)
+            else:
+                groups_without_offline.append(name)
+
+        if undetermined:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-20",
+                    finding_name=f"{COULD_NOT_ASSESS_PREFIX}Feature Store Rollback Check",
+                    finding_details=(
+                        f"Could not read OfflineStoreConfig for: {', '.join(undetermined)}."
+                    ),
+                    resolution=(
+                        "Ensure the assessment role has sagemaker:DescribeFeatureGroup permission."
+                    ),
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/feature-store-offline.html",
+                    severity="Low",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-20"],
+                )
+            )
 
         if groups_without_offline:
             findings["status"] = "WARN"
@@ -2281,9 +2418,9 @@ def check_feature_store_rollback_capability() -> Dict[str, Any]:
                     check_id="FS-20",
                     finding_name="Feature Groups Without Offline Store",
                     finding_details=(
-                        f"{len(groups_without_offline)} feature group(s) lack an active offline store: "
-                        f"{', '.join(groups_without_offline[:10])}. "
-                        "Without offline store, historical feature data cannot be used for rollback."
+                        f"{len(groups_without_offline)} feature group(s) have no OfflineStoreConfig: "
+                        f"{', '.join(sorted(groups_without_offline)[:10])}. "
+                        "Without an offline store, historical feature data cannot be used for rollback."
                     ),
                     resolution=(
                         "1. Enable offline store (S3-backed) for all production feature groups.\n"
@@ -2296,13 +2433,21 @@ def check_feature_store_rollback_capability() -> Dict[str, Any]:
                     compliance_frameworks=COMPLIANCE_MAP["FS-20"],
                 )
             )
-        else:
+        if groups_with_offline:
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-20",
-                    finding_name="Feature Store Offline Store Active",
-                    finding_details=f"All {len(groups)} feature group(s) have active offline stores.",
-                    resolution="No action required.",
+                    finding_name="Feature Groups With Offline Store Configured",
+                    finding_details=(
+                        f"{len(groups_with_offline)} of {len(groups)} feature group(s) have an "
+                        f"OfflineStoreConfig: {', '.join(sorted(groups_with_offline)[:10])}. "
+                        "Offline-store presence enables rollback; it does not prove the offline "
+                        "data is retained, versioned, or complete."
+                    ),
+                    resolution=(
+                        "1. Enable S3 versioning on each offline store bucket.\n"
+                        "2. Document rollback procedures for poisoned feature data."
+                    ),
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/feature-store-offline.html",
                     severity="Medium",
                     status="Passed",
@@ -2584,90 +2729,170 @@ def check_knowledge_base_metadata_filtering(inventory) -> Dict[str, Any]:
 
 def check_opensearch_serverless_encryption() -> Dict[str, Any]:
     """
-    FS-25 — Verify OpenSearch Serverless collections (used as KB vector stores)
-    have encryption policies with customer-managed KMS keys.
+    FS-25 — Report the effective encryption key of each OpenSearch Serverless
+    collection used as a Bedrock Knowledge Base vector store.
+
+    Evidence collected: ListCollections, reading ``kmsKeyArn`` per collection.
+
+    Signal note: ``kmsKeyArn`` is the effective key for the collection. It is
+    the literal string ``"auto"`` when the collection uses an AWS-owned key,
+    and a KMS key ARN when it uses a customer-managed key (CMK) — verified
+    live against two purpose-built collections.
+
+    Why not the encryption policy documents: ListSecurityPolicies summaries do
+    NOT include the policy document (only type, name, policyVersion,
+    description and dates), so an earlier revision's
+    ``json.loads(policy.get("policy", "{}"))`` always produced ``{}``. The
+    subsequent ``"AWSOwnedKey" not in "{}"`` test was therefore always true,
+    every policy was classified as CMK, and the Failed branch was unreachable.
+    Verified live: an account with six AWS-owned-key policies reported
+    "7 use a customer-managed KMS key". Reading the documents would require
+    GetSecurityPolicy per policy and then matching policy resource patterns to
+    collections; ``kmsKeyArn`` gives the effective answer directly.
+
+    Scope note: the verdict keys off collections, not policies. An encryption
+    policy with no matching collection protects nothing, so orphaned policies
+    are not reported as a failure.
+
+    Deliberately NOT asserted:
+      - that the CMK's key policy, rotation or grants are appropriate,
+      - that a collection is actually used by a Knowledge Base,
+      - anything about non-OpenSearch vector stores (S3 Vectors, Aurora,
+        Pinecone), whose encryption must be verified separately.
+
     COMPLIANCE_PLACEHOLDER: [NYDFS 500.06, PCI-DSS 3.5, FFIEC CAT]
     """
-    findings = _empty_findings("OpenSearch Serverless Encryption Check")
+    check_name = "OpenSearch Serverless Encryption Check"
+    reference = (
+        "https://docs.aws.amazon.com/opensearch-service/latest/developerguide/"
+        "serverless-encryption.html"
+    )
+    findings = _empty_findings(check_name)
     try:
         oss = boto3.client("opensearchserverless", config=boto3_config)
-        policies = oss.list_security_policies(type="encryption").get(
-            "securityPolicySummaries", []
-        )
+        try:
+            collections = _paginate(oss, "list_collections", "collectionSummaries")
+        except ClientError as e:
+            if "AccessDenied" in str(e) or "UnrecognizedClientException" in str(e):
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="FS-25",
+                        finding_name=f"{COULD_NOT_ASSESS_PREFIX}{check_name}",
+                        finding_details=(
+                            "Unable to enumerate OpenSearch Serverless collections "
+                            "(access denied or service unavailable in region)."
+                        ),
+                        resolution="Ensure the assessment role has aoss:ListCollections permission.",
+                        reference=reference,
+                        severity="Low",
+                        status="N/A",
+                        compliance_frameworks=COMPLIANCE_MAP["FS-25"],
+                    )
+                )
+                return findings
+            raise
 
-        if not policies:
+        if not collections:
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-25",
-                    finding_name="No OpenSearch Serverless Encryption Policies",
+                    finding_name="No OpenSearch Serverless Collections Found",
                     finding_details=(
-                        "No OpenSearch Serverless encryption policies found, which indicates "
-                        "no OpenSearch Serverless vector-store collections exist in this region. "
-                        "If Bedrock Knowledge Bases use a different vector store (e.g., Aurora, "
-                        "Pinecone), verify its encryption separately."
+                        "No OpenSearch Serverless collections exist in this region, so there is "
+                        "no OpenSearch vector-store data at rest to encrypt. If Bedrock Knowledge "
+                        "Bases use a different vector store (S3 Vectors, Aurora, Pinecone), "
+                        "verify its encryption separately."
                     ),
                     resolution=(
-                        "If using OpenSearch Serverless as a Bedrock KB vector store, create an "
-                        "encryption security policy specifying a customer-managed KMS key."
+                        "If you adopt OpenSearch Serverless as a Bedrock KB vector store, create "
+                        "an encryption policy specifying a customer-managed KMS key before "
+                        "creating the collection."
                     ),
-                    reference="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-encryption.html",
+                    reference=reference,
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-25"],
                 )
             )
-        else:
-            # Check for CMK usage. A policy that does not reference AWSOwnedKey is
-            # treated as customer-managed (CMK).
-            cmk_policies = []
-            for policy in policies:
-                doc = json.loads(policy.get("policy", "{}"))
-                if "AWSOwnedKey" not in json.dumps(doc):
-                    cmk_policies.append(policy["name"])
+            return findings
 
-            if not cmk_policies:
-                # Encryption policies exist but all use AWS-owned keys — the
-                # control (customer-managed encryption) the check verifies is
-                # absent, so this is a real finding, not a pass.
-                findings["status"] = "WARN"
-                findings["csv_data"].append(
-                    create_finding(
-                        check_id="FS-25",
-                        finding_name="OpenSearch Serverless Encryption Not Using Customer-Managed Keys",
-                        finding_details=(
-                            f"Found {len(policies)} encryption policy(ies), but none use a "
-                            "customer-managed KMS key (CMK) — all rely on AWS-owned keys. "
-                            "FinServ data-protection controls typically require CMKs for "
-                            "key lifecycle control and auditability."
-                        ),
-                        resolution=(
-                            "Update OpenSearch Serverless encryption policies to specify a "
-                            "customer-managed KMS key (KmsARN) instead of AWS-owned keys."
-                        ),
-                        reference="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-encryption.html",
-                        severity="High",
-                        status="Failed",
-                        compliance_frameworks=COMPLIANCE_MAP["FS-25"],
-                    )
-                )
+        aws_owned: List[str] = []
+        customer_managed: List[str] = []
+        undetermined: List[str] = []
+        for collection in collections:
+            name = collection.get("name") or collection.get("id", "")
+            key = (collection.get("kmsKeyArn") or "").strip()
+            if not key:
+                undetermined.append(f"{name} (no kmsKeyArn in response)")
+            elif key.lower() == "auto":
+                aws_owned.append(name)
             else:
-                findings["csv_data"].append(
-                    create_finding(
-                        check_id="FS-25",
-                        finding_name="OpenSearch Serverless Encryption Policies Present",
-                        finding_details=(
-                            f"Found {len(policies)} encryption policy(ies); "
-                            f"{len(cmk_policies)} use a customer-managed KMS key."
-                        ),
-                        resolution="Verify all vector store collections use customer-managed KMS keys.",
-                        reference="https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-encryption.html",
-                        severity="High",
-                        status="Passed",
-                        compliance_frameworks=COMPLIANCE_MAP["FS-25"],
-                    )
+                customer_managed.append(name)
+
+        if aws_owned:
+            findings["status"] = "WARN"
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-25",
+                    finding_name="OpenSearch Serverless Collections Using AWS-Owned Encryption Keys",
+                    finding_details=(
+                        f"{len(aws_owned)} of {len(collections)} collection(s) are encrypted with "
+                        f'an AWS-owned key (kmsKeyArn="auto"): '
+                        f"{', '.join(sorted(aws_owned)[:10])}. Financial-services data-protection "
+                        "controls typically require a customer-managed KMS key for key lifecycle "
+                        "control and auditability."
+                    ),
+                    resolution=(
+                        "1. Create a customer-managed KMS key and grant aoss.amazonaws.com the "
+                        "required key permissions.\n"
+                        "2. Create an encryption policy for the collection with AWSOwnedKey=false "
+                        "and KmsARN set to that key.\n"
+                        "3. The encryption key is fixed at collection creation, so the collection "
+                        "must be recreated and re-indexed to change it."
+                    ),
+                    reference=reference,
+                    severity="High",
+                    status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-25"],
                 )
+            )
+
+        if customer_managed:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-25",
+                    finding_name="OpenSearch Serverless Collections Using Customer-Managed Keys",
+                    finding_details=(
+                        f"{len(customer_managed)} of {len(collections)} collection(s) are "
+                        f"encrypted with a customer-managed KMS key: "
+                        f"{', '.join(sorted(customer_managed)[:10])}. Key policy, rotation and "
+                        "grants are not assessed here."
+                    ),
+                    resolution="Review each key's policy, rotation schedule and grants separately.",
+                    reference=reference,
+                    severity="High",
+                    status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-25"],
+                )
+            )
+
+        if undetermined:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-25",
+                    finding_name=f"{COULD_NOT_ASSESS_PREFIX}{check_name}",
+                    finding_details=(
+                        f"Could not determine the encryption key for: {', '.join(undetermined)}."
+                    ),
+                    resolution="Re-run the assessment; if it persists, inspect the collection in the console.",
+                    reference=reference,
+                    severity="Low",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-25"],
+                )
+            )
     except Exception as e:
-        return _error_findings("OpenSearch Serverless Encryption Check", e)
+        return _error_findings(check_name, e)
     return findings
 
 
@@ -3207,8 +3432,25 @@ def check_bedrock_evaluation_compliance_datasets() -> Dict[str, Any]:
 
 def check_knowledge_base_data_source_sync(inventory) -> Dict[str, Any]:
     """
-    FS-31 — Verify Bedrock Knowledge Base data sources have recent sync jobs
-    to ensure information currency.
+    FS-31 — Report how long ago each Bedrock Knowledge Base data source last
+    completed an ingestion job.
+
+    Evidence collected: the shared KB inventory for data sources, then
+    ListIngestionJobs per data source, taking the most recent job whose status
+    is COMPLETE and reading its updatedAt (falling back to startedAt).
+
+    Timestamp note: a data source's own ``updatedAt`` is when its CONFIGURATION
+    last changed, not when it last synced. An earlier revision used that field
+    and labelled it "last synced". Verified live: a source whose configuration
+    was last modified 2025-11-21 had in fact completed an ingestion on
+    2025-11-26, so the config timestamp overstated staleness by five days. In
+    the opposite direction, a source edited yesterday that had never synced
+    would have been reported as current.
+
+    Deliberately NOT asserted:
+      - that a completed ingestion indexed the content you expected,
+      - that the source data itself is current,
+      - that the configured cadence matches your currency requirement.
 
     Staleness threshold: AWS does not prescribe a maximum data age for Knowledge
     Bases — the appropriate cadence is workload-specific (intraday for market
@@ -3241,20 +3483,103 @@ def check_knowledge_base_data_source_sync(inventory) -> Dict[str, Any]:
             return findings
 
         stale_kbs = []
+        never_synced = []
+        undetermined = []
+        fresh = []
         now = datetime.now(timezone.utc)
+        agent = boto3.client("bedrock-agent", config=boto3_config)
         for kb in kbs:
             kb_id = kb["knowledgeBaseId"]
             sources = kb_inv.data_sources_by_kb.get(kb_id, [])
             if isinstance(sources, _Unavailable):
                 raise sources.error
             for source in sources:
-                last_updated = source.get("updatedAt")
-                if last_updated:
-                    age_days = (now - last_updated).days
+                label = f"KB '{kb['name']}' source '{source['name']}'"
+                # A data source's own updatedAt is when its CONFIGURATION last
+                # changed, not when it last synced. Ingestion jobs carry the
+                # sync timestamps. Verified live: a source whose config was
+                # last touched 2025-11-21 had in fact completed an ingestion on
+                # 2025-11-26, so the config timestamp overstated staleness.
+                try:
+                    jobs = _paginate(
+                        agent,
+                        "list_ingestion_jobs",
+                        "ingestionJobSummaries",
+                        knowledgeBaseId=kb_id,
+                        dataSourceId=source["dataSourceId"],
+                    )
+                except ClientError as e:
+                    undetermined.append(f"{label} ({e.response['Error']['Code']})")
+                    continue
+                except Exception as e:  # noqa: BLE001 - per-source isolation
+                    undetermined.append(f"{label} ({type(e).__name__})")
+                    continue
+
+                completed = [
+                    j for j in jobs if (j.get("status") or "").upper() == "COMPLETE"
+                ]
+                if not completed:
+                    never_synced.append(
+                        f"{label} has no completed ingestion job"
+                        + (f" ({len(jobs)} job(s) in other states)" if jobs else "")
+                    )
+                    continue
+                latest = max(
+                    completed,
+                    key=lambda j: j.get("updatedAt") or j.get("startedAt") or now,
+                )
+                synced_at = latest.get("updatedAt") or latest.get("startedAt")
+                if synced_at:
+                    age_days = (now - synced_at).days
                     if age_days > STALE_AFTER_DAYS:
                         stale_kbs.append(
-                            f"KB '{kb['name']}' source '{source['name']}' last synced {age_days} days ago"
+                            f"{label} last completed ingestion {age_days} days ago"
                         )
+                    else:
+                        fresh.append(label)
+                else:
+                    undetermined.append(f"{label} (completed job carried no timestamp)")
+
+        if never_synced:
+            findings["status"] = "WARN"
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-31",
+                    finding_name="Knowledge Base Data Sources Never Successfully Synced",
+                    finding_details=(
+                        f"{len(never_synced)} data source(s) have no completed ingestion job, so "
+                        "no content from them has ever been indexed:\n"
+                        + "\n".join(f"- {s}" for s in never_synced[:10])
+                    ),
+                    resolution=(
+                        "1. Run StartIngestionJob for each data source and investigate failures.\n"
+                        "2. Confirm the source location exists and the KB role can read it."
+                    ),
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
+                    severity="Medium",
+                    status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-31"],
+                )
+            )
+
+        if undetermined:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-31",
+                    finding_name=f"{COULD_NOT_ASSESS_PREFIX}Knowledge Base Data Source Sync Check",
+                    finding_details=(
+                        "Could not read ingestion history for: "
+                        + ", ".join(undetermined[:10])
+                    ),
+                    resolution=(
+                        "Ensure the assessment role has bedrock:ListIngestionJobs permission."
+                    ),
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
+                    severity="Low",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-31"],
+                )
+            )
 
         if stale_kbs:
             findings["status"] = "WARN"
@@ -3283,19 +3608,45 @@ def check_knowledge_base_data_source_sync(inventory) -> Dict[str, Any]:
                     compliance_frameworks=COMPLIANCE_MAP["FS-31"],
                 )
             )
-        else:
+
+        # Only claim a clean bill of health when every data source was actually
+        # assessed and every one of them was fresh. A never-synced or unreadable
+        # source must not be papered over by a Passed row saying "all ... within
+        # N days" — that is the false-pass this check previously emitted.
+        if fresh and not (stale_kbs or never_synced or undetermined):
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-31",
                     finding_name="Knowledge Base Data Sources Recently Synced",
                     finding_details=(
-                        f"All reviewed KB data sources synced within {STALE_AFTER_DAYS} days "
-                        "(the default review threshold)."
+                        f"All {len(fresh)} reviewed KB data source(s) completed an ingestion "
+                        f"job within {STALE_AFTER_DAYS} days (the default review threshold)."
                     ),
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
                     severity="Medium",
                     status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-31"],
+                )
+            )
+        elif not (fresh or stale_kbs or never_synced or undetermined):
+            # Knowledge Bases exist but none has a data source, so there is no
+            # ingestion to age. Reporting "recently synced" here would be vacuous.
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-31",
+                    finding_name="No Knowledge Base Data Sources Found",
+                    finding_details=(
+                        f"{len(kbs)} Knowledge Base(s) exist but none has a data source "
+                        "attached, so there is no ingestion history to assess."
+                    ),
+                    resolution=(
+                        "Attach a data source to each Knowledge Base that is expected to "
+                        "serve content, then run an ingestion job."
+                    ),
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
+                    severity="Informational",
+                    status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-31"],
                 )
             )
@@ -4084,52 +4435,119 @@ def check_sagemaker_clarify_explainability() -> Dict[str, Any]:
 
 def check_ai_service_cards_documentation() -> Dict[str, Any]:
     """
-    FS-42 — Advisory check: verify AI Service Cards / Model Cards are
-    documented for all production GenAI models.
+    FS-42 — Report whether SageMaker Model Cards exist and whether each has
+    been moved out of Draft.
+
+    Evidence collected: ListModelCards, reading ModelCardName and
+    ModelCardStatus from each summary.
+
+    Response-key note: the ListModelCards result key is ``ModelCardSummaries``.
+    An earlier revision paginated on ``ModelCardSummaryList``, which does not
+    exist in the API response, so the check silently saw zero cards and always
+    reported "No SageMaker Model Cards Found" — verified against a live account
+    holding two cards. Any change here must keep the key aligned with the API.
+
+    Deliberately NOT asserted:
+      - that a card's documented content is accurate, complete or current,
+      - that an Approved card was reviewed by a competent approver,
+      - that models without a card are undocumented elsewhere.
+    Card *content* requires DescribeModelCard per card and is not inspected.
+
+    Absence of Model Cards is reported as Informational rather than Failed:
+    SageMaker Model Cards are a SageMaker-specific artifact, and a
+    Bedrock-only estate can be fully governed without any.
+
     COMPLIANCE_PLACEHOLDER: [SR 11-7, FFIEC CAT, MAS TRM 9.3]
     """
-    findings = _empty_findings("AI Service Cards Documentation Check")
+    check_name = "AI Service Cards Documentation Check"
+    reference = "https://docs.aws.amazon.com/sagemaker/latest/dg/model-cards.html"
+    manual_review = (
+        "Card presence does not prove the documented content is accurate or "
+        "current; review card content manually."
+    )
+    findings = _empty_findings(check_name)
     try:
         sm = boto3.client("sagemaker", config=boto3_config)
-        model_cards = _paginate(sm, "list_model_cards", "ModelCardSummaryList")
+        model_cards = _paginate(sm, "list_model_cards", "ModelCardSummaries")
 
         if not model_cards:
-            findings["status"] = "WARN"
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-42",
                     finding_name="No SageMaker Model Cards Found",
                     finding_details=(
-                        "No SageMaker Model Cards found. "
-                        "Production AI models lack documented intended use, limitations, and bias evaluations."
+                        "No SageMaker Model Cards found. If GenAI workloads run on Bedrock "
+                        "rather than SageMaker, model documentation may legitimately live "
+                        "elsewhere; Model Cards are a SageMaker-specific artifact."
                     ),
                     resolution=(
-                        "1. Create SageMaker Model Cards for all production models.\n"
-                        "2. Document: intended use, out-of-scope uses, training data, bias evaluations.\n"
-                        "3. Include regulatory compliance attestations.\n"
-                        "4. Review and update cards at each model version release."
+                        "1. For SageMaker models, create a Model Card documenting intended use, "
+                        "out-of-scope uses, training data and bias evaluations.\n"
+                        "2. For Bedrock-only estates, record the equivalent documentation in your "
+                        "model-governance system and reference the AWS AI Service Cards."
                     ),
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-cards.html",
+                    reference=reference,
+                    severity="Informational",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-42"],
+                )
+            )
+            return findings
+
+        draft_cards = [
+            c["ModelCardName"]
+            for c in model_cards
+            if (c.get("ModelCardStatus") or "") != "Approved"
+        ]
+        approved_cards = [
+            c["ModelCardName"]
+            for c in model_cards
+            if (c.get("ModelCardStatus") or "") == "Approved"
+        ]
+
+        if draft_cards:
+            findings["status"] = "WARN"
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-42",
+                    finding_name="SageMaker Model Cards Not Approved",
+                    finding_details=(
+                        f"{len(draft_cards)} of {len(model_cards)} model card(s) are not in "
+                        f"Approved status: {', '.join(sorted(draft_cards)[:10])}. "
+                        "An unapproved card has not completed its documented review. "
+                        + manual_review
+                    ),
+                    resolution=(
+                        "1. Complete the model-card review and move each card to Approved.\n"
+                        "2. Document intended use, out-of-scope uses, training data and bias "
+                        "evaluations before approval."
+                    ),
+                    reference=reference,
                     severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-42"],
                 )
             )
-        else:
+
+        if approved_cards:
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-42",
-                    finding_name="SageMaker Model Cards Present",
-                    finding_details=f"Found {len(model_cards)} model card(s).",
-                    resolution="Verify cards are current and include bias/fairness evaluations.",
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-cards.html",
+                    finding_name="SageMaker Model Cards Approved",
+                    finding_details=(
+                        f"{len(approved_cards)} of {len(model_cards)} model card(s) are in "
+                        f"Approved status: {', '.join(sorted(approved_cards)[:10])}. "
+                        + manual_review
+                    ),
+                    resolution="Verify cards stay current at each model version release.",
+                    reference=reference,
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-42"],
                 )
             )
     except Exception as e:
-        return _error_findings("AI Service Cards Documentation Check", e)
+        return _error_findings(check_name, e)
     return findings
 
 
@@ -4141,114 +4559,365 @@ def check_ai_service_cards_documentation() -> Dict[str, Any]:
 
 def check_cloudwatch_log_pii_masking() -> Dict[str, Any]:
     """
-    FS-43 — Check for CloudWatch Logs data protection policies that mask PII
-    in Bedrock invocation logs.
+    FS-43 — Report whether the CloudWatch log group that receives Bedrock model
+    invocation logs has a data protection policy masking PII.
+
+    Evidence collected: GetModelInvocationLoggingConfiguration to learn whether
+    invocation logging is enabled and where it delivers, then
+    DescribeAccountPolicies(DATA_PROTECTION_POLICY) for account-scoped policies
+    and GetDataProtectionPolicy for the specific log group.
+
+    Applicability matters, and an earlier revision ignored it. That revision
+    tested only whether any account-scoped policy existed, which produced two
+    wrong answers, both verified live:
+      - Bedrock delivering invocation logs to S3 only (no cloudWatchConfig)
+        still reported a High failure about plaintext PII in CloudWatch, where
+        no Bedrock logs exist at all.
+      - A log group carrying its own data protection policy still reported
+        "No CloudWatch Logs Data Protection Policies", because a log-group
+        policy is invisible to DescribeAccountPolicies.
+
+    Deliberately NOT asserted:
+      - that the configured data identifiers cover every PII type in the logs,
+      - that masking is working on log content already delivered,
+      - anything about PII in S3-delivered invocation logs, which CloudWatch
+        Logs data protection does not touch.
+
     COMPLIANCE_PLACEHOLDER: [NYDFS 500.06, GDPR Art.25, PCI-DSS 3.4]
     """
-    findings = _empty_findings("CloudWatch Log PII Masking Check")
+    check_name = "CloudWatch Log PII Masking Check"
+    reference = "https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/mask-sensitive-log-data.html"
+    findings = _empty_findings(check_name)
     try:
+        bedrock = boto3.client("bedrock", config=boto3_config)
         logs = boto3.client("logs", config=boto3_config)
-        # List data protection policies
+
+        logging_config: Dict[str, Any] = {}
         try:
-            policies = logs.describe_account_policies(
+            logging_config = (
+                bedrock.get_model_invocation_logging_configuration().get(
+                    "loggingConfig"
+                )
+                or {}
+            )
+        except ClientError as e:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-43",
+                    finding_name=f"{COULD_NOT_ASSESS_PREFIX}{check_name}",
+                    finding_details=(
+                        "Unable to read the Bedrock model invocation logging configuration "
+                        f"({e.response['Error']['Code']}), so the applicable log destination "
+                        "could not be determined."
+                    ),
+                    resolution=(
+                        "Ensure the assessment role has "
+                        "bedrock:GetModelInvocationLoggingConfiguration permission."
+                    ),
+                    reference=reference,
+                    severity="Low",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-43"],
+                )
+            )
+            return findings
+
+        cw_config = logging_config.get("cloudWatchConfig") or {}
+        log_group = cw_config.get("logGroupName")
+        s3_config = logging_config.get("s3Config") or {}
+
+        if not logging_config:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-43",
+                    finding_name="Bedrock Invocation Logging Not Enabled",
+                    finding_details=(
+                        "Bedrock model invocation logging is not enabled, so no invocation logs "
+                        "are being delivered and there is no log content to mask. Prompt and "
+                        "completion content is therefore also unavailable for audit."
+                    ),
+                    resolution=(
+                        "1. Enable Bedrock model invocation logging.\n"
+                        "2. If delivering to CloudWatch Logs, attach a data protection policy "
+                        "masking PII to the destination log group."
+                    ),
+                    reference=reference,
+                    severity="Informational",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-43"],
+                )
+            )
+            return findings
+
+        if not log_group:
+            dest = "Amazon S3" if s3_config else "an unrecognised destination"
+            bucket = s3_config.get("bucketName", "")
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-43",
+                    finding_name="Bedrock Invocation Logs Not Delivered to CloudWatch Logs",
+                    finding_details=(
+                        f"Bedrock model invocation logging delivers to {dest}"
+                        + (f" (bucket {bucket})" if bucket else "")
+                        + ", not CloudWatch Logs. CloudWatch Logs data protection policies do not "
+                        "apply to this delivery path, so this control is not applicable. PII "
+                        "protection for the delivered objects must be assessed on the destination "
+                        "instead."
+                    ),
+                    resolution=(
+                        "Protect the delivery destination directly: enable default encryption and "
+                        "restrict access on the S3 bucket, and use Amazon Macie to identify "
+                        "sensitive data in the delivered logs (see FS-44). If you also enable "
+                        "CloudWatch delivery, attach a data protection policy to that log group."
+                    ),
+                    reference=reference,
+                    severity="Informational",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-43"],
+                )
+            )
+            return findings
+
+        # CloudWatch delivery is in use: a policy may be attached at account
+        # scope or directly to the log group. Either satisfies the control.
+        account_policies = []
+        try:
+            account_policies = logs.describe_account_policies(
                 policyType="DATA_PROTECTION_POLICY"
             ).get("accountPolicies", [])
         except ClientError:
-            policies = []
+            account_policies = []
 
-        if not policies:
+        # GetDataProtectionPolicy does NOT raise for a log group without a
+        # policy: it returns a response with no policyDocument member. Testing
+        # the response for truthiness would always succeed because of
+        # ResponseMetadata, so the presence of policyDocument is the signal.
+        group_policy = None
+        try:
+            response = logs.get_data_protection_policy(logGroupIdentifier=log_group)
+            if response.get("policyDocument"):
+                group_policy = response
+        except ClientError:
+            group_policy = None
+
+        if group_policy or account_policies:
+            scope = []
+            if group_policy:
+                scope.append(f"a policy attached directly to log group {log_group}")
+            if account_policies:
+                scope.append(f"{len(account_policies)} account-scoped policy(ies)")
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-43",
+                    finding_name="CloudWatch Logs Data Protection Policies Present",
+                    finding_details=(
+                        f"Bedrock invocation logs are delivered to CloudWatch log group "
+                        f"{log_group}, covered by " + " and ".join(scope) + ". "
+                        "Whether the configured data identifiers cover every PII type present in "
+                        "the logs is not assessed."
+                    ),
+                    resolution=(
+                        "Review the configured data identifiers against the PII types your prompts "
+                        "and completions can contain."
+                    ),
+                    reference=reference,
+                    severity="High",
+                    status="Passed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-43"],
+                )
+            )
+        else:
             findings["status"] = "WARN"
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-43",
                     finding_name="No CloudWatch Logs Data Protection Policies",
                     finding_details=(
-                        "No CloudWatch Logs data protection policies found. "
-                        "PII (SSN, account numbers, credit card numbers) in Bedrock invocation logs "
-                        "may be stored in plaintext."
+                        f"Bedrock invocation logs are delivered to CloudWatch log group "
+                        f"{log_group}, but neither an account-scoped nor a log-group data "
+                        "protection policy was found. PII (SSN, account numbers, credit card "
+                        "numbers) in prompts and completions may be stored in plaintext."
                     ),
                     resolution=(
-                        "1. Create CloudWatch Logs data protection policies to mask PII.\n"
-                        "2. Enable masking for: SSN, credit card numbers, bank account numbers, email.\n"
-                        "3. Apply policies to Bedrock invocation log groups.\n"
-                        "4. Test masking with synthetic PII before production deployment."
+                        f"1. Attach a data protection policy to log group {log_group}, or create an "
+                        "account-scoped policy covering it.\n"
+                        "2. Include identifiers for SSN, credit card numbers, bank account numbers "
+                        "and email.\n"
+                        "3. Test masking with synthetic PII before relying on it."
                     ),
-                    reference="https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/mask-sensitive-log-data.html",
+                    reference=reference,
                     severity="High",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-43"],
                 )
             )
-        else:
-            findings["csv_data"].append(
-                create_finding(
-                    check_id="FS-43",
-                    finding_name="CloudWatch Logs Data Protection Policies Present",
-                    finding_details=f"Found {len(policies)} data protection policy(ies).",
-                    resolution="Verify policies cover Bedrock invocation log groups.",
-                    reference="https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/mask-sensitive-log-data.html",
-                    severity="High",
-                    status="Passed",
-                    compliance_frameworks=COMPLIANCE_MAP["FS-43"],
-                )
-            )
     except Exception as e:
-        return _error_findings("CloudWatch Log PII Masking Check", e)
+        return _error_findings(check_name, e)
     return findings
 
 
 def check_macie_on_training_data_buckets() -> Dict[str, Any]:
     """
-    FS-44 — Verify Amazon Macie is enabled and scanning S3 buckets that
-    contain training data or KB data sources for PII.
+    FS-44 — Report whether Amazon Macie is enabled and whether automated
+    sensitive data discovery is actually running.
+
+    Evidence collected: GetMacieSession for the account's Macie status, then
+    GetAutomatedDiscoveryConfiguration for the discovery status.
+
+    Both are required. Macie can be ENABLED while automated sensitive data
+    discovery is DISABLED, in which case nothing is being scanned — verified
+    live on an account showing session ENABLED and discovery DISABLED, where an
+    earlier revision reported "Amazon Macie is enabled and scanning S3 buckets"
+    as a High pass.
+
+    Error handling note: when Macie has never been enabled, all Macie APIs
+    raise AccessDeniedException, which is also what a missing IAM permission
+    produces. The messages differ ("Macie is not enabled", "has not been
+    onboarded"), so they are distinguished on that basis and a genuine
+    permissions gap is reported as COULD NOT ASSESS rather than as a security
+    failure.
+
+    Deliberately NOT asserted:
+      - that discovery covers the specific buckets holding training data or KB
+        data sources,
+      - that any sensitive-data finding has been triaged or remediated,
+      - that a PII pre-processing step exists in training or ingestion
+        pipelines.
+
     COMPLIANCE_PLACEHOLDER: [NYDFS 500.06, GDPR Art.25, PCI-DSS 3.4, FFIEC CAT]
     """
-    findings = _empty_findings("Amazon Macie PII Scanning Check")
+    check_name = "Amazon Macie PII Scanning Check"
+    reference = "https://docs.aws.amazon.com/macie/latest/user/what-is-macie.html"
+    not_enabled_markers = ("not enabled", "not been onboarded", "no macie account")
+    findings = _empty_findings(check_name)
     try:
         macie = boto3.client("macie2", config=boto3_config)
-        try:
-            status = macie.get_macie_session()
-            macie_enabled = status.get("status") == "ENABLED"
-        except ClientError:
-            macie_enabled = False
 
-        if not macie_enabled:
+        macie_status = None
+        try:
+            macie_status = macie.get_macie_session().get("status")
+        except ClientError as e:
+            message = str(e).lower()
+            if any(marker in message for marker in not_enabled_markers):
+                macie_status = "NOT_ENABLED"
+            else:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="FS-44",
+                        finding_name=f"{COULD_NOT_ASSESS_PREFIX}{check_name}",
+                        finding_details=(
+                            "Unable to determine whether Amazon Macie is enabled "
+                            f"({e.response['Error']['Code']}). This is a permissions or "
+                            "availability problem, not evidence that Macie is disabled."
+                        ),
+                        resolution="Ensure the assessment role has macie2:GetMacieSession permission.",
+                        reference=reference,
+                        severity="Low",
+                        status="N/A",
+                        compliance_frameworks=COMPLIANCE_MAP["FS-44"],
+                    )
+                )
+                return findings
+
+        if macie_status != "ENABLED":
             findings["status"] = "WARN"
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-44",
                     finding_name="Amazon Macie Not Enabled",
                     finding_details=(
-                        "Amazon Macie is not enabled. S3 buckets containing training data "
-                        "and KB data sources are not being scanned for PII/sensitive data."
+                        f"Amazon Macie is not enabled in this region (status: {macie_status}). "
+                        "S3 buckets containing training data and KB data sources are not being "
+                        "scanned for PII or other sensitive data."
                     ),
                     resolution=(
-                        "1. Enable Amazon Macie in all regions where AI/ML data is stored.\n"
-                        "2. Create Macie classification jobs for training data and KB buckets.\n"
-                        "3. Configure Macie findings to route to Security Hub and SNS.\n"
+                        "1. Enable Amazon Macie in every region where AI/ML data is stored.\n"
+                        "2. Enable automated sensitive data discovery.\n"
+                        "3. Route Macie findings to Security Hub and SNS.\n"
                         "4. Remediate PII findings before using data for model training."
                     ),
-                    reference="https://docs.aws.amazon.com/macie/latest/user/what-is-macie.html",
+                    reference=reference,
                     severity="High",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-44"],
                 )
             )
-        else:
+            return findings
+
+        discovery_status = None
+        try:
+            discovery_status = macie.get_automated_discovery_configuration().get(
+                "status"
+            )
+        except ClientError as e:
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-44",
-                    finding_name="Amazon Macie Enabled",
-                    finding_details="Amazon Macie is enabled and scanning S3 buckets.",
-                    resolution="Verify Macie jobs cover training data and KB data source buckets.",
-                    reference="https://docs.aws.amazon.com/macie/latest/user/what-is-macie.html",
+                    finding_name=f"{COULD_NOT_ASSESS_PREFIX}Macie Automated Discovery Status",
+                    finding_details=(
+                        "Amazon Macie is enabled, but the automated sensitive data discovery "
+                        f"status could not be read ({e.response['Error']['Code']}), so whether "
+                        "anything is actually being scanned is unknown."
+                    ),
+                    resolution=(
+                        "Ensure the assessment role has "
+                        "macie2:GetAutomatedDiscoveryConfiguration permission."
+                    ),
+                    reference=reference,
+                    severity="Low",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-44"],
+                )
+            )
+            return findings
+
+        if discovery_status == "ENABLED":
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-44",
+                    finding_name="Amazon Macie Automated Discovery Enabled",
+                    finding_details=(
+                        "Amazon Macie is enabled and automated sensitive data discovery is "
+                        "ENABLED, so S3 buckets are evaluated on an ongoing basis. Whether "
+                        "discovery covers the specific buckets holding training data or KB data "
+                        "sources is not assessed."
+                    ),
+                    resolution=(
+                        "Review the Macie classification scope to confirm it includes your "
+                        "training data and Knowledge Base source buckets."
+                    ),
+                    reference=reference,
                     severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-44"],
                 )
             )
+        else:
+            findings["status"] = "WARN"
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-44",
+                    finding_name="Amazon Macie Enabled but Automated Discovery Disabled",
+                    finding_details=(
+                        "Amazon Macie is enabled, but automated sensitive data discovery is "
+                        f"{discovery_status}. Enabling Macie alone does not scan any data, so S3 "
+                        "buckets containing training data and KB data sources are not being "
+                        "evaluated for PII."
+                    ),
+                    resolution=(
+                        "1. Enable automated sensitive data discovery in Macie.\n"
+                        "2. Confirm the classification scope includes training data and KB source "
+                        "buckets.\n"
+                        "3. Alternatively, create targeted classification jobs for those buckets."
+                    ),
+                    reference=reference,
+                    severity="High",
+                    status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-44"],
+                )
+            )
     except Exception as e:
-        return _error_findings("Amazon Macie PII Scanning Check", e)
+        return _error_findings(check_name, e)
     return findings
 
 
@@ -5605,11 +6274,38 @@ def check_data_currency_disclaimer_advisory() -> Dict[str, Any]:
 
 def check_foundation_model_lifecycle_policy() -> Dict[str, Any]:
     """
-    FS-63 — Check for a documented process to update foundation models when
-    new versions with more recent training data are released.
+    FS-63 — Report whether the account has any detectable governance for
+    foundation model lifecycle, and list legacy models offered in the region as
+    context for that review.
+
+    Evidence collected: ListFoundationModels for ``modelLifecycle.status`` and
+    DescribeConfigRules for rules whose name mentions "lifecycle" or "model".
+
+    Scope note, and the reason this check was restructured:
+    ListFoundationModels returns the REGION CATALOGUE, not the models this
+    account uses. Verified live: us-east-1 offers 119 models of which 19 are
+    LEGACY, none necessarily used by the account. An earlier revision failed the
+    check whenever a legacy model existed in the region and no Config rule was
+    found, which fires on virtually every account in the region regardless of
+    posture, and its passing branch ("No legacy models detected") was
+    effectively unreachable. The account-specific signal is the absence of
+    lifecycle governance, so that is what the verdict now keys off; legacy
+    availability is reported as context.
+
+    Deliberately NOT asserted:
+      - that the account invokes any of the legacy models listed,
+      - that a matching Config rule actually enforces model currency,
+      - that a documented lifecycle process exists outside AWS Config.
+    Name-matched Config rules are a heuristic for "some governance exists",
+    not proof of an effective process.
+
     COMPLIANCE_PLACEHOLDER: [SR 11-7, FFIEC CAT, ISO 27001 A.12.5]
     """
-    findings = _empty_findings("Foundation Model Lifecycle Policy Check")
+    check_name = "Foundation Model Lifecycle Policy Check"
+    reference = (
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html"
+    )
+    findings = _empty_findings(check_name)
     try:
         bedrock = boto3.client("bedrock", config=boto3_config)
         # Do not filter by output modality: legacy/deprecated models exist across
@@ -5617,16 +6313,41 @@ def check_foundation_model_lifecycle_policy() -> Dict[str, Any]:
         # in FinServ RAG pipelines; a legacy embedding model silently serves stale
         # vector representations. Fetch all modalities to surface any deprecated model.
         models = bedrock.list_foundation_models().get("modelSummaries", [])
-
         legacy_models = [
             m["modelId"]
             for m in models
             if m.get("modelLifecycle", {}).get("status") == "LEGACY"
         ]
+        legacy_context = (
+            f"For context, {len(legacy_models)} of {len(models)} model(s) offered in this region "
+            f"are marked LEGACY (for example {', '.join(sorted(legacy_models)[:5])}); this "
+            "reflects the regional catalogue, not this account's usage."
+            if legacy_models
+            else f"No LEGACY models are offered in this region ({len(models)} model(s) reviewed)."
+        )
 
-        # Check for Config rules or SSM documents related to model lifecycle
-        config_client = boto3.client("config", config=boto3_config)
-        rules = _paginate(config_client, "describe_config_rules", "ConfigRules")
+        try:
+            config_client = boto3.client("config", config=boto3_config)
+            rules = _paginate(config_client, "describe_config_rules", "ConfigRules")
+        except ClientError as e:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-63",
+                    finding_name=f"{COULD_NOT_ASSESS_PREFIX}{check_name}",
+                    finding_details=(
+                        "Unable to enumerate AWS Config rules "
+                        f"({e.response['Error']['Code']}), so account-side lifecycle governance "
+                        f"could not be assessed. {legacy_context}"
+                    ),
+                    resolution="Ensure the assessment role has config:DescribeConfigRules permission.",
+                    reference=reference,
+                    severity="Low",
+                    status="N/A",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-63"],
+                )
+            )
+            return findings
+
         lifecycle_rules = [
             r
             for r in rules
@@ -5634,56 +6355,57 @@ def check_foundation_model_lifecycle_policy() -> Dict[str, Any]:
             or "model" in r.get("ConfigRuleName", "").lower()
         ]
 
-        if legacy_models and not lifecycle_rules:
-            findings["status"] = "WARN"
+        if lifecycle_rules:
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-63",
-                    finding_name="Legacy Models Without Lifecycle Management",
+                    finding_name="Foundation Model Lifecycle Governance Detected",
                     finding_details=(
-                        f"Legacy foundation models available: {', '.join(legacy_models[:5])}. "
-                        "No Config rules found for model lifecycle management."
+                        f"{len(lifecycle_rules)} AWS Config rule(s) with lifecycle- or "
+                        "model-related names were found, indicating some account-side model "
+                        "lifecycle governance: "
+                        f"{', '.join(sorted(r['ConfigRuleName'] for r in lifecycle_rules)[:5])}. "
+                        "Rule names are a heuristic; whether these rules enforce model currency "
+                        f"is not assessed. {legacy_context}"
                     ),
                     resolution=(
-                        "1. Create a model lifecycle management process.\n"
-                        "2. Subscribe to AWS Bedrock model deprecation notifications.\n"
-                        "3. Test and migrate to new model versions before deprecation dates.\n"
-                        "4. Document training data cutoff dates in model inventory."
+                        "Confirm the matched rules genuinely track model currency, and that "
+                        "deprecation notifications are monitored."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html",
-                    severity="Medium",
-                    status="Failed",
-                    compliance_frameworks=COMPLIANCE_MAP["FS-63"],
-                )
-            )
-        else:
-            findings["csv_data"].append(
-                create_finding(
-                    check_id="FS-63",
-                    finding_name="Foundation Model Lifecycle Management",
-                    finding_details=(
-                        f"No legacy models detected. "
-                        f"{len(lifecycle_rules)} lifecycle-related Config rule(s) found."
-                    ),
-                    resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html",
+                    reference=reference,
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-63"],
                 )
             )
+        else:
+            findings["status"] = "WARN"
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="FS-63",
+                    finding_name="No Foundation Model Lifecycle Governance Detected",
+                    finding_details=(
+                        "No AWS Config rule with a lifecycle- or model-related name was found, so "
+                        "no account-side control was detected for migrating off deprecated "
+                        "foundation models. A documented process may exist outside AWS Config and "
+                        f"would not be visible here. {legacy_context}"
+                    ),
+                    resolution=(
+                        "1. Document a model lifecycle process covering evaluation and migration.\n"
+                        "2. Subscribe to AWS Bedrock model deprecation notifications.\n"
+                        "3. Test and migrate off legacy models you actually invoke, before their "
+                        "end-of-life dates.\n"
+                        "4. Record training-data cutoff dates in the model inventory (see FS-13)."
+                    ),
+                    reference=reference,
+                    severity="Medium",
+                    status="Failed",
+                    compliance_frameworks=COMPLIANCE_MAP["FS-63"],
+                )
+            )
     except Exception as e:
-        return _error_findings("Foundation Model Lifecycle Policy Check", e)
+        return _error_findings(check_name, e)
     return findings
-
-
-# ===========================================================================
-# MATERIAL GAP CHECKS (FS-65 to FS-69)
-# Mitigations explicitly in the AWS FinServ Guide not covered by FS-01..63
-# or the existing BR/SM/AC checks.
-# NOTE: FS-64 (Guardrail Trace Logging) is merged into upstream BR-04.
-# See extension note in SECURITY_CHECKS_FINSERV.md.
-# ===========================================================================
 
 
 def check_kb_datasource_s3_event_notifications(inventory) -> Dict[str, Any]:

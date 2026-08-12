@@ -331,6 +331,7 @@ Resources:
                   - cloudwatch:DescribeAlarms
                   - logs:DescribeAccountPolicies
                   # Bedrock — guardrails, models, evaluation (FS-15, FS-27..50, FS-59..63)
+                  - logs:GetDataProtectionPolicy # FS-43
                   - bedrock:ListGuardrails
                   - bedrock:GetGuardrail
                   - bedrock:ListFoundationModels
@@ -344,6 +345,7 @@ Resources:
                   - bedrock:ListDataSources
                   - bedrock:GetDataSource
                   # Bedrock AgentCore (FS-08, FS-66)
+                  - bedrock:ListIngestionJobs # FS-31
                   - bedrock-agentcore:ListAgentRuntimes
                   - bedrock-agentcore:GetAgentRuntime
                   - bedrock-agentcore:ListGateways
@@ -373,8 +375,10 @@ Resources:
                   # OpenSearch Serverless — KB vector store (FS-25, FS-26)
                   - aoss:ListSecurityPolicies
                   # Macie — PII detection on training data (FS-44)
+                  - aoss:ListCollections # FS-25
                   - macie2:GetMacieSession
                   # EventBridge — KB integrity monitoring (FS-33, FS-65)
+                  - macie2:GetAutomatedDiscoveryConfiguration # FS-44
                   - events:ListRules
                   # EventBridge Scheduler (KB sync schedules - FS-61).
                   # AWS-recommended scheduling approach; classic EventBridge rules are legacy.

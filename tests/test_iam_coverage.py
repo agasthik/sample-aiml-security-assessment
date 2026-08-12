@@ -59,8 +59,10 @@ REQUIRED_FINSERV_ACTIONS = {
     "bedrock:ListTagsForResource",  # FS-13 (B1 gap)
     "config:DescribeConfigRules",  # FS-14/63
     "bedrock:ListEvaluationJobs",  # FS-15
-    "ecr:DescribeRepositories",  # FS-16
+    "ecr:DescribeRepositories",
+    "inspector2:BatchGetAccountStatus",  # FS-16
     "sagemaker:ListFeatureGroups",
+    "sagemaker:DescribeFeatureGroup",  # FS-20
     "sagemaker:ListModels",  # FS-20/13
     "sagemaker:ListMonitoringSchedules",
     "sagemaker:ListModelCards",
@@ -69,13 +71,17 @@ REQUIRED_FINSERV_ACTIONS = {
     "bedrock:GetKnowledgeBase",  # FS-24/31/33/48/61/65
     "bedrock:ListDataSources",
     "bedrock:GetDataSource",  # FS-31/33/65
-    "aoss:ListSecurityPolicies",  # FS-25/26
+    "bedrock:ListIngestionJobs",  # FS-31
+    "aoss:ListCollections",  # FS-25
+    "aoss:ListSecurityPolicies",  # FS-26
     "bedrock:ListGuardrails",
     "bedrock:GetGuardrail",  # FS-27/28/36/38/45/47/50/51/59
     "bedrock:ListAutomatedReasoningPolicies",  # FS-27b (B2 gap)
     "bedrock:ListFoundationModels",  # FS-34/63
-    "logs:DescribeAccountPolicies",  # FS-43
-    "macie2:GetMacieSession",  # FS-44
+    "logs:DescribeAccountPolicies",
+    "logs:GetDataProtectionPolicy",  # FS-43
+    "macie2:GetMacieSession",
+    "macie2:GetAutomatedDiscoveryConfiguration",  # FS-44
     "events:ListRules",
     "scheduler:ListSchedules",  # FS-61 (B2 gap)
     "bedrock:GetModelInvocationLoggingConfiguration",

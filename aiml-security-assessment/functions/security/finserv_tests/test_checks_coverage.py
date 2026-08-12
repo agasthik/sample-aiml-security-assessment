@@ -423,39 +423,79 @@ class TestFS16EcrScanningWarn:
 
 
 class TestFS20FeatureStoreWarnPass:
+    """FS-20 keys off OfflineStoreConfig from DescribeFeatureGroup.
+
+    OfflineStoreStatus is NOT usable: verified against a live account, it is
+    absent from both ListFeatureGroups summaries and DescribeFeatureGroup, so a
+    check reading it flagged every feature group regardless of configuration.
+    """
+
+    @staticmethod
+    def _sagemaker(groups, detail):
+        c = MagicMock()
+        c.list_feature_groups.return_value = {"FeatureGroupSummaries": groups}
+
+        def describe(FeatureGroupName):  # noqa: N803 - matches the boto3 kwarg
+            value = detail[FeatureGroupName]
+            if isinstance(value, Exception):
+                raise value
+            return value
+
+        c.describe_feature_group.side_effect = describe
+        return c
+
     @patch("finserv_app.boto3.client")
     def test_warn_groups_without_offline_store(self, mock_client):
-        """Lines 1244-1246: feature groups without active offline store → WARN."""
-        c = MagicMock()
-        c.list_feature_groups.return_value = {
-            "FeatureGroupSummaries": [
-                {
-                    "FeatureGroupName": "customer-features",
-                    "OfflineStoreStatus": {"Status": "Disabled"},
-                }
-            ]
-        }
-        mock_client.return_value = c
+        """No OfflineStoreConfig on the describe response → WARN."""
+        mock_client.return_value = self._sagemaker(
+            [{"FeatureGroupName": "customer-features"}],
+            {"customer-features": {"FeatureGroupName": "customer-features"}},
+        )
         result = app.check_feature_store_rollback_capability()
         _assert_structure(result)
         assert result["status"] == "WARN"
+        assert any(
+            r["Finding"] == "Feature Groups Without Offline Store"
+            for r in result["csv_data"]
+        )
 
     @patch("finserv_app.boto3.client")
     def test_pass_all_groups_have_offline_store(self, mock_client):
-        """Line 1266: all feature groups have active offline store → Passed."""
-        c = MagicMock()
-        c.list_feature_groups.return_value = {
-            "FeatureGroupSummaries": [
-                {
-                    "FeatureGroupName": "customer-features",
-                    "OfflineStoreStatus": {"Status": "Active"},
+        """OfflineStoreConfig present → Passed."""
+        mock_client.return_value = self._sagemaker(
+            [{"FeatureGroupName": "customer-features"}],
+            {
+                "customer-features": {
+                    "OfflineStoreConfig": {
+                        "S3StorageConfig": {
+                            "S3Uri": "s3://fs-offline/customer-features"
+                        }
+                    }
                 }
-            ]
-        }
-        mock_client.return_value = c
+            },
+        )
         result = app.check_feature_store_rollback_capability()
         _assert_structure(result)
-        assert any(r["Status"] == "Passed" for r in result["csv_data"])
+        assert any(
+            r["Finding"] == "Feature Groups With Offline Store Configured"
+            and r["Status"] == "Passed"
+            for r in result["csv_data"]
+        )
+
+    @patch("finserv_app.boto3.client")
+    def test_describe_denied_is_could_not_assess_not_a_failure(self, mock_client):
+        """DescribeFeatureGroup denied → COULD NOT ASSESS, never a Failed row."""
+        mock_client.return_value = self._sagemaker(
+            [{"FeatureGroupName": "customer-features"}],
+            {"customer-features": _client_error("AccessDeniedException")},
+        )
+        result = app.check_feature_store_rollback_capability()
+        _assert_structure(result)
+        assert any(
+            r["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+            for r in result["csv_data"]
+        )
+        assert not any(r["Status"] == "Failed" for r in result["csv_data"])
 
 
 # =========================================================================
@@ -743,55 +783,97 @@ class TestFS24MetadataFilteringPass:
 
 
 class TestFS25OssEncryptionPaths:
-    @patch("finserv_app.boto3.client")
-    def test_pass_policies_with_cmk(self, mock_client):
-        """Lines 1509-1511: encryption policies exist with CMK → Passed."""
+    """FS-25 keys off ListCollections.kmsKeyArn, not encryption-policy documents.
+
+    ListSecurityPolicies summaries carry no ``policy`` member, so the previous
+    ``json.loads(p.get("policy", "{}"))`` always produced ``{}`` and the
+    "AWSOwnedKey not in {}" test was always true — every account was reported as
+    using a customer-managed key and the Failed branch was unreachable. Verified
+    live: kmsKeyArn is the literal string "auto" for an AWS-owned key.
+    """
+
+    @staticmethod
+    def _oss(collections=None, error=None):
         c = MagicMock()
-        c.list_security_policies.return_value = {
-            "securityPolicySummaries": [
-                {
-                    "name": "kb-encryption",
-                    "policy": json.dumps(
-                        {"Rules": [{"KmsARN": "arn:aws:kms:us-east-1:123:key/abc"}]}
-                    ),
-                }
-            ]
-        }
-        mock_client.return_value = c
-        result = app.check_opensearch_serverless_encryption()
-        _assert_structure(result)
-        assert any(r["Status"] == "Passed" for r in result["csv_data"])
+        if error is not None:
+            c.list_collections.side_effect = error
+        else:
+            c.list_collections.return_value = {"collectionSummaries": collections}
+        return c
 
     @patch("finserv_app.boto3.client")
-    def test_pass_no_policies(self, mock_client):
-        """Line 1488: no encryption policies → N/A finding."""
-        c = MagicMock()
-        c.list_security_policies.return_value = {"securityPolicySummaries": []}
-        mock_client.return_value = c
-        result = app.check_opensearch_serverless_encryption()
-        _assert_structure(result)
-        assert any(r["Status"] == "N/A" for r in result["csv_data"])
-
-    @patch("finserv_app.boto3.client")
-    def test_fail_policies_without_cmk(self, mock_client):
-        """Encryption policies exist but all use AWS-owned keys → WARN/Failed
-        (the customer-managed-key control is absent), not a false Pass."""
-        c = MagicMock()
-        c.list_security_policies.return_value = {
-            "securityPolicySummaries": [
+    def test_pass_collection_with_cmk(self, mock_client):
+        """kmsKeyArn is a real key ARN → Passed."""
+        mock_client.return_value = self._oss(
+            [
                 {
-                    "name": "aws-owned-enc",
-                    "policy": json.dumps(
-                        {"Rules": [{"ResourceType": "collection"}], "AWSOwnedKey": True}
-                    ),
+                    "name": "kb-collection",
+                    "kmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/abc",
                 }
             ]
-        }
-        mock_client.return_value = c
+        )
+        result = app.check_opensearch_serverless_encryption()
+        _assert_structure(result)
+        assert any(
+            r["Finding"]
+            == "OpenSearch Serverless Collections Using Customer-Managed Keys"
+            and r["Status"] == "Passed"
+            for r in result["csv_data"]
+        )
+
+    @patch("finserv_app.boto3.client")
+    def test_na_no_collections(self, mock_client):
+        """No collections → N/A. Orphaned encryption policies protect no data,
+        so flagging them would itself be a false positive."""
+        mock_client.return_value = self._oss([])
+        result = app.check_opensearch_serverless_encryption()
+        _assert_structure(result)
+        assert any(
+            r["Finding"] == "No OpenSearch Serverless Collections Found"
+            and r["Status"] == "N/A"
+            for r in result["csv_data"]
+        )
+
+    @patch("finserv_app.boto3.client")
+    def test_fail_collection_with_aws_owned_key(self, mock_client):
+        """kmsKeyArn == "auto" means an AWS-owned key → WARN/Failed, not a Pass."""
+        mock_client.return_value = self._oss(
+            [{"name": "aws-owned-collection", "kmsKeyArn": "auto"}]
+        )
         result = app.check_opensearch_serverless_encryption()
         _assert_structure(result)
         assert result["status"] == "WARN"
-        assert any(r["Status"] == "Failed" for r in result["csv_data"])
+        assert any(
+            r["Finding"]
+            == "OpenSearch Serverless Collections Using AWS-Owned Encryption Keys"
+            and r["Status"] == "Failed"
+            for r in result["csv_data"]
+        )
+
+    @patch("finserv_app.boto3.client")
+    def test_missing_kms_key_arn_is_could_not_assess(self, mock_client):
+        """A collection with no kmsKeyArn is undetermined, not silently passed."""
+        mock_client.return_value = self._oss([{"name": "mystery-collection"}])
+        result = app.check_opensearch_serverless_encryption()
+        _assert_structure(result)
+        assert any(
+            r["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+            for r in result["csv_data"]
+        )
+
+    @patch("finserv_app.boto3.client")
+    def test_list_collections_denied_is_could_not_assess(self, mock_client):
+        """aoss:ListCollections denied → COULD NOT ASSESS, not a Failed row."""
+        mock_client.return_value = self._oss(
+            error=_client_error("AccessDeniedException")
+        )
+        result = app.check_opensearch_serverless_encryption()
+        _assert_structure(result)
+        assert any(
+            r["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+            for r in result["csv_data"]
+        )
+        assert not any(r["Status"] == "Failed" for r in result["csv_data"])
 
 
 # =========================================================================
@@ -925,49 +1007,138 @@ class TestFS30ComplianceEvalPass:
 
 
 class TestFS31KbSyncPaths:
-    def test_warn_stale_data_sources(self):
-        """Lines 1864-1882: KB data sources not synced in >7 days → WARN."""
-        stale_time = datetime.now(timezone.utc) - timedelta(days=10)
-        inv = make_resource_inventory(
+    """FS-31 reads ingestion-job history, not the data source's own updatedAt.
+
+    A data source's updatedAt is when its CONFIGURATION last changed. Verified
+    live: a source last configured 2025-11-21 had in fact completed an ingestion
+    on 2025-11-26, so the config timestamp overstated staleness by five days; a
+    source edited yesterday that had never synced would have looked current.
+    """
+
+    @staticmethod
+    def _inventory():
+        return make_resource_inventory(
             knowledge_bases=app.KbInventory(
                 summaries=[{"knowledgeBaseId": "kb1", "name": "my-kb"}],
                 data_sources_by_kb={
-                    "kb1": [
-                        {
-                            "dataSourceId": "ds1",
-                            "name": "s3-source",
-                            "updatedAt": stale_time,
-                        }
-                    ]
+                    "kb1": [{"dataSourceId": "ds1", "name": "s3-source"}]
                 },
                 data_source_detail={},
             )
         )
-        result = app.check_knowledge_base_data_source_sync(inv)
+
+    @staticmethod
+    def _agent(jobs=None, error=None):
+        c = MagicMock()
+        if error is not None:
+            c.list_ingestion_jobs.side_effect = error
+        else:
+            c.list_ingestion_jobs.return_value = {"ingestionJobSummaries": jobs}
+        return c
+
+    @patch("finserv_app.boto3.client")
+    def test_warn_stale_data_sources(self, mock_client):
+        """Most recent COMPLETE ingestion older than the threshold → WARN."""
+        stale = datetime.now(timezone.utc) - timedelta(days=10)
+        mock_client.return_value = self._agent(
+            [{"status": "COMPLETE", "updatedAt": stale}]
+        )
+        result = app.check_knowledge_base_data_source_sync(self._inventory())
         _assert_structure(result)
         assert result["status"] == "WARN"
+        assert any(
+            r["Finding"] == "Knowledge Base Data Sources Past Review Threshold"
+            for r in result["csv_data"]
+        )
 
-    def test_pass_recently_synced(self):
-        """Line 1901: all data sources synced within 7 days → Passed."""
-        fresh_time = datetime.now(timezone.utc) - timedelta(days=1)
+    @patch("finserv_app.boto3.client")
+    def test_pass_recently_synced(self, mock_client):
+        """A COMPLETE ingestion inside the threshold → Passed."""
+        fresh = datetime.now(timezone.utc) - timedelta(days=1)
+        mock_client.return_value = self._agent(
+            [{"status": "COMPLETE", "updatedAt": fresh}]
+        )
+        result = app.check_knowledge_base_data_source_sync(self._inventory())
+        _assert_structure(result)
+        assert any(
+            r["Finding"] == "Knowledge Base Data Sources Recently Synced"
+            and r["Status"] == "Passed"
+            for r in result["csv_data"]
+        )
+
+    @patch("finserv_app.boto3.client")
+    def test_latest_complete_job_wins_over_newer_failed_job(self, mock_client):
+        """Staleness is measured from the most recent COMPLETE job; a newer
+        FAILED job must not be read as a successful sync."""
+        mock_client.return_value = self._agent(
+            [
+                {
+                    "status": "COMPLETE",
+                    "updatedAt": datetime.now(timezone.utc) - timedelta(days=1),
+                },
+                {
+                    "status": "FAILED",
+                    "updatedAt": datetime.now(timezone.utc),
+                },
+            ]
+        )
+        result = app.check_knowledge_base_data_source_sync(self._inventory())
+        _assert_structure(result)
+        assert any(
+            r["Finding"] == "Knowledge Base Data Sources Recently Synced"
+            for r in result["csv_data"]
+        )
+
+    @patch("finserv_app.boto3.client")
+    def test_never_synced_is_a_distinct_failure(self, mock_client):
+        """Jobs exist but none COMPLETE → "never synced", and NO Passed row may
+        be emitted alongside it."""
+        mock_client.return_value = self._agent(
+            [{"status": "FAILED", "updatedAt": datetime.now(timezone.utc)}]
+        )
+        result = app.check_knowledge_base_data_source_sync(self._inventory())
+        _assert_structure(result)
+        assert result["status"] == "WARN"
+        assert any(
+            r["Finding"] == "Knowledge Base Data Sources Never Successfully Synced"
+            for r in result["csv_data"]
+        )
+        assert not any(r["Status"] == "Passed" for r in result["csv_data"])
+
+    @patch("finserv_app.boto3.client")
+    def test_list_ingestion_jobs_denied_is_could_not_assess(self, mock_client):
+        """bedrock:ListIngestionJobs denied → COULD NOT ASSESS and no Passed row."""
+        mock_client.return_value = self._agent(
+            error=_client_error("AccessDeniedException")
+        )
+        result = app.check_knowledge_base_data_source_sync(self._inventory())
+        _assert_structure(result)
+        assert any(
+            r["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+            for r in result["csv_data"]
+        )
+        assert not any(r["Status"] == "Passed" for r in result["csv_data"])
+
+    @patch("finserv_app.boto3.client")
+    def test_no_data_sources_is_na_not_a_vacuous_pass(self, mock_client):
+        """A KB with no data source has no ingestion to age, so the row is N/A
+        rather than "recently synced"."""
+        mock_client.return_value = self._agent([])
         inv = make_resource_inventory(
             knowledge_bases=app.KbInventory(
                 summaries=[{"knowledgeBaseId": "kb1", "name": "my-kb"}],
-                data_sources_by_kb={
-                    "kb1": [
-                        {
-                            "dataSourceId": "ds1",
-                            "name": "s3-source",
-                            "updatedAt": fresh_time,
-                        }
-                    ]
-                },
+                data_sources_by_kb={"kb1": []},
                 data_source_detail={},
             )
         )
         result = app.check_knowledge_base_data_source_sync(inv)
         _assert_structure(result)
-        assert any(r["Status"] == "Passed" for r in result["csv_data"])
+        assert any(
+            r["Finding"] == "No Knowledge Base Data Sources Found"
+            and r["Status"] == "N/A"
+            for r in result["csv_data"]
+        )
+        assert not any(r["Status"] == "Passed" for r in result["csv_data"])
 
 
 # =========================================================================
@@ -1343,17 +1514,79 @@ class TestFS41ClarifyExplainabilityPass:
 
 
 class TestFS42ModelCardsPass:
+    """FS-42 paginates ListModelCards on ModelCardSummaries and reads
+    ModelCardStatus.
+
+    The response key is ModelCardSummaries, not ModelCardSummaryList. Reading
+    the wrong key meant the check reported "No SageMaker Model Cards Found" on
+    every account, including accounts that had cards.
+    """
+
+    @staticmethod
+    def _sagemaker(cards):
+        c = MagicMock()
+        c.list_model_cards.return_value = {"ModelCardSummaries": cards}
+        return c
+
     @patch("finserv_app.boto3.client")
-    def test_pass_model_cards_found(self, mock_client):
-        """Line 2501: model cards exist → Passed (key is ModelCardSummaryList)."""
+    def test_pass_approved_model_cards(self, mock_client):
+        """An Approved card → Passed."""
+        mock_client.return_value = self._sagemaker(
+            [{"ModelCardName": "fraud-model-card", "ModelCardStatus": "Approved"}]
+        )
+        result = app.check_ai_service_cards_documentation()
+        _assert_structure(result)
+        assert any(
+            r["Finding"] == "SageMaker Model Cards Approved" and r["Status"] == "Passed"
+            for r in result["csv_data"]
+        )
+
+    @patch("finserv_app.boto3.client")
+    def test_fail_unapproved_model_cards(self, mock_client):
+        """A Draft card has not completed its documented review → Failed."""
+        mock_client.return_value = self._sagemaker(
+            [{"ModelCardName": "fraud-model-card", "ModelCardStatus": "Draft"}]
+        )
+        result = app.check_ai_service_cards_documentation()
+        _assert_structure(result)
+        assert result["status"] == "WARN"
+        assert any(
+            r["Finding"] == "SageMaker Model Cards Not Approved"
+            and r["Status"] == "Failed"
+            for r in result["csv_data"]
+        )
+
+    @patch("finserv_app.boto3.client")
+    def test_absent_cards_are_na_not_a_failure(self, mock_client):
+        """A Bedrock-only estate legitimately has no SageMaker model cards, so
+        absence is Informational/N/A rather than Failed/Medium."""
+        mock_client.return_value = self._sagemaker([])
+        result = app.check_ai_service_cards_documentation()
+        _assert_structure(result)
+        row = next(
+            r
+            for r in result["csv_data"]
+            if r["Finding"] == "No SageMaker Model Cards Found"
+        )
+        assert row["Status"] == "N/A"
+        # Severity may be a SeverityEnum or a plain string depending on caller.
+        assert str(row["Severity"]).upper().endswith("INFORMATIONAL")
+
+    @patch("finserv_app.boto3.client")
+    def test_reads_model_card_summaries_not_summary_list(self, mock_client):
+        """Guard against a regression to the old, wrong response key."""
         c = MagicMock()
         c.list_model_cards.return_value = {
-            "ModelCardSummaryList": [{"ModelCardName": "fraud-model-card"}]
+            "ModelCardSummaries": [
+                {"ModelCardName": "real-card", "ModelCardStatus": "Approved"}
+            ],
+            "ModelCardSummaryList": [],
         }
         mock_client.return_value = c
         result = app.check_ai_service_cards_documentation()
-        _assert_structure(result)
-        assert any(r["Status"] == "Passed" for r in result["csv_data"])
+        assert not any(
+            r["Finding"] == "No SageMaker Model Cards Found" for r in result["csv_data"]
+        )
 
 
 # =========================================================================
@@ -1362,27 +1595,151 @@ class TestFS42ModelCardsPass:
 
 
 class TestFS43CloudwatchPiiPaths:
+    """FS-43 branches on where Bedrock actually delivers invocation logs.
+
+    Verified live: an account logging to S3 only (no cloudWatchConfig) was still
+    reported as a High failure about plaintext PII in CloudWatch, where no
+    Bedrock logs existed at all. A log-group-scoped data protection policy is
+    also invisible to DescribeAccountPolicies, which produced the opposite error.
+    """
+
+    @staticmethod
+    def _clients(
+        logging_config,
+        account_policies=None,
+        group_policy=None,
+        describe_error=None,
+        logging_error=None,
+    ):
+        bedrock = MagicMock()
+        if logging_error is not None:
+            bedrock.get_model_invocation_logging_configuration.side_effect = (
+                logging_error
+            )
+        else:
+            bedrock.get_model_invocation_logging_configuration.return_value = (
+                {"loggingConfig": logging_config} if logging_config is not None else {}
+            )
+
+        logs = MagicMock()
+        if describe_error is not None:
+            logs.describe_account_policies.side_effect = describe_error
+        else:
+            logs.describe_account_policies.return_value = {
+                "accountPolicies": account_policies or []
+            }
+        # GetDataProtectionPolicy does NOT raise for a log group without a
+        # policy; it returns a response with no policyDocument member. Only
+        # ResponseMetadata comes back, so truthiness of the response is useless.
+        logs.get_data_protection_policy.return_value = (
+            {"policyDocument": group_policy, "ResponseMetadata": {}}
+            if group_policy
+            else {"ResponseMetadata": {}}
+        )
+
+        def factory(service, **kwargs):
+            return {"bedrock": bedrock, "logs": logs}.get(service, MagicMock())
+
+        return factory
+
+    _CW = {"cloudWatchConfig": {"logGroupName": "/aws/bedrock/invocations"}}
+
     @patch("finserv_app.boto3.client")
     def test_warn_no_data_protection_policies(self, mock_client):
-        """Lines 2540-2541: no data protection policies → WARN."""
-        c = MagicMock()
-        c.describe_account_policies.return_value = {"accountPolicies": []}
-        mock_client.return_value = c
+        """CloudWatch delivery with neither account nor log-group policy → WARN."""
+        mock_client.side_effect = self._clients(self._CW)
         result = app.check_cloudwatch_log_pii_masking()
         _assert_structure(result)
         assert result["status"] == "WARN"
+        assert any(
+            r["Finding"] == "No CloudWatch Logs Data Protection Policies"
+            for r in result["csv_data"]
+        )
 
     @patch("finserv_app.boto3.client")
     def test_client_error_on_describe_policies_treated_as_no_policies(
         self, mock_client
     ):
-        """Line 2536: ClientError on describe_account_policies → policies = [] → WARN."""
-        c = MagicMock()
-        c.describe_account_policies.side_effect = _client_error("AccessDeniedException")
-        mock_client.return_value = c
+        """DescribeAccountPolicies denied and no log-group policy → WARN."""
+        mock_client.side_effect = self._clients(
+            self._CW, describe_error=_client_error("AccessDeniedException")
+        )
         result = app.check_cloudwatch_log_pii_masking()
         _assert_structure(result)
         assert result["status"] == "WARN"
+
+    @patch("finserv_app.boto3.client")
+    def test_pass_account_scoped_policy(self, mock_client):
+        """An account-scoped policy satisfies the control."""
+        mock_client.side_effect = self._clients(
+            self._CW, account_policies=[{"policyName": "acct-dp"}]
+        )
+        result = app.check_cloudwatch_log_pii_masking()
+        _assert_structure(result)
+        assert any(
+            r["Finding"] == "CloudWatch Logs Data Protection Policies Present"
+            and r["Status"] == "Passed"
+            for r in result["csv_data"]
+        )
+
+    @patch("finserv_app.boto3.client")
+    def test_pass_log_group_scoped_policy_only(self, mock_client):
+        """A policy attached directly to the log group also satisfies the
+        control, even though DescribeAccountPolicies cannot see it."""
+        mock_client.side_effect = self._clients(
+            self._CW, account_policies=[], group_policy='{"Name":"dp"}'
+        )
+        result = app.check_cloudwatch_log_pii_masking()
+        _assert_structure(result)
+        assert any(
+            r["Finding"] == "CloudWatch Logs Data Protection Policies Present"
+            and r["Status"] == "Passed"
+            for r in result["csv_data"]
+        )
+
+    @patch("finserv_app.boto3.client")
+    def test_s3_only_delivery_is_not_applicable(self, mock_client):
+        """S3-only delivery → N/A. CloudWatch data protection cannot apply to a
+        delivery path that never reaches CloudWatch Logs."""
+        mock_client.side_effect = self._clients(
+            {"s3Config": {"bucketName": "bedrock-logs-bucket"}}
+        )
+        result = app.check_cloudwatch_log_pii_masking()
+        _assert_structure(result)
+        assert any(
+            r["Finding"] == "Bedrock Invocation Logs Not Delivered to CloudWatch Logs"
+            and r["Status"] == "N/A"
+            for r in result["csv_data"]
+        )
+        assert not any(r["Status"] == "Failed" for r in result["csv_data"])
+
+    @patch("finserv_app.boto3.client")
+    def test_logging_disabled_is_not_applicable(self, mock_client):
+        """Invocation logging off → nothing to mask → N/A, not a failure."""
+        mock_client.side_effect = self._clients(None)
+        result = app.check_cloudwatch_log_pii_masking()
+        _assert_structure(result)
+        assert any(
+            r["Finding"] == "Bedrock Invocation Logging Not Enabled"
+            and r["Status"] == "N/A"
+            for r in result["csv_data"]
+        )
+        assert not any(r["Status"] == "Failed" for r in result["csv_data"])
+
+    @patch("finserv_app.boto3.client")
+    def test_logging_config_unreadable_is_could_not_assess(self, mock_client):
+        """Without the logging configuration the applicable destination is
+        unknown, so the check must not guess."""
+        mock_client.side_effect = self._clients(
+            None, logging_error=_client_error("AccessDeniedException")
+        )
+        result = app.check_cloudwatch_log_pii_masking()
+        _assert_structure(result)
+        assert any(
+            r["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+            for r in result["csv_data"]
+        )
+        assert not any(r["Status"] == "Failed" for r in result["csv_data"])
 
 
 # =========================================================================
@@ -1391,35 +1748,121 @@ class TestFS43CloudwatchPiiPaths:
 
 
 class TestFS44MaciePaths:
+    """FS-44 requires automated discovery, not merely an enabled session.
+
+    Verified live: a session with status ENABLED and automated discovery DISABLED
+    was reported as "Macie is enabled and scanning S3 buckets" while Macie was
+    scanning nothing. An AccessDenied on GetMacieSession is also ambiguous — for
+    an account that never onboarded Macie the message says so, and that is a real
+    finding; any other denial is a permissions gap, not a security finding.
+    """
+
+    @staticmethod
+    def _macie(
+        session_status=None,
+        discovery_status=None,
+        session_error=None,
+        discovery_error=None,
+    ):
+        c = MagicMock()
+        if session_error is not None:
+            c.get_macie_session.side_effect = session_error
+        else:
+            c.get_macie_session.return_value = {"status": session_status}
+        if discovery_error is not None:
+            c.get_automated_discovery_configuration.side_effect = discovery_error
+        else:
+            c.get_automated_discovery_configuration.return_value = {
+                "status": discovery_status
+            }
+        return c
+
     @patch("finserv_app.boto3.client")
     def test_warn_macie_not_enabled(self, mock_client):
-        """Lines 2593-2595: Macie session status not ENABLED → WARN."""
-        c = MagicMock()
-        c.get_macie_session.return_value = {"status": "PAUSED"}
-        mock_client.return_value = c
+        """Session status not ENABLED → WARN."""
+        mock_client.return_value = self._macie(session_status="PAUSED")
         result = app.check_macie_on_training_data_buckets()
         _assert_structure(result)
         assert result["status"] == "WARN"
+        assert any(
+            r["Finding"] == "Amazon Macie Not Enabled" for r in result["csv_data"]
+        )
 
     @patch("finserv_app.boto3.client")
-    def test_warn_macie_client_error(self, mock_client):
-        """Lines 2590-2591: ClientError on get_macie_session → macie_enabled=False → WARN."""
-        c = MagicMock()
-        c.get_macie_session.side_effect = _client_error("AccessDeniedException")
-        mock_client.return_value = c
+    def test_not_onboarded_denial_is_reported_as_not_enabled(self, mock_client):
+        """AccessDenied whose message says Macie is not enabled is a real
+        finding, not a permissions gap."""
+        mock_client.return_value = self._macie(
+            session_error=_client_error(
+                "AccessDeniedException", "Macie is not enabled for this account"
+            )
+        )
         result = app.check_macie_on_training_data_buckets()
         _assert_structure(result)
         assert result["status"] == "WARN"
+        assert any(
+            r["Finding"] == "Amazon Macie Not Enabled" for r in result["csv_data"]
+        )
 
     @patch("finserv_app.boto3.client")
-    def test_pass_macie_enabled(self, mock_client):
-        """Line 2615: Macie enabled → Passed."""
-        c = MagicMock()
-        c.get_macie_session.return_value = {"status": "ENABLED"}
-        mock_client.return_value = c
+    def test_generic_denial_is_could_not_assess(self, mock_client):
+        """A denial that does not say Macie is disabled is a permissions gap and
+        must not be reported as a security failure."""
+        mock_client.return_value = self._macie(
+            session_error=_client_error("AccessDeniedException", "Access Denied")
+        )
         result = app.check_macie_on_training_data_buckets()
         _assert_structure(result)
-        assert any(r["Status"] == "Passed" for r in result["csv_data"])
+        assert any(
+            r["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+            for r in result["csv_data"]
+        )
+        assert not any(r["Status"] == "Failed" for r in result["csv_data"])
+
+    @patch("finserv_app.boto3.client")
+    def test_pass_macie_enabled_with_automated_discovery(self, mock_client):
+        """Session ENABLED and automated discovery ENABLED → Passed."""
+        mock_client.return_value = self._macie(
+            session_status="ENABLED", discovery_status="ENABLED"
+        )
+        result = app.check_macie_on_training_data_buckets()
+        _assert_structure(result)
+        assert any(
+            r["Finding"] == "Amazon Macie Automated Discovery Enabled"
+            and r["Status"] == "Passed"
+            for r in result["csv_data"]
+        )
+
+    @patch("finserv_app.boto3.client")
+    def test_fail_enabled_session_without_automated_discovery(self, mock_client):
+        """Session ENABLED but discovery DISABLED scans nothing → Failed, and no
+        Passed row may claim otherwise."""
+        mock_client.return_value = self._macie(
+            session_status="ENABLED", discovery_status="DISABLED"
+        )
+        result = app.check_macie_on_training_data_buckets()
+        _assert_structure(result)
+        assert result["status"] == "WARN"
+        assert any(
+            r["Finding"] == "Amazon Macie Enabled but Automated Discovery Disabled"
+            and r["Status"] == "Failed"
+            for r in result["csv_data"]
+        )
+        assert not any(r["Status"] == "Passed" for r in result["csv_data"])
+
+    @patch("finserv_app.boto3.client")
+    def test_discovery_lookup_denied_is_could_not_assess(self, mock_client):
+        """macie2:GetAutomatedDiscoveryConfiguration denied → COULD NOT ASSESS."""
+        mock_client.return_value = self._macie(
+            session_status="ENABLED",
+            discovery_error=_client_error("AccessDeniedException"),
+        )
+        result = app.check_macie_on_training_data_buckets()
+        _assert_structure(result)
+        assert any(
+            r["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+            for r in result["csv_data"]
+        )
 
 
 # =========================================================================

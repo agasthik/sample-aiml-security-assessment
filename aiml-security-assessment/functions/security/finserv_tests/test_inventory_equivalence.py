@@ -628,14 +628,23 @@ BASELINE: list[tuple[str, str, str, str, str]] = [
     ('FS-21', 'Training Data Buckets Have Versioning', 'Passed', 'High', 'SR 11-7 | ISO 27001 A.12.3 | FFIEC CAT'),
     ('FS-22', 'Knowledge Base IAM Permissions Look Appropriate', 'Passed', 'High', 'NYDFS 500 | FFIEC CAT | PCI-DSS 12.3.2'),
     ('FS-24', 'ADVISORY: Knowledge Base Metadata Filtering \u2014 Manual Review Required', 'N/A', 'Informational', 'NYDFS 500 | FFIEC CAT | PCI-DSS 12.3.2'),
-    ('FS-25', 'No OpenSearch Serverless Encryption Policies', 'N/A', 'Informational', 'NYDFS 500 | PCI-DSS 3.5 | FFIEC CAT'),
+    # Reviewed golden change: FS-25 now keys off ListCollections instead of
+    # ListSecurityPolicies. The old row name was reached via a branch that read a
+    # 'policy' key ListSecurityPolicies does not return, so every account was
+    # classified as customer-managed regardless of its real encryption key.
+    ('FS-25', 'No OpenSearch Serverless Collections Found', 'N/A', 'Informational', 'NYDFS 500 | PCI-DSS 3.5 | FFIEC CAT'),
     ('FS-26', 'No OpenSearch Serverless Network Policies', 'Failed', 'High', 'NYDFS 500 | FFIEC CAT | PCI-DSS 1.3'),
     ('FS-27', 'Contextual Grounding Enabled on Guardrails', 'Passed', 'High', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-27', 'No Automated Reasoning Policies Found', 'Failed', 'Medium', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-28', 'Topic Policies Configured on CLASSIC Tier', 'Passed', 'High', 'SR 11-7 | FFIEC CAT | NYDFS 500 | MAS TRM 9.2'),
     ('FS-29', 'ADVISORY: Compliance Disclaimer \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | NYDFS 500 | MAS TRM 9.2'),
     ('FS-30', 'ADVISORY: Compliance Dataset Coverage \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | NYDFS 500'),
-    ('FS-31', 'Knowledge Base Data Sources Recently Synced', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT'),
+    # Reviewed golden change: FS-31 now reads ingestion-job history rather than the
+    # data source's own updatedAt (which is a configuration timestamp, not a sync
+    # time). The fixture stubs no ingestion jobs, so 'never successfully synced' is
+    # the correct row; the previous 'Recently Synced' PASS was derived from the
+    # config timestamp.
+    ('FS-31', 'Knowledge Base Data Sources Never Successfully Synced', 'Failed', 'Medium', 'SR 11-7 | FFIEC CAT'),
     ('FS-32', 'ADVISORY: Source Attribution \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-33', 'KB Data Source Buckets Have Versioning', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT | ISO 27001 A.12'),
     ('FS-34', 'Foundation Models Are Current', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT'),
@@ -646,7 +655,12 @@ BASELINE: list[tuple[str, str, str, str, str]] = [
     ('FS-39', 'No SageMaker Clarify Bias Monitoring', 'Failed', 'High', 'SR 11-7 | FFIEC CAT | ECOA/Fair Housing'),
     ('FS-40', 'ADVISORY: Bias Dataset Coverage \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | ECOA'),
     ('FS-41', 'No SageMaker Clarify Explainability Monitoring', 'Failed', 'High', 'SR 11-7 | FFIEC CAT | ECOA Adverse Action'),
-    ('FS-42', 'No SageMaker Model Cards Found', 'Failed', 'Medium', 'SR 11-7 | FFIEC CAT | MAS TRM 9.3'),
+    # Reviewed golden change: absence of SageMaker Model Cards is no longer a
+    # Failed/Medium. A Bedrock-only estate legitimately has none, so the row is
+    # N/A + Informational. (The check also stopped paginating on the wrong response
+    # key, ModelCardSummaryList instead of ModelCardSummaries, which made it report
+    # 'no model cards' even when cards existed.)
+    ('FS-42', 'No SageMaker Model Cards Found', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.3'),
     ('FS-43', 'CloudWatch Logs Data Protection Policies Present', 'Passed', 'High', 'NYDFS 500 | PCI-DSS | GDPR Art.25'),
     ('FS-44', 'COULD NOT ASSESS: Amazon Macie PII Scanning Check', 'N/A', 'Low', 'NYDFS 500 | FFIEC CAT | PCI-DSS | GDPR Art.25'),
     ('FS-45', 'Guardrail PII Filters Configured', 'Passed', 'High', 'NYDFS 500 | PCI-DSS | GDPR Art.25'),
@@ -667,7 +681,11 @@ BASELINE: list[tuple[str, str, str, str, str]] = [
     ('FS-60', 'ADVISORY: Contextual Grounding for Off-Topic Prevention', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT'),
     ('FS-61', 'No Automated KB Sync Schedules Detected', 'Failed', 'Medium', 'SR 11-7 | FFIEC CAT'),
     ('FS-62', 'ADVISORY: Data Currency Disclaimer \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
-    ('FS-63', 'Foundation Model Lifecycle Management', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT | ISO 27001 A.12'),
+    # Reviewed golden change: FS-63's verdict moved off the regional model catalogue
+    # (which lists LEGACY models in every account) and onto account-side AWS Config
+    # rules. The fixture stubs no Config rules, so 'no governance detected' is the
+    # correct row.
+    ('FS-63', 'No Foundation Model Lifecycle Governance Detected', 'Failed', 'Medium', 'SR 11-7 | FFIEC CAT | ISO 27001 A.12'),
     ('FS-65', 'KB Data Source Buckets Missing S3 Event Notifications', 'Failed', 'Medium', 'FFIEC CAT | ISO 27001 A.12 | SR 11-7'),
     # Reviewed golden change, same cause as the FS-08 row above: the fixture
     # stubs an empty AgentCore runtime inventory, so not-applicable is correct.
