@@ -401,24 +401,28 @@ class TestFS15BedrockEvalPass:
 class TestFS16EcrScanningWarn:
     @patch("finserv_app.boto3.client")
     def test_warn_repos_without_scanning(self, mock_client):
-        """Lines 1167-1168: repos exist but scan-on-push disabled → WARN."""
-        c = MagicMock()
-        c.describe_repositories.return_value = {
-            "repositories": [
-                {
-                    "repositoryName": "ml-model-repo",
-                    "imageScanningConfiguration": {"scanOnPush": False},
-                }
-            ]
-        }
-        mock_client.return_value = c
+        """Lines 1167-1168: repos exist but scan-on-push disabled → WARN.
+
+        Inspector must be explicitly resolved (not left as an unconfigured
+        mock) — an unconfigured MagicMock iterates as empty by default, which
+        is indistinguishable from the account being absent from a real
+        BatchGetAccountStatus response and would make this test pass for the
+        wrong reason: the account-missing-from-response defect, not the
+        base scanOnPush=false/WARN path it is meant to cover.
+        """
+        mock_client.side_effect = self._clients(
+            repos_without_scanning=True, inspector_state="DISABLED"
+        )
         result = app.check_ecr_image_scanning()
         _assert_structure(result)
         assert result["status"] == "WARN"
 
     @staticmethod
     def _clients(
-        repos_without_scanning=True, inspector_error=None, inspector_state=None
+        repos_without_scanning=True,
+        inspector_error=None,
+        inspector_state=None,
+        inspector_response=None,
     ):
         ecr = MagicMock()
         ecr.describe_repositories.return_value = {
@@ -438,9 +442,20 @@ class TestFS16EcrScanningWarn:
         inspector = MagicMock()
         if inspector_error is not None:
             inspector.batch_get_account_status.side_effect = inspector_error
+        elif inspector_response is not None:
+            # Full control over the response shape, for the cases where the
+            # call succeeds (HTTP 200, no exception) but does not actually
+            # report a usable status for the queried account.
+            inspector.batch_get_account_status.return_value = inspector_response
         else:
             inspector.batch_get_account_status.return_value = {
-                "accounts": [{"resourceState": {"ecr": {"status": inspector_state}}}]
+                "accounts": [
+                    {
+                        "accountId": "123456789012",
+                        "resourceState": {"ecr": {"status": inspector_state}},
+                    }
+                ],
+                "failedAccounts": [],
             }
 
         def factory(service, **kwargs):
@@ -504,6 +519,56 @@ class TestFS16EcrScanningWarn:
             and r["Status"] == "Failed"
             for r in result["csv_data"]
         )
+
+    @patch("finserv_app.boto3.client")
+    def test_inspector_failed_accounts_entry_is_could_not_assess_not_failed(
+        self, mock_client
+    ):
+        """BatchGetAccountStatus can return HTTP 200 with the queried account
+        reported in failedAccounts instead of accounts — no exception is
+        raised. Verified live: an account ID Inspector cannot resolve comes
+        back exactly this way. A repo with no scan-on-push must still be
+        COULD NOT ASSESS, not a false Failed, in this no-exception case."""
+        mock_client.side_effect = self._clients(
+            repos_without_scanning=True,
+            inspector_response={
+                "accounts": [],
+                "failedAccounts": [
+                    {
+                        "accountId": "123456789012",
+                        "errorCode": "ACCESS_DENIED",
+                        "errorMessage": "Invoking account does not have access "
+                        "to this account",
+                    }
+                ],
+            },
+        )
+        result = app.check_ecr_image_scanning()
+        _assert_structure(result)
+        assert any(
+            r["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+            for r in result["csv_data"]
+        )
+        assert not any(r["Status"] == "Failed" for r in result["csv_data"])
+
+    @patch("finserv_app.boto3.client")
+    def test_inspector_account_missing_from_response_is_could_not_assess_not_failed(
+        self, mock_client
+    ):
+        """BatchGetAccountStatus succeeds but the queried account appears in
+        neither accounts nor failedAccounts. Must still be treated as
+        unknown, not silently fall through to "not enabled"."""
+        mock_client.side_effect = self._clients(
+            repos_without_scanning=True,
+            inspector_response={"accounts": [], "failedAccounts": []},
+        )
+        result = app.check_ecr_image_scanning()
+        _assert_structure(result)
+        assert any(
+            r["Finding"].startswith(app.COULD_NOT_ASSESS_PREFIX)
+            for r in result["csv_data"]
+        )
+        assert not any(r["Status"] == "Failed" for r in result["csv_data"])
 
 
 # =========================================================================

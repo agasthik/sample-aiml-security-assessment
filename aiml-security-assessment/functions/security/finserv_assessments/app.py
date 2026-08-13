@@ -2207,6 +2207,16 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
     COULD NOT ASSESS whenever it is the reason a repository cannot be
     classified, rather than defaulting to "not enabled".
 
+    That still missed a case: BatchGetAccountStatus can fail *without*
+    raising. Verified live — an account ID Inspector cannot resolve comes
+    back as a normal 200 response, ``{"accounts": [], "failedAccounts":
+    [{"accountId": ..., "errorCode": "ACCESS_DENIED", ...}]}``, so the
+    ClientError handler never runs and the account is simply absent from the
+    array the code iterated. The status is now matched to the queried
+    account ID explicitly (not assumed to be the first entry); a matching
+    failedAccounts entry, or the account appearing in neither array, both set
+    the same unknown-reason path as a raised ClientError.
+
     Deliberately NOT asserted:
       - that any image has actually been scanned,
       - that scan findings have been triaged or remediated,
@@ -2244,6 +2254,16 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
         # a lookup failure can never be compared equal or unequal to "ENABLED" —
         # collapsing it into a state string is what let a permissions gap on
         # this call default to "not enabled" and produce a false Failed finding.
+        #
+        # BatchGetAccountStatus can also fail *without* raising: a 200 response
+        # can report the requested account in failedAccounts instead of
+        # accounts (verified live — an account Inspector cannot resolve comes
+        # back as {"accounts": [], "failedAccounts": [{"accountId": ...,
+        # "errorCode": ...}]} with no exception at all), or in principle omit
+        # it from both. The account is matched explicitly by ID rather than
+        # trusting accounts[0], and any of those three outcomes — a matching
+        # failedAccounts entry, or no entry anywhere — sets
+        # inspector_unknown_reason so it is never mistaken for "not enabled".
         inspector_ecr_state = None
         inspector_unknown_reason: Optional[str] = None
         try:
@@ -2252,9 +2272,31 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
                 "Account"
             ]
             status = inspector.batch_get_account_status(accountIds=[account_id])
-            for entry in status.get("accounts", []):
+            matched = next(
+                (
+                    a
+                    for a in status.get("accounts", [])
+                    if a.get("accountId") == account_id
+                ),
+                None,
+            )
+            if matched is not None:
                 inspector_ecr_state = (
-                    entry.get("resourceState", {}).get("ecr", {}).get("status")
+                    matched.get("resourceState", {}).get("ecr", {}).get("status")
+                )
+            else:
+                failed = next(
+                    (
+                        f
+                        for f in status.get("failedAccounts", [])
+                        if f.get("accountId") == account_id
+                    ),
+                    None,
+                )
+                inspector_unknown_reason = (
+                    failed.get("errorCode", "BATCH_GET_ACCOUNT_STATUS_FAILED")
+                    if failed is not None
+                    else "ACCOUNT_STATUS_NOT_RETURNED"
                 )
         except ClientError as e:
             inspector_unknown_reason = e.response["Error"]["Code"]
@@ -2281,9 +2323,9 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
                         f"{len(repos_without_scanning)} repository(ies) do not set scan-on-push "
                         f"({', '.join(sorted(repos_without_scanning)[:10])}), and whether Amazon "
                         "Inspector enhanced scanning covers them could not be determined "
-                        f"(BatchGetAccountStatus failed: {inspector_unknown_reason}). This is a "
-                        "permissions or availability gap, not evidence that these repositories "
-                        "are unscanned."
+                        f"(BatchGetAccountStatus did not return a usable status: "
+                        f"{inspector_unknown_reason}). This is a permissions or availability gap, "
+                        "not evidence that these repositories are unscanned."
                     ),
                     resolution=(
                         "Ensure the assessment role has inspector2:BatchGetAccountStatus "
