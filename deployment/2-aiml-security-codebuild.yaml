@@ -11,6 +11,7 @@ Metadata:
           - MultiAccountListOverride
           - TargetRegions
           - EnableFinServAssessment
+          - EnableResponsibleAIGovAssessment
           - EnableOWASPAssessment
           - EmailAddress
       - Label:
@@ -30,6 +31,8 @@ Metadata:
         default: AWS regions to scan
       EnableFinServAssessment:
         default: Financial Services GenAI risk checks
+      EnableResponsibleAIGovAssessment:
+        default: Responsible AI GRC checks (alias for the option above)
       EnableOWASPAssessment:
         default: OWASP Top 10 for LLM checks
       EmailAddress:
@@ -141,6 +144,20 @@ Parameters:
     Type: String
     AllowedValues: ["true", "false"]
     Default: "false"
+
+  EnableResponsibleAIGovAssessment:
+    Description: >
+      Additive alias for EnableFinServAssessment under the Responsible AI GRC
+      rebrand name (same FS-01 through FS-69 checks). Leave as "__UNSET__" to
+      defer to EnableFinServAssessment. Setting this explicitly to "true" or
+      "false" takes effect while EnableFinServAssessment is left at its "false"
+      default; if EnableFinServAssessment has been explicitly set to "true" and
+      this alias disagrees, the build fails fast with an explicit error instead
+      of silently picking one value. See the rebrand plan's Phase 2 Stage 2a
+      section for the full precedence table.
+    Type: String
+    AllowedValues: ["true", "false", "__UNSET__"]
+    Default: "__UNSET__"
 
   EnableOWASPAssessment:
     Description: >
@@ -672,6 +689,9 @@ Resources:
             Type: PLAINTEXT
           - Name: ENABLE_OWASP
             Value: !Ref EnableOWASPAssessment
+            Type: PLAINTEXT
+          - Name: ENABLE_RESPONSIBLE_AI_GOV
+            Value: !Ref EnableResponsibleAIGovAssessment
             Type: PLAINTEXT
       Description: Run AIML Security multi-account assessment
       ServiceRole: !GetAtt MultiAccountCodeBuildRole.Arn

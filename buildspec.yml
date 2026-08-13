@@ -33,7 +33,38 @@ phases:
       # branch runs only when this is "true". Lower-cased here so the ASL's
       # case-sensitive StringEquals "true" gate matches a "True"/"TRUE" input.
       - export ENABLE_FINSERV="$(echo "${ENABLE_FINSERV:-false}" | tr '[:upper:]' '[:lower:]')"
-      - echo "FinServ assessment enabled is $ENABLE_FINSERV"
+      - |
+        # Phase 2 Stage 2a — additive ENABLE_RESPONSIBLE_AI_GOV alias.
+        #
+        # EnableFinServAssessment/ENABLE_FINSERV always materializes a value in
+        # CloudFormation (default "false"), so there is no CFN-level way to
+        # distinguish "customer left this at its default" from "customer
+        # explicitly chose false". EnableResponsibleAIGovAssessment therefore
+        # uses the literal sentinel "__UNSET__" as its default so this script
+        # CAN tell "alias not touched" apart from "alias explicitly set".
+        #
+        # Precedence (mirrors the alias table in rebrand-plan.md §18.3 Stage 2a),
+        # with ENABLE_FINSERV's own default standing in for "legacy absent" since
+        # CloudFormation cannot produce a truly absent legacy value:
+        #   alias unset                                  -> legacy value wins
+        #   alias set, legacy at its "false" default      -> alias value wins
+        #   alias set, legacy explicitly "true", agree    -> shared value
+        #   alias set, legacy explicitly "true", disagree -> explicit build failure
+        ENABLE_RESPONSIBLE_AI_GOV_RAW="${ENABLE_RESPONSIBLE_AI_GOV:-__UNSET__}"
+        if [[ "$ENABLE_RESPONSIBLE_AI_GOV_RAW" == "__UNSET__" ]]; then
+          echo "ENABLE_RESPONSIBLE_AI_GOV not set; using ENABLE_FINSERV ($ENABLE_FINSERV)"
+        else
+          ENABLE_RESPONSIBLE_AI_GOV_NORMALIZED="$(echo "$ENABLE_RESPONSIBLE_AI_GOV_RAW" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$ENABLE_FINSERV" == "true" && "$ENABLE_RESPONSIBLE_AI_GOV_NORMALIZED" != "true" ]]; then
+            echo "ERROR: EnableFinServAssessment is explicitly \"true\" but EnableResponsibleAIGovAssessment is explicitly \"$ENABLE_RESPONSIBLE_AI_GOV_NORMALIZED\"."
+            echo "These are aliases for the same toggle and must agree. Set them to the same value, or leave EnableResponsibleAIGovAssessment unset."
+            exit 1
+          fi
+          export ENABLE_FINSERV="$ENABLE_RESPONSIBLE_AI_GOV_NORMALIZED"
+          echo "ENABLE_RESPONSIBLE_AI_GOV set to $ENABLE_FINSERV; overriding the effective FinServ/Responsible-AI-GRC toggle"
+        fi
+        unset ENABLE_RESPONSIBLE_AI_GOV_RAW ENABLE_RESPONSIBLE_AI_GOV_NORMALIZED
+      - echo "FinServ / Responsible AI GRC assessment enabled is $ENABLE_FINSERV"
       # EnableOWASPAssessment toggle (CodeBuild env var; default false). Threaded
       # into the Step Functions execution input as enableOWASP; the ASL OWASP
       # branch runs only when this is "true". Lower-cased here so the ASL's
