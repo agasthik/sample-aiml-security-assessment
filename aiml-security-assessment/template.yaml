@@ -56,7 +56,7 @@ Resources:
         BedrockSecurityAssessmentFunction: !GetAtt BedrockSecurityAssessmentFunction.Arn
         SagemakerSecurityAssessmentFunction: !GetAtt SagemakerSecurityAssessmentFunction.Arn
         AgentCoreSecurityAssessmentFunction: !GetAtt AgentCoreSecurityAssessmentFunction.Arn
-        FinServSecurityAssessmentFunction: !GetAtt FinServSecurityAssessmentFunction.Arn
+        ResponsibleAIGRCAssessmentFunction: !GetAtt ResponsibleAIGRCAssessmentFunction.Arn
         OWASPSecurityAssessmentFunction: !GetAtt OWASPSecurityAssessmentFunction.Arn
         GenerateConsolidatedReportFunction: !GetAtt GenerateConsolidatedReportFunction.Arn
         AIMLAssessmentBucketName: !Ref AIMLAssessmentBucket
@@ -75,7 +75,7 @@ Resources:
         - LambdaInvokePolicy:
             FunctionName: !Ref AgentCoreSecurityAssessmentFunction
         - LambdaInvokePolicy:
-            FunctionName: !Ref FinServSecurityAssessmentFunction
+            FunctionName: !Ref ResponsibleAIGRCAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref OWASPSecurityAssessmentFunction
         - LambdaInvokePolicy:
@@ -491,10 +491,19 @@ Resources:
               Resource: 'arn:aws:s3:::*'
 
 
-  FinServSecurityAssessmentFunction:
+  ResponsibleAIGRCAssessmentFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'aiml-security-${AWS::StackName}-FinServAssessment'
+      # Suffix changed from "FinServAssessment" (17 chars) to "RAIGRCAssessment"
+      # (16 chars) as part of Phase 2 Stage 2b. The "aiml-security-" prefix is
+      # intentionally UNCHANGED even though it duplicates the stack name for
+      # member accounts (see rebrand-plan.md section 14): dropping it would
+      # break _self_lambda_name_prefix() in finserv_assessments/app.py, which
+      # derives the FS-67 self-exclusion prefix by checking this exact literal
+      # against AWS_LAMBDA_FUNCTION_NAME at runtime. That check does not derive
+      # from the stack name, so it is a behavioral dependency on this prefix
+      # for every sibling assessment function, not just this one.
+      FunctionName: !Sub 'aiml-security-${AWS::StackName}-RAIGRCAssessment'
       CodeUri: functions/security/finserv_assessments/
       Handler: app.lambda_handler
       Runtime: python3.12

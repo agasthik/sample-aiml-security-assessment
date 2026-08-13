@@ -266,9 +266,9 @@
                                 }
                             },
                             {
-                                "StartAt": "FinServ Enabled?",
+                                "StartAt": "Responsible AI GRC Enabled?",
                                 "States": {
-                                    "FinServ Enabled?": {
+                                    "Responsible AI GRC Enabled?": {
                                         "Type": "Choice",
                                         "Choices": [
                                             {
@@ -286,7 +286,7 @@
                                                         "NumericEquals": 0
                                                     }
                                                 ],
-                                                "Next": "FinServ Security Assessment"
+                                                "Next": "Responsible AI GRC Security Assessment"
                                             },
                                             {
                                                 "And": [
@@ -303,16 +303,16 @@
                                                         "NumericEquals": 0
                                                     }
                                                 ],
-                                                "Next": "FinServ Security Assessment"
+                                                "Next": "Responsible AI GRC Security Assessment"
                                             }
                                         ],
-                                        "Default": "FinServ Assessment Skipped"
+                                        "Default": "Responsible AI GRC Assessment Skipped"
                                     },
-                                    "FinServ Security Assessment": {
+                                    "Responsible AI GRC Security Assessment": {
                                         "Type": "Task",
                                         "Resource": "arn:aws:states:::lambda:invoke",
                                         "Parameters": {
-                                            "FunctionName": "${FinServSecurityAssessmentFunction}",
+                                            "FunctionName": "${ResponsibleAIGRCAssessmentFunction}",
                                             "Payload": {
                                                 "Execution.$": "$.Execution",
                                                 "StateMachine.$": "$.StateMachine",
@@ -340,13 +340,13 @@
                                                 "ErrorEquals": [
                                                     "States.ALL"
                                                 ],
-                                                "ResultPath": "$.finservError",
-                                                "Next": "FinServ Assessment Incomplete"
+                                                "ResultPath": "$.responsibleAIGRCError",
+                                                "Next": "Responsible AI GRC Assessment Incomplete"
                                             }
                                         ],
                                         "End": true
                                     },
-                                    "FinServ Assessment Incomplete": {
+                                    "Responsible AI GRC Assessment Incomplete": {
                                         "Type": "Pass",
                                         "Result": {
                                             "statusCode": 207,
@@ -357,7 +357,7 @@
                                         },
                                         "End": true
                                     },
-                                    "FinServ Assessment Skipped": {
+                                    "Responsible AI GRC Assessment Skipped": {
                                         "Type": "Pass",
                                         "Result": {
                                             "statusCode": 200,
