@@ -834,6 +834,16 @@ PER_REGION_SERVICE_CSV_PREFIXES = (
 )
 FINSERV_SERVICE_CSV_PREFIX = "finserv_security_report"
 
+# Phase 2 Stage 2b additive alias (see
+# docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md, item 5).
+# finserv_assessments/app.py's write_to_s3() now dual-writes byte-identical
+# content under this prefix alongside the legacy one above. Reading both here
+# and deduplicating means OWASP mappings are unaffected either way — this is
+# defense against future drift (e.g. a future release that stops the legacy
+# write), not a behavior change today, since the two objects are currently
+# always identical.
+RESPONSIBLE_AI_GOV_SERVICE_CSV_PREFIX = "responsible_ai_gov_security_report"
+
 
 def _read_service_csvs_for_region(
     bucket_name: str,
@@ -845,24 +855,38 @@ def _read_service_csvs_for_region(
     """Read every per-service CSV that this OWASP invocation should consume.
 
     Always reads bedrock/sagemaker/agentcore's per-region CSVs. When
-    `include_finserv` is True (RegionIndex==0), also reads FinServ's single
-    execution-scoped CSV (`finserv_security_report_<execution_id>.csv`). Rows
-    from FinServ already carry per-region Region values, so downstream
-    mapping preserves them without further modification.
+    `include_finserv` is True (RegionIndex==0), also reads the FinServ /
+    Responsible AI GRC execution-scoped CSV. Rows already carry per-region
+    Region values, so downstream mapping preserves them without further
+    modification.
+
+    Both the legacy `finserv_security_report` object and the additive
+    `responsible_ai_gov_security_report` alias (Phase 2 Stage 2b, dual-written
+    by finserv_assessments/app.py) are read and deduplicated by (Check_ID,
+    Region, Finding) so a customer never sees FS-* findings counted twice —
+    both objects contain identical rows today, but this keeps the reader
+    correct even if that ever changes.
 
     Missing objects are returned to the caller when `return_missing` is True
     so OWASP can emit explicit coverage rows instead of silently dropping all
-    derived OW-01..OW-10 rows for that source.
+    derived OW-01..OW-10 rows for that source. Only the legacy key's absence
+    is reported as missing; the alias key missing is not itself a coverage
+    gap as long as the legacy key was read successfully.
     """
     s3_client = boto3.client("s3", config=boto3_config)
     rows: List[Dict[str, str]] = []
+    seen_row_identities: set[tuple[str, str, str]] = set()
 
     keys: List[str] = [
         f"{prefix}_{execution_id}_{region}.csv"
         for prefix in PER_REGION_SERVICE_CSV_PREFIXES
     ]
+    finserv_alias_keys: List[str] = []
     if include_finserv:
         keys.append(f"{FINSERV_SERVICE_CSV_PREFIX}_{execution_id}.csv")
+        finserv_alias_keys.append(
+            f"{RESPONSIBLE_AI_GOV_SERVICE_CSV_PREFIX}_{execution_id}.csv"
+        )
 
     missing_keys: List[str] = []
     for key in keys:
@@ -878,7 +902,43 @@ def _read_service_csvs_for_region(
             raise
         reader = csv.DictReader(StringIO(body))
         for row in reader:
-            rows.append(dict(row))
+            row_dict = dict(row)
+            identity = (
+                row_dict.get("Check_ID", ""),
+                row_dict.get("Region", ""),
+                row_dict.get("Finding", ""),
+            )
+            seen_row_identities.add(identity)
+            rows.append(row_dict)
+
+    # Additive alias keys: read and deduplicate against rows already collected
+    # from the legacy key, but a missing alias object is not reported via
+    # missing_keys -- only the legacy source's absence is a coverage gap.
+    for key in finserv_alias_keys:
+        try:
+            response = s3_client.get_object(Bucket=bucket_name, Key=key)
+            body = response["Body"].read().decode("utf-8")
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code", "")
+            if code in ("NoSuchKey", "404"):
+                logger.info(
+                    f"OWASP: additive alias CSV not found (not a coverage gap): {key}"
+                )
+                continue
+            raise
+        reader = csv.DictReader(StringIO(body))
+        for row in reader:
+            row_dict = dict(row)
+            identity = (
+                row_dict.get("Check_ID", ""),
+                row_dict.get("Region", ""),
+                row_dict.get("Finding", ""),
+            )
+            if identity in seen_row_identities:
+                continue
+            seen_row_identities.add(identity)
+            rows.append(row_dict)
+
     if return_missing:
         return rows, missing_keys
     return rows

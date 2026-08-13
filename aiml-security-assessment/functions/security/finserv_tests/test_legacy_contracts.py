@@ -223,19 +223,26 @@ def test_advisory_prefix_is_still_in_use():
 
 
 def test_csv_object_name_keeps_the_legacy_prefix():
-    captured = {}
+    captured_keys = []
 
     class _StubS3:
         def put_object(self, **kwargs):
-            captured.update(kwargs)
+            captured_keys.append(kwargs["Key"])
             return {}
 
     original = finserv_app.boto3.client
     finserv_app.boto3.client = lambda *a, **k: _StubS3()
     try:
-        finserv_app.write_to_s3("20260807_120000", "Check_ID\n", "bucket-name")
+        url = finserv_app.write_to_s3("20260807_120000", "Check_ID\n", "bucket-name")
     finally:
         finserv_app.boto3.client = original
 
-    assert captured["Key"] == "finserv_security_report_20260807_120000.csv"
-    assert captured["Key"].startswith("finserv_security_report")
+    # Phase 2 Stage 2b (see docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md,
+    # item 5): write_to_s3 now writes TWO objects, the legacy one plus an
+    # additive Responsible AI GRC alias. The legacy key remains the returned
+    # url and the durable contract archived reports and the OWASP reader key
+    # off; the alias is additional, not a replacement.
+    assert "finserv_security_report_20260807_120000.csv" in captured_keys
+    assert "responsible_ai_gov_security_report_20260807_120000.csv" in captured_keys
+    assert len(captured_keys) == 2
+    assert url.endswith("finserv_security_report_20260807_120000.csv")

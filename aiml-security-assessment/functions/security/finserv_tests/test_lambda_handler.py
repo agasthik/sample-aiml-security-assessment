@@ -335,23 +335,59 @@ class TestWriteToS3:
 
         url = app.write_to_s3("exec-123", "col1,col2\nval1,val2", "my-bucket")
 
-        s3.put_object.assert_called_once_with(
+        # Phase 2 Stage 2b (see docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md,
+        # item 5): write_to_s3 now dual-writes the legacy CSV plus an additive
+        # byte-identical alias. Both calls are asserted individually rather
+        # than with assert_called_once_with, which the second call would fail.
+        s3.put_object.assert_any_call(
             Bucket="my-bucket",
             Key="finserv_security_report_exec-123.csv",
             Body="col1,col2\nval1,val2",
             ContentType="text/csv",
         )
+        s3.put_object.assert_any_call(
+            Bucket="my-bucket",
+            Key="responsible_ai_gov_security_report_exec-123.csv",
+            Body="col1,col2\nval1,val2",
+            ContentType="text/csv",
+        )
+        assert s3.put_object.call_count == 2
+        # The returned URL always points at the legacy object -- that object,
+        # not the additive alias, is the durable contract callers depend on.
         assert "my-bucket" in url
         assert "exec-123" in url
+        assert "finserv_security_report_exec-123.csv" in url
 
     @patch("finserv_app.boto3.client")
-    def test_s3_error_propagates(self, mock_client):
+    def test_s3_error_propagates_for_the_legacy_write(self, mock_client):
         s3 = MagicMock()
         s3.put_object.side_effect = RuntimeError("S3 write failed")
         mock_client.return_value = s3
 
         with pytest.raises(RuntimeError, match="S3 write failed"):
             app.write_to_s3("exec-123", "data", "my-bucket")
+
+    @patch("finserv_app.boto3.client")
+    def test_alias_write_failure_does_not_fail_the_legacy_write(self, mock_client):
+        """The additive alias write is best-effort. A failure writing it must
+        never raise -- the legacy write already succeeded and is the contract
+        callers depend on."""
+        s3 = MagicMock()
+        calls = {"count": 0}
+
+        def _put_object(**kwargs):
+            calls["count"] += 1
+            if kwargs["Key"].startswith("responsible_ai_gov_security_report_"):
+                raise RuntimeError("simulated alias write failure")
+            return {}
+
+        s3.put_object.side_effect = _put_object
+        mock_client.return_value = s3
+
+        url = app.write_to_s3("exec-123", "data", "my-bucket")
+
+        assert calls["count"] == 2
+        assert "finserv_security_report_exec-123.csv" in url
 
 
 class TestGetPermissionsCache:

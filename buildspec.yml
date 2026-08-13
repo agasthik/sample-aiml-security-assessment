@@ -293,9 +293,17 @@ phases:
         # an exclude flag (empty when FinServ is enabled) and apply it to every copy/sync
         # into the report bucket. ENABLE_FINSERV is already normalised to lowercase in the
         # build phase, so a direct "true" comparison is sufficient here.
+        #
+        # Phase 2 Stage 2b (see docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md,
+        # item 5) adds the same exclusion for the additive
+        # responsible_ai_gov_security_report_*.csv alias that
+        # finserv_assessments/app.py now dual-writes alongside the legacy CSV.
+        # Both share this one guard condition intentionally: the alias tracks
+        # the SAME enable/disable state as the legacy prefix, it is not an
+        # independently toggled second capability.
         fs_exclude_args=()
         if [[ "${ENABLE_FINSERV:-false}" != "true" ]]; then
-          fs_exclude_args=(--exclude "finserv_security_report_*.csv")
+          fs_exclude_args=(--exclude "finserv_security_report_*.csv" --exclude "responsible_ai_gov_security_report_*.csv")
         fi
 
         # Derive how long to wait for Step Function completion from the overall

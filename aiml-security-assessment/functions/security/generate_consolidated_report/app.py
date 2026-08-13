@@ -95,8 +95,22 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
         ]
         prefixes = [f"{slug}_security_report_{execution_id}" for slug in category_slugs]
 
+        # Phase 2 Stage 2b additive alias (see
+        # docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md, item 5).
+        # finserv_assessments/app.py's write_to_s3() now dual-writes the same
+        # content under this second prefix. It is deliberately NOT added to
+        # category_slugs above: that list is one-slug-per-report-category, and
+        # this alias's rows must merge into the EXISTING "finserv" category
+        # (see the category-matching loop below), not create a new, separate,
+        # always-duplicate one. It is listed here only so the S3 paginator
+        # actually finds the alias object.
+        responsible_ai_gov_prefix_fragment = "responsible_ai_gov_security_report_"
+        prefixes_to_list = prefixes + [
+            f"{responsible_ai_gov_prefix_fragment}{execution_id}"
+        ]
+
         all_objects = []
-        for prefix in prefixes:
+        for prefix in prefixes_to_list:
             for page in paginator.paginate(Bucket=s3_bucket, Prefix=prefix):
                 all_objects.extend(page.get("Contents", []))
 
@@ -143,10 +157,17 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
 
                 file_name = os.path.basename(s3_key)
                 category = None
-                for slug in category_slugs:
-                    if file_name.lower().startswith(f"{slug}_security_report_"):
-                        category = slug
-                        break
+                # The additive responsible_ai_gov_security_report_* alias
+                # (Phase 2 Stage 2b, item 5) routes into the SAME "finserv"
+                # category as the legacy prefix, since it is the same
+                # capability under an additional name, not a distinct one.
+                if file_name.lower().startswith(responsible_ai_gov_prefix_fragment):
+                    category = "finserv"
+                else:
+                    for slug in category_slugs:
+                        if file_name.lower().startswith(f"{slug}_security_report_"):
+                            category = slug
+                            break
                 if category is None:
                     logger.warning(f"Unknown assessment type for file: {s3_key}")
                     continue
