@@ -70,6 +70,21 @@ RESPONSIBLE_AI_LENS_URL = (
 # ---------------------------------------------------------------------------
 RESPONSIBLE_AI_GRC_LABEL = "Responsible AI GRC"
 
+# Phase 2 Stage 2b additive machine-identity alias (see
+# docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md, item 4). This is a NEW,
+# additional identifier for "finserv" rows/sections/scope blocks, added
+# alongside — never replacing — the "finserv" slug above. Nothing in this
+# report's own client-side filtering reads it today: applyFilters() below
+# matches data-service by exact string against the <option value="finserv">
+# entry, so introducing a second dropdown option or a second
+# data-filter-service value here would silently produce a filter control that
+# looks functional but returns zero rows. This alias exists for future
+# external tooling (and a future Stage 2b follow-up that also updates the
+# in-report filter wiring) to select on the new name without needing to know
+# the retired "finserv" one — written ahead of need, the same way
+# scripts/convert_finserv_csv_prefix.py was in Phase 2 Stage 2a.
+RESPONSIBLE_AI_GRC_SLUG_ALIAS = "responsible-ai-grc"
+
 # The capability is cross-industry, so it is grouped by governance framework
 # rather than by industry. The industry-* CSS class names are unchanged.
 RESPONSIBLE_AI_GRC_NAV_HEADING = "By Governance Framework"
@@ -199,8 +214,19 @@ def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -
         else:
             ref_html = '<span style="color: var(--text-3);">-</span>'
 
+        # Additive per-row alias (Phase 2 Stage 2b, item 4): a second identifier
+        # for "finserv" rows only, alongside — never in place of — data-service.
+        # applyFilters() below matches data-service by exact string, so this
+        # extra attribute is read by nothing built into this report today; it
+        # exists for future tooling that wants to select by the new name
+        # without also needing to know the retired "finserv" slug.
+        service_alias_attr = (
+            f' data-service-alias="{RESPONSIBLE_AI_GRC_SLUG_ALIAS}"'
+            if include_data_attrs and service == "finserv"
+            else ""
+        )
         data_attrs = (
-            f'data-service="{_escape_attr(service)}" data-severity="{_escape_attr(severity)}" data-status="{_escape_attr(status)}" data-account="{_escape_attr(account_id)}" data-region="{_escape_attr(region)}"'
+            f'data-service="{_escape_attr(service)}" data-severity="{_escape_attr(severity)}" data-status="{_escape_attr(status)}" data-account="{_escape_attr(account_id)}" data-region="{_escape_attr(region)}"{service_alias_attr}'
             if include_data_attrs
             else ""
         )
@@ -1155,6 +1181,19 @@ def generate_html_report(
         # #finserv anchor, the data-*-service attributes, and every industry-*
         # CSS class name are machine contracts and must NOT change — archived
         # reports and the consolidation tooling depend on them.
+        #
+        # Phase 2 Stage 2b (see docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md,
+        # item 4) adds NEW, additive machine hooks under the responsible-ai-grc
+        # name alongside every one of the above, without changing any existing
+        # attribute's VALUE. This matters specifically because the client-side
+        # filter (applyFilters() below) does an exact-string match against
+        # data-service, so a value change (e.g. "finserv responsible-ai-grc")
+        # would silently break the "finserv" filter option — only a sibling
+        # attribute is safe. RESPONSIBLE_AI_GRC_SLUG_ALIAS is a separate,
+        # additional identifier; it does not replace SERVICE_SLUG anywhere.
+        finserv_anchor_alias = (
+            f'<span id="{RESPONSIBLE_AI_GRC_SLUG_ALIAS}" aria-hidden="true"></span>'
+        )
         finserv_nav = (
             '<a href="#finserv" class="nav-item industry-item">'
             + FINSERV_ICON
@@ -1175,7 +1214,8 @@ def generate_html_report(
             + f'<div class="metric-sub">{finserv_failed} Failed \u00b7 {finserv_passed} Passed \u00b7 {finserv_na} N/A</div></div>'
         )
         finserv_scope_industry_block = (
-            '<div class="scope-industry" data-scope-service="finserv">'
+            '<div class="scope-industry" data-scope-service="finserv" '
+            f'data-scope-service-alias="{RESPONSIBLE_AI_GRC_SLUG_ALIAS}">'
             f'<div class="scope-industry-label">{RESPONSIBLE_AI_GRC_SCOPE_LABEL}</div>'
             '<div class="scope-chip-row"><div class="scope-chip industry-chip">'
             + FINSERV_ICON_SMALL
@@ -1187,7 +1227,8 @@ def generate_html_report(
             f"{RESPONSIBLE_AI_LENS_DISAMBIGUATION}"
         )
         finserv_section = (
-            '<section id="finserv" class="section">'
+            finserv_anchor_alias + '<section id="finserv" class="section" '
+            f'data-service-section-alias="{RESPONSIBLE_AI_GRC_SLUG_ALIAS}">'
             '<div class="section-title">'
             + FINSERV_ICON
             + f"{RESPONSIBLE_AI_GRC_LABEL} Findings</div>"

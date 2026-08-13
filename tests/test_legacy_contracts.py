@@ -378,6 +378,71 @@ def test_report_css_classes_are_frozen(rendered_html, css_class):
     assert css_class in rendered_html
 
 
+# ---------------------------------------------------------------------------
+# Phase 2 Stage 2b, item 4: additive Responsible AI GRC selectors ALONGSIDE
+# (never replacing) every frozen selector above. Every legacy selector must
+# still be present in the exact same rendered output that also carries these.
+# ---------------------------------------------------------------------------
+
+ADDITIVE_SELECTORS = [
+    'data-service-alias="responsible-ai-grc"',
+    'data-scope-service-alias="responsible-ai-grc"',
+    'data-service-section-alias="responsible-ai-grc"',
+    'id="responsible-ai-grc"',
+]
+
+
+@pytest.mark.parametrize("selector", ADDITIVE_SELECTORS)
+def test_additive_responsible_ai_grc_selectors_are_present(rendered_html, selector):
+    assert selector in rendered_html
+
+
+@pytest.mark.parametrize("selector", FROZEN_SELECTORS)
+def test_legacy_selectors_still_present_alongside_additive_ones(
+    rendered_html, selector
+):
+    """Redundant with test_report_selectors_are_frozen, run again here to make
+    the additive/legacy coexistence explicit as its own regression class: a
+    change that adds new selectors by MOVING or REPLACING old ones (rather
+    than purely adding) would pass the additive test above while failing this
+    one, or vice versa. Both must hold in the same render.
+    """
+    assert selector in rendered_html
+
+
+def test_additive_selector_does_not_change_the_service_attribute_value():
+    """The client-side filter in report_template.py's applyFilters() matches
+    data-service by exact string against <option value="finserv">. Item 4 must
+    add a SIBLING attribute, never alter data-service's own value — doing the
+    latter would silently break the existing "finserv" filter dropdown entry.
+    """
+    findings = [
+        {
+            "account_id": "123456789012",
+            "check_id": "FS-01",
+            "finding": "Example Responsible AI GRC Finding",
+            "details": "Example details.",
+            "resolution": "Example resolution.",
+            "reference": "https://example.com/doc",
+            "severity": "High",
+            "status": "Failed",
+            "region": "us-east-1",
+            "_service": SERVICE_SLUG,
+        }
+    ]
+    html = report_template.generate_html_report(
+        all_findings=findings,
+        service_findings={SERVICE_SLUG: findings},
+        service_stats={SERVICE_SLUG: {"passed": 0, "failed": 1, "na": 0}},
+        mode="single",
+        account_id="123456789012",
+        regions=["us-east-1"],
+    )
+    assert 'data-service="finserv"' in html
+    assert 'data-service="responsible-ai-grc"' not in html
+    assert '<option value="responsible-ai-grc">' not in html
+
+
 def test_service_slug_is_frozen():
     """The display name may change; the slug keyed by the parser may not."""
     assert SERVICE_SLUG == "finserv"
