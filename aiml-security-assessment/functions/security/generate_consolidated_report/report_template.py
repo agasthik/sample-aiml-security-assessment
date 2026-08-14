@@ -11,14 +11,15 @@ import html
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
-# FinServ service icon (no official AWS icon exists for "Financial Services").
-FINSERV_ICON = (
+# Responsible AI GRC service icon (no official AWS icon exists for
+# "Financial Services", the origin of this capability's controls).
+RESPONSIBLE_AI_GRC_ICON = (
     '<span class="service-icon"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">'
     '<rect fill="#7C3AED" width="80" height="80"/>'
     '<path fill="#FFF" d="M40 14 L66 26 L66 31 L14 31 L14 26 Z '
     'M20 35 h6 v23 h-6 z M37 35 h6 v23 h-6 z M54 35 h6 v23 h-6 z M14 62 h52 v5 h-52 z"/></svg></span>'
 )
-FINSERV_ICON_SMALL = (
+RESPONSIBLE_AI_GRC_ICON_SMALL = (
     '<span class="service-icon" style="width: 18px; height: 18px;">'
     '<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">'
     '<rect fill="#7C3AED" width="80" height="80"/>'
@@ -44,7 +45,7 @@ AGENTIC_AI_LENS_URL = (
     "https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/"
     "agentic-ai-lens.html"
 )
-FINSERV_GUIDE_URL = (
+RESPONSIBLE_AI_GRC_GUIDE_URL = (
     "https://aws.amazon.com/blogs/security/"
     "introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/"
 )
@@ -57,36 +58,26 @@ RESPONSIBLE_AI_LENS_URL = (
 # Responsible AI GRC display labels.
 #
 # Single source of truth for every customer-visible label on this capability.
-# Before the rebrand the same capability appeared under five competing names
-# (FinServ, Financial Services, Financial Services Risk, Financial Services
-# GenAI Risk, Financial Services GenAI Risk Findings) across ten hardcoded
-# sites. Renaming through these constants keeps them from diverging again.
+# Before the rebrand the same capability appeared under several competing
+# names (FinServ, Financial Services, Financial Services Risk, Financial
+# Services GenAI Risk, Financial Services GenAI Risk Findings) across ten
+# hardcoded sites. Renaming through these constants keeps them from diverging
+# again.
 #
-# The machine identities are deliberately NOT here: the "finserv" service slug,
-# the "#finserv" anchor, the data-service / data-filter-service /
-# data-scope-service attributes, and the industry-* CSS class names are
-# persisted contracts that archived reports and the consolidation tooling read.
-# Only the human-readable text changes.
+# The machine identity is deliberately NOT here: the "responsible-ai-grc"
+# service slug, the "#responsible-ai-grc" anchor, and the data-service /
+# data-filter-service / data-scope-service attributes are persisted contracts
+# that archived reports and the consolidation tooling read.
 # ---------------------------------------------------------------------------
 RESPONSIBLE_AI_GRC_LABEL = "Responsible AI GRC"
 
-# Phase 2 Stage 2b additive machine-identity alias (see
-# docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md, item 4). This is a NEW,
-# additional identifier for "finserv" rows/sections/scope blocks, added
-# alongside — never replacing — the "finserv" slug above. Nothing in this
-# report's own client-side filtering reads it today: applyFilters() below
-# matches data-service by exact string against the <option value="finserv">
-# entry, so introducing a second dropdown option or a second
-# data-filter-service value here would silently produce a filter control that
-# looks functional but returns zero rows. This alias exists for future
-# external tooling (and a future Stage 2b follow-up that also updates the
-# in-report filter wiring) to select on the new name without needing to know
-# the retired "finserv" one — written ahead of need, the same way
-# scripts/convert_finserv_csv_prefix.py was in Phase 2 Stage 2a.
-RESPONSIBLE_AI_GRC_SLUG_ALIAS = "responsible-ai-grc"
+# The DOM/CSV service slug. This is the one name for the capability now:
+# the legacy "finserv" slug and the additive "responsible-ai-grc" alias
+# (Phase 2 Stage 2b) have both been retired in favor of this single value.
+RESPONSIBLE_AI_GRC_SLUG = "responsible-ai-grc"
 
 # The capability is cross-industry, so it is grouped by governance framework
-# rather than by industry. The industry-* CSS class names are unchanged.
+# rather than by industry. The governance-* CSS class names reflect that.
 RESPONSIBLE_AI_GRC_NAV_HEADING = "By Governance Framework"
 RESPONSIBLE_AI_GRC_SCOPE_LABEL = "Governance Framework"
 
@@ -214,19 +205,8 @@ def generate_table_rows(findings: List[Dict], include_data_attrs: bool = True) -
         else:
             ref_html = '<span style="color: var(--text-3);">-</span>'
 
-        # Additive per-row alias (Phase 2 Stage 2b, item 4): a second identifier
-        # for "finserv" rows only, alongside — never in place of — data-service.
-        # applyFilters() below matches data-service by exact string, so this
-        # extra attribute is read by nothing built into this report today; it
-        # exists for future tooling that wants to select by the new name
-        # without also needing to know the retired "finserv" slug.
-        service_alias_attr = (
-            f' data-service-alias="{RESPONSIBLE_AI_GRC_SLUG_ALIAS}"'
-            if include_data_attrs and service == "finserv"
-            else ""
-        )
         data_attrs = (
-            f'data-service="{_escape_attr(service)}" data-severity="{_escape_attr(severity)}" data-status="{_escape_attr(status)}" data-account="{_escape_attr(account_id)}" data-region="{_escape_attr(region)}"{service_alias_attr}'
+            f'data-service="{_escape_attr(service)}" data-severity="{_escape_attr(severity)}" data-status="{_escape_attr(status)}" data-account="{_escape_attr(account_id)}" data-region="{_escape_attr(region)}"'
             if include_data_attrs
             else ""
         )
@@ -371,11 +351,11 @@ def get_html_template() -> str:
         .lens-nav .nav-item:hover {{ background: var(--warning-soft); color: var(--warning); }}
         .lens-nav .nav-item.active {{ background: var(--warning-soft); color: var(--warning); }}
         .lens-nav .nav-item .count {{ background: var(--warning); color: #fff; }}
-        .nav-section.industry-nav {{ border-top: 1px solid var(--border); padding-top: 16px; margin-top: -8px; }}
-        .industry-nav .nav-item {{ background: var(--accent-soft); color: var(--text); box-shadow: inset 3px 0 0 var(--accent); }}
-        .industry-nav .nav-item:hover {{ background: var(--accent-soft); color: var(--accent); }}
-        .industry-nav .nav-item.active {{ background: var(--accent-soft); color: var(--accent); }}
-        .industry-nav .nav-item .count {{ background: var(--accent); color: #fff; }}
+        .nav-section.governance-nav {{ border-top: 1px solid var(--border); padding-top: 16px; margin-top: -8px; }}
+        .governance-nav .nav-item {{ background: var(--accent-soft); color: var(--text); box-shadow: inset 3px 0 0 var(--accent); }}
+        .governance-nav .nav-item:hover {{ background: var(--accent-soft); color: var(--accent); }}
+        .governance-nav .nav-item.active {{ background: var(--accent-soft); color: var(--accent); }}
+        .governance-nav .nav-item .count {{ background: var(--accent); color: #fff; }}
         .nav-section.compliance-nav {{ border-top: 1px solid var(--border); padding-top: 16px; margin-top: -8px; }}
         .compliance-nav .nav-item {{ background: var(--success-soft); color: var(--text); box-shadow: inset 3px 0 0 var(--success); font-size: 13px; white-space: nowrap; padding: 10px 10px; gap: 6px; }}
         .compliance-nav .nav-item:hover {{ background: var(--success-soft); color: var(--success); }}
@@ -397,11 +377,11 @@ def get_html_template() -> str:
         .metric.highlight .metric-value {{ color: var(--success); }}
         .metric.danger .metric-value {{ color: var(--danger); }}
         .metric.warning .metric-value {{ color: var(--warning); }}
-        .scope-industry {{ margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }}
-        .scope-industry-label {{ font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }}
+        .scope-governance {{ margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }}
+        .scope-governance-label {{ font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }}
         .scope-chip-row {{ display: flex; gap: 12px; flex-wrap: wrap; }}
         .scope-chip {{ display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface-2); border-radius: 6px; }}
-        .scope-chip.industry-chip {{ background: var(--accent-soft); border: 1px solid var(--accent); }}
+        .scope-chip.governance-chip {{ background: var(--accent-soft); border: 1px solid var(--accent); }}
         .card {{ background: var(--surface); border: 2px solid var(--border); border-radius: 12px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }}
         .card-header {{ padding: 16px 20px; border-bottom: 2px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--surface-2); }}
         .card-header h3 {{ font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 10px; }}
@@ -922,8 +902,7 @@ def generate_html_report(
             "sagemaker": "SageMaker",
             "agentcore": "AgentCore",
             "agentic": "Agentic AI",
-            # Slug stays "finserv" (persisted contract); only the label changes.
-            "finserv": RESPONSIBLE_AI_GRC_LABEL,
+            RESPONSIBLE_AI_GRC_SLUG: RESPONSIBLE_AI_GRC_LABEL,
         }
         return fixed_names.get(
             service_slug,
@@ -1147,9 +1126,9 @@ def generate_html_report(
             + "</section>"
         )
         agentic_scope_block = (
-            '<div class="scope-industry" data-scope-service="agentic">'
-            '<div class="scope-industry-label">Agentic AI Security</div>'
-            '<div class="scope-chip-row"><div class="scope-chip industry-chip">'
+            '<div class="scope-governance" data-scope-service="agentic">'
+            '<div class="scope-governance-label">Agentic AI Security</div>'
+            '<div class="scope-chip-row"><div class="scope-chip governance-chip">'
             + AGENTIC_ICON_SMALL
             + '<span style="font-size: 13px; font-weight: 500;">Agentic AI Security Lens Mapping</span></div></div></div>'
         )
@@ -1166,80 +1145,60 @@ def generate_html_report(
         agentic_scope_block = ""
         agentic_scope_source = ""
 
-    # FinServ (FS-*) — first-class industry assessment, rendered only when findings exist
-    # (so non-FinServ accounts and EnableFinServAssessment=false deploys stay clean).
+    # Responsible AI GRC (FS-*) — first-class governance assessment, rendered
+    # only when findings exist (so accounts without it and
+    # EnableResponsibleAIGRCAssessment=false deploys stay clean).
     finserv_total = (
-        service_stats.get("finserv", {}).get("passed", 0)
-        + service_stats.get("finserv", {}).get("failed", 0)
-        + service_stats.get("finserv", {}).get("na", 0)
+        service_stats.get(RESPONSIBLE_AI_GRC_SLUG, {}).get("passed", 0)
+        + service_stats.get(RESPONSIBLE_AI_GRC_SLUG, {}).get("failed", 0)
+        + service_stats.get(RESPONSIBLE_AI_GRC_SLUG, {}).get("na", 0)
     )
-    finserv_failed = service_stats.get("finserv", {}).get("failed", 0)
-    finserv_passed = service_stats.get("finserv", {}).get("passed", 0)
-    finserv_na = service_stats.get("finserv", {}).get("na", 0)
+    finserv_failed = service_stats.get(RESPONSIBLE_AI_GRC_SLUG, {}).get("failed", 0)
+    finserv_passed = service_stats.get(RESPONSIBLE_AI_GRC_SLUG, {}).get("passed", 0)
+    finserv_na = service_stats.get(RESPONSIBLE_AI_GRC_SLUG, {}).get("na", 0)
     if finserv_total > 0:
-        # Labels below render "Responsible AI GRC". The finserv slug, the
-        # #finserv anchor, the data-*-service attributes, and every industry-*
-        # CSS class name are machine contracts and must NOT change — archived
-        # reports and the consolidation tooling depend on them.
-        #
-        # Phase 2 Stage 2b (see docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md,
-        # item 4) adds NEW, additive machine hooks under the responsible-ai-grc
-        # name alongside every one of the above, without changing any existing
-        # attribute's VALUE. This matters specifically because the client-side
-        # filter (applyFilters() below) does an exact-string match against
-        # data-service, so a value change (e.g. "finserv responsible-ai-grc")
-        # would silently break the "finserv" filter option — only a sibling
-        # attribute is safe. RESPONSIBLE_AI_GRC_SLUG_ALIAS is a separate,
-        # additional identifier; it does not replace SERVICE_SLUG anywhere.
-        finserv_anchor_alias = (
-            f'<span id="{RESPONSIBLE_AI_GRC_SLUG_ALIAS}" aria-hidden="true"></span>'
-        )
         finserv_nav = (
-            '<a href="#finserv" class="nav-item industry-item">'
-            + FINSERV_ICON
+            f'<a href="#{RESPONSIBLE_AI_GRC_SLUG}" class="nav-item governance-item">'
+            + RESPONSIBLE_AI_GRC_ICON
             + f" {RESPONSIBLE_AI_GRC_LABEL}"
             + f'<span class="count">{finserv_total}</span></a>'
         )
         industry_nav = (
-            '<nav class="nav-section industry-nav">'
+            '<nav class="nav-section governance-nav">'
             f"<h3>{RESPONSIBLE_AI_GRC_NAV_HEADING}</h3>" + finserv_nav + "</nav>"
         )
-        finserv_filter_option = (
-            f'<option value="finserv">{RESPONSIBLE_AI_GRC_LABEL}</option>'
-        )
+        finserv_filter_option = f'<option value="{RESPONSIBLE_AI_GRC_SLUG}">{RESPONSIBLE_AI_GRC_LABEL}</option>'
         finserv_service_card = (
             '<div class="metric"><div class="metric-label">'
-            + FINSERV_ICON_SMALL
+            + RESPONSIBLE_AI_GRC_ICON_SMALL
             + f' {RESPONSIBLE_AI_GRC_LABEL}</div><div class="metric-value">{finserv_total}</div>'
             + f'<div class="metric-sub">{finserv_failed} Failed \u00b7 {finserv_passed} Passed \u00b7 {finserv_na} N/A</div></div>'
         )
         finserv_scope_industry_block = (
-            '<div class="scope-industry" data-scope-service="finserv" '
-            f'data-scope-service-alias="{RESPONSIBLE_AI_GRC_SLUG_ALIAS}">'
-            f'<div class="scope-industry-label">{RESPONSIBLE_AI_GRC_SCOPE_LABEL}</div>'
-            '<div class="scope-chip-row"><div class="scope-chip industry-chip">'
-            + FINSERV_ICON_SMALL
+            f'<div class="scope-governance" data-scope-service="{RESPONSIBLE_AI_GRC_SLUG}">'
+            f'<div class="scope-governance-label">{RESPONSIBLE_AI_GRC_SCOPE_LABEL}</div>'
+            '<div class="scope-chip-row"><div class="scope-chip governance-chip">'
+            + RESPONSIBLE_AI_GRC_ICON_SMALL
             + f'<span style="font-size: 13px; font-weight: 500;">{RESPONSIBLE_AI_GRC_LABEL}</span></div></div></div>'
         )
         finserv_scope_source = (
             f" {RESPONSIBLE_AI_GRC_LABEL} checks are based on "
-            f'<a href="{FINSERV_GUIDE_URL}" target="_blank">the AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption</a>. '
+            f'<a href="{RESPONSIBLE_AI_GRC_GUIDE_URL}" target="_blank">the AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption</a>. '
             f"{RESPONSIBLE_AI_LENS_DISAMBIGUATION}"
         )
         finserv_section = (
-            finserv_anchor_alias + '<section id="finserv" class="section" '
-            f'data-service-section-alias="{RESPONSIBLE_AI_GRC_SLUG_ALIAS}">'
+            f'<section id="{RESPONSIBLE_AI_GRC_SLUG}" class="section">'
             '<div class="section-title">'
-            + FINSERV_ICON
+            + RESPONSIBLE_AI_GRC_ICON
             + f"{RESPONSIBLE_AI_GRC_LABEL} Findings</div>"
             + generate_assessment_summary(
-                "finserv",
+                RESPONSIBLE_AI_GRC_SLUG,
                 finserv_total,
                 finserv_failed,
                 finserv_passed,
-                service_stats.get("finserv", {}).get("na", 0),
+                service_stats.get(RESPONSIBLE_AI_GRC_SLUG, {}).get("na", 0),
                 f"Scope: {RESPONSIBLE_AI_GRC_SCOPE_STATEMENT} This assessment records findings against each resolved CloudFormation TargetRegions entry. These checks are based on "
-                f'<a href="{FINSERV_GUIDE_URL}" target="_blank">the AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption</a>. Severities follow a documented Likelihood &times; Impact methodology. '
+                f'<a href="{RESPONSIBLE_AI_GRC_GUIDE_URL}" target="_blank">the AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption</a>. Severities follow a documented Likelihood &times; Impact methodology. '
                 f"{RESPONSIBLE_AI_LENS_DISAMBIGUATION}",
             )
             + "</section>"
@@ -1309,7 +1268,7 @@ def generate_html_report(
             + "</section>"
         )
         compliance_scope_chips_list.append(
-            f'<div class="scope-chip industry-chip" data-scope-service="{_slug_attr}">'
+            f'<div class="scope-chip governance-chip" data-scope-service="{_slug_attr}">'
             + _icon_small
             + f'<span style="font-size: 13px; font-weight: 500;">{_name_text}</span></div>'
         )
@@ -1334,8 +1293,8 @@ def generate_html_report(
     # N duplicated headings.
     if compliance_scope_chips_list:
         compliance_scope_block = (
-            '<div class="scope-industry" data-scope-service="compliance-standards">'
-            '<div class="scope-industry-label">By Compliance Standard</div>'
+            '<div class="scope-governance" data-scope-service="compliance-standards">'
+            '<div class="scope-governance-label">By Compliance Standard</div>'
             '<div class="scope-chip-row">'
             + "".join(compliance_scope_chips_list)
             + "</div></div>"

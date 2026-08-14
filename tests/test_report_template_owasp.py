@@ -33,7 +33,7 @@ def _base_kwargs():
             "sagemaker": [],
             "agentcore": [],
             "agentic": [],
-            "finserv": [],
+            "responsible-ai-grc": [],
             "owasp": [],
         },
         "service_stats": {
@@ -41,7 +41,7 @@ def _base_kwargs():
             "sagemaker": {"passed": 0, "failed": 0, "na": 0},
             "agentcore": {"passed": 0, "failed": 0, "na": 0},
             "agentic": {"passed": 0, "failed": 0, "na": 0},
-            "finserv": {"passed": 0, "failed": 0, "na": 0},
+            "responsible-ai-grc": {"passed": 0, "failed": 0, "na": 0},
             "owasp": {"passed": 0, "failed": 0, "na": 0},
         },
         "mode": "single",

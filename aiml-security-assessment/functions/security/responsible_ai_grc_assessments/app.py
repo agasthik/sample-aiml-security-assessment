@@ -7552,47 +7552,21 @@ def _apply_region_scope(findings: List[Dict[str, Any]], regions: List[str]) -> N
     _append_no_resource_region_findings(findings, empty_regions)
 
 
-RESPONSIBLE_AI_GOV_CSV_PREFIX = "responsible_ai_gov_security_report"
-
-
 def write_to_s3(execution_id: str, csv_content: str, bucket_name: str) -> str:
     """Write CSV report to S3 bucket.
 
-    Phase 2 Stage 2b (see docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md,
-    item 5) writes the SAME content to a second, additive key under the
-    responsible_ai_gov_security_report prefix, byte-for-byte identical to the
-    legacy finserv_security_report object. The legacy object remains the
-    return value and the durable contract: existing readers, the EventBridge
-    notification, and every archived-report reference keep working unchanged.
-    The second write is additive dual-write, not a migration — see
-    scripts/convert_finserv_csv_prefix.py for a tool that can reconcile the
-    two, and docs/RESPONSIBLE_AI_GRC_ALIAS_MIGRATION.md for a customer-facing
-    explanation of why both exist.
-
-    A failure writing the second, additive object must never fail the
-    assessment: the legacy write is the one contract callers depend on. Any
-    exception writing the alias object is logged and swallowed.
+    Writes a single object under the responsible_ai_grc_security_report
+    prefix. This is the only prefix the assessment writes: the legacy
+    finserv_security_report prefix and the additive
+    responsible_ai_gov_security_report alias (Phase 2 Stage 2b) have both been
+    retired in favor of this one name. Archived reports written before this
+    change keep their original filenames; they are not rewritten.
     """
     s3_client = boto3.client("s3", config=boto3_config)
-    file_name = f"finserv_security_report_{execution_id}.csv"
+    file_name = f"responsible_ai_grc_security_report_{execution_id}.csv"
     s3_client.put_object(
         Bucket=bucket_name, Key=file_name, Body=csv_content, ContentType="text/csv"
     )
-
-    alias_file_name = f"{RESPONSIBLE_AI_GOV_CSV_PREFIX}_{execution_id}.csv"
-    try:
-        s3_client.put_object(
-            Bucket=bucket_name,
-            Key=alias_file_name,
-            Body=csv_content,
-            ContentType="text/csv",
-        )
-    except Exception as e:
-        logger.warning(
-            f"Failed to write additive Responsible AI GRC CSV alias "
-            f"{alias_file_name}: {e}. The legacy {file_name} object, which is "
-            "the durable contract, was written successfully and is unaffected."
-        )
 
     return f"https://{bucket_name}.s3.amazonaws.com/{file_name}"
 

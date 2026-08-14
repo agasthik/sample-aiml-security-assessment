@@ -289,14 +289,14 @@ phases:
         # (EnableResponsibleAIGRCAssessment=false but EnableOWASPAssessment=true),
         # its CSV must never reach the customer-facing report bucket. The report
         # layer already strips FS-* rows from the HTML, but the raw
-        # finserv_security_report_*.csv would otherwise be copied verbatim. Build
-        # an exclude flag (empty when Responsible AI GRC is enabled) and apply it
-        # to every copy/sync into the report bucket. ENABLE_RESPONSIBLE_AI_GRC is
-        # already normalised to lowercase in the build phase, so a direct "true"
-        # comparison is sufficient here.
+        # responsible_ai_grc_security_report_*.csv would otherwise be copied
+        # verbatim. Build an exclude flag (empty when Responsible AI GRC is
+        # enabled) and apply it to every copy/sync into the report bucket.
+        # ENABLE_RESPONSIBLE_AI_GRC is already normalised to lowercase in the
+        # build phase, so a direct "true" comparison is sufficient here.
         fs_exclude_args=()
         if [[ "${ENABLE_RESPONSIBLE_AI_GRC:-false}" != "true" ]]; then
-          fs_exclude_args=(--exclude "finserv_security_report_*.csv")
+          fs_exclude_args=(--exclude "responsible_ai_grc_security_report_*.csv")
         fi
 
         # Derive how long to wait for Step Function completion from the overall

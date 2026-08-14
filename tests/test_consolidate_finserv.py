@@ -1,4 +1,4 @@
-"""Multi-account consolidation categorizes FS-* checks as finserv."""
+"""Multi-account consolidation categorizes FS-* checks as responsible-ai-grc."""
 
 import csv
 import os
@@ -45,7 +45,7 @@ class TestConsolidateFinservCategorization(unittest.TestCase):
                 "Status": "Passed",
             },
         ]
-        path = f"{self.BASE}/{self.ACCT}/finserv_security_report_test.csv"
+        path = f"{self.BASE}/{self.ACCT}/responsible_ai_grc_security_report_test.csv"
         with open(path, "w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
             w.writeheader()
@@ -54,7 +54,7 @@ class TestConsolidateFinservCategorization(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.BASE, ignore_errors=True)
 
-    def test_fs_prefix_categorized_as_finserv(self):
+    def test_fs_prefix_categorized_as_responsible_ai_grc(self):
         captured = {}
 
         def fake_render(**kwargs):
@@ -70,9 +70,10 @@ class TestConsolidateFinservCategorization(unittest.TestCase):
                     "BUCKET_REPORT": "test-bucket",
                     "ACCOUNT_FILES_DIR": self.BASE,
                     # The consolidator hides FS-* rows unless the customer
-                    # asked for FinServ explicitly. This test's purpose is
-                    # the FS→finserv categorisation path, so enable it.
-                    "ENABLE_FINSERV": "true",
+                    # asked for Responsible AI GRC explicitly. This test's
+                    # purpose is the FS->responsible-ai-grc categorisation
+                    # path, so enable it.
+                    "ENABLE_RESPONSIBLE_AI_GRC": "true",
                 },
             ),
         ):
@@ -80,19 +81,20 @@ class TestConsolidateFinservCategorization(unittest.TestCase):
             chr.consolidate_html_reports()
 
         sf = captured["service_findings"]
-        finserv_ids = {f["check_id"] for f in sf["finserv"]}
+        finserv_ids = {f["check_id"] for f in sf["responsible-ai-grc"]}
         bedrock_ids = {f["check_id"] for f in sf["bedrock"]}
         self.assertIn("FS-01", finserv_ids)
         self.assertIn("FS-44", finserv_ids)
         self.assertNotIn("FS-01", bedrock_ids)
         self.assertIn("BR-01", bedrock_ids)
-        self.assertEqual(captured["service_stats"]["finserv"]["failed"], 1)
-        self.assertEqual(captured["service_stats"]["finserv"]["passed"], 1)
+        self.assertEqual(captured["service_stats"]["responsible-ai-grc"]["failed"], 1)
+        self.assertEqual(captured["service_stats"]["responsible-ai-grc"]["passed"], 1)
 
-    def test_fs_rows_hidden_when_enable_finserv_false(self):
-        # When FinServ ran only as an OWASP dependency (ENABLE_FINSERV=false
-        # but ENABLE_OWASP=true), the consolidator must drop FS-* rows so
-        # the multi-account report shows an OWASP-only view.
+    def test_fs_rows_hidden_when_enable_responsible_ai_grc_false(self):
+        # When Responsible AI GRC ran only as an OWASP dependency
+        # (ENABLE_RESPONSIBLE_AI_GRC=false but ENABLE_OWASP=true), the
+        # consolidator must drop FS-* rows so the multi-account report shows
+        # an OWASP-only view.
         captured = {}
 
         def fake_render(**kwargs):
@@ -107,7 +109,7 @@ class TestConsolidateFinservCategorization(unittest.TestCase):
                 {
                     "BUCKET_REPORT": "test-bucket",
                     "ACCOUNT_FILES_DIR": self.BASE,
-                    "ENABLE_FINSERV": "false",
+                    "ENABLE_RESPONSIBLE_AI_GRC": "false",
                     "ENABLE_OWASP": "true",
                 },
             ),
@@ -117,8 +119,10 @@ class TestConsolidateFinservCategorization(unittest.TestCase):
 
         sf = captured["service_findings"]
         stats = captured["service_stats"]
-        self.assertEqual(sf["finserv"], [])
-        self.assertEqual(stats["finserv"], {"passed": 0, "failed": 0, "na": 0})
+        self.assertEqual(sf["responsible-ai-grc"], [])
+        self.assertEqual(
+            stats["responsible-ai-grc"], {"passed": 0, "failed": 0, "na": 0}
+        )
         # BR-01 must still appear — only FS-* rows are dropped.
         bedrock_ids = {f["check_id"] for f in sf["bedrock"]}
         self.assertIn("BR-01", bedrock_ids)

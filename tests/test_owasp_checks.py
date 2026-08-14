@@ -592,7 +592,8 @@ class TestOW12DeniedTopic:
 
 
 # ---------------------------------------------------------------------------
-# S3 CSV reader — FinServ un-suffixed key must be read only when include_finserv
+# S3 CSV reader — Responsible AI GRC un-suffixed key must be read only when
+# include_finserv is True.
 # ---------------------------------------------------------------------------
 class TestReadServiceCsvsForRegion:
     def _fake_s3_client(self, keys_to_body):
@@ -636,12 +637,13 @@ class TestReadServiceCsvsForRegion:
             )
         return header + body
 
-    def test_finserv_csv_is_at_unsuffixed_key(self):
-        # FinServ writes finserv_security_report_<exec>.csv (no _<region>),
-        # so the reader must fetch that key when include_finserv=True.
+    def test_responsible_ai_grc_csv_is_at_unsuffixed_key(self):
+        # Responsible AI GRC writes responsible_ai_grc_security_report_<exec>.csv
+        # (no _<region>), so the reader must fetch that key when
+        # include_finserv=True.
         exec_id = "exec-abc"
         keys = {
-            f"finserv_security_report_{exec_id}.csv": self._csv(
+            f"responsible_ai_grc_security_report_{exec_id}.csv": self._csv(
                 [
                     {
                         "Check_ID": "FS-51",
@@ -661,15 +663,17 @@ class TestReadServiceCsvsForRegion:
                 include_finserv=True,
             )
         assert any(r.get("Check_ID") == "FS-51" for r in rows), (
-            "reader must fetch finserv_security_report_<exec>.csv when include_finserv=True"
+            "reader must fetch responsible_ai_grc_security_report_<exec>.csv "
+            "when include_finserv=True"
         )
 
-    def test_finserv_csv_skipped_when_include_finserv_false(self):
+    def test_responsible_ai_grc_csv_skipped_when_include_finserv_false(self):
         # In per-region invocations (RegionIndex > 0), OWASP must NOT re-read
-        # the FinServ CSV or the same FS rows would be emitted N times.
+        # the Responsible AI GRC CSV or the same FS rows would be emitted N
+        # times.
         exec_id = "exec-abc"
         keys = {
-            f"finserv_security_report_{exec_id}.csv": self._csv(
+            f"responsible_ai_grc_security_report_{exec_id}.csv": self._csv(
                 [{"Check_ID": "FS-51", "Region": "us-east-1", "Status": "Failed"}]
             ),
         }
@@ -682,7 +686,7 @@ class TestReadServiceCsvsForRegion:
                 include_finserv=False,
             )
         assert not any(r.get("Check_ID", "").startswith("FS-") for r in rows), (
-            "FinServ CSV must be skipped when include_finserv=False"
+            "Responsible AI GRC CSV must be skipped when include_finserv=False"
         )
 
     def test_per_region_service_csvs_use_region_suffix(self):
@@ -716,10 +720,7 @@ class TestReadServiceCsvsForRegion:
             )
         assert rows == []
         assert f"bedrock_security_report_{exec_id}_us-east-1.csv" in missing
-        assert f"finserv_security_report_{exec_id}.csv" in missing
-        # The additive alias key's absence is NOT itself a coverage gap; only
-        # the legacy key's absence is reported via missing_keys.
-        assert f"responsible_ai_gov_security_report_{exec_id}.csv" not in missing
+        assert f"responsible_ai_grc_security_report_{exec_id}.csv" in missing
 
         coverage_rows = owasp_app.build_missing_source_findings(
             missing, region="us-east-1"
@@ -728,127 +729,6 @@ class TestReadServiceCsvsForRegion:
         assert all(r["Check_ID"] == "OW-00" for r in coverage_rows)
         assert all(r["Status"] == "N/A" for r in coverage_rows)
         assert all(r["Severity"] == "Informational" for r in coverage_rows)
-
-    # -----------------------------------------------------------------------
-    # Phase 2 Stage 2b additive alias: responsible_ai_gov_security_report_*
-    # (see docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md, item 5).
-    # -----------------------------------------------------------------------
-
-    def test_alias_csv_is_read_when_include_finserv_true(self):
-        """When only the alias key exists (legacy missing), its rows still
-        reach OWASP -- proves the alias is genuinely read, not just skipped
-        silently because the legacy key happens to also exist in these tests.
-        """
-        exec_id = "exec-abc"
-        keys = {
-            f"responsible_ai_gov_security_report_{exec_id}.csv": self._csv(
-                [
-                    {
-                        "Check_ID": "FS-51",
-                        "Finding": "Alias-only Finding",
-                        "Region": "us-east-1",
-                        "Status": "Failed",
-                        "Severity": "High",
-                    }
-                ]
-            ),
-        }
-        client = self._fake_s3_client(keys)
-        with patch.object(owasp_app.boto3, "client", return_value=client):
-            rows = owasp_app._read_service_csvs_for_region(
-                bucket_name="b",
-                execution_id=exec_id,
-                region="us-east-1",
-                include_finserv=True,
-            )
-        assert any(r.get("Check_ID") == "FS-51" for r in rows)
-
-    def test_alias_csv_skipped_when_include_finserv_false(self):
-        exec_id = "exec-abc"
-        keys = {
-            f"responsible_ai_gov_security_report_{exec_id}.csv": self._csv(
-                [{"Check_ID": "FS-51", "Region": "us-east-1", "Status": "Failed"}]
-            ),
-        }
-        client = self._fake_s3_client(keys)
-        with patch.object(owasp_app.boto3, "client", return_value=client):
-            rows = owasp_app._read_service_csvs_for_region(
-                bucket_name="b",
-                execution_id=exec_id,
-                region="us-west-2",
-                include_finserv=False,
-            )
-        assert not any(r.get("Check_ID", "").startswith("FS-") for r in rows)
-
-    def test_duplicate_rows_across_legacy_and_alias_are_deduplicated(self):
-        """The realistic case: finserv_assessments/app.py dual-writes
-        byte-identical content to both keys. OWASP must not double-count or
-        double-emit OW-* mappings for the same underlying finding."""
-        exec_id = "exec-abc"
-        identical_row = {
-            "Check_ID": "FS-51",
-            "Finding": "Same Finding Both Files",
-            "Region": "us-east-1",
-            "Status": "Failed",
-            "Severity": "High",
-        }
-        keys = {
-            f"finserv_security_report_{exec_id}.csv": self._csv([identical_row]),
-            f"responsible_ai_gov_security_report_{exec_id}.csv": self._csv(
-                [identical_row]
-            ),
-        }
-        client = self._fake_s3_client(keys)
-        with patch.object(owasp_app.boto3, "client", return_value=client):
-            rows = owasp_app._read_service_csvs_for_region(
-                bucket_name="b",
-                execution_id=exec_id,
-                region="us-east-1",
-                include_finserv=True,
-            )
-        matching = [r for r in rows if r.get("Check_ID") == "FS-51"]
-        assert len(matching) == 1, (
-            f"expected exactly 1 deduplicated row, got {len(matching)}: {matching}"
-        )
-
-    def test_legacy_and_alias_rows_that_genuinely_differ_are_both_kept(self):
-        """Deduplication is by (Check_ID, Region, Finding) identity, not by
-        source file -- two DIFFERENT findings, one from each key, must both
-        survive."""
-        exec_id = "exec-abc"
-        keys = {
-            f"finserv_security_report_{exec_id}.csv": self._csv(
-                [
-                    {
-                        "Check_ID": "FS-51",
-                        "Finding": "Only In Legacy",
-                        "Region": "us-east-1",
-                        "Status": "Failed",
-                    }
-                ]
-            ),
-            f"responsible_ai_gov_security_report_{exec_id}.csv": self._csv(
-                [
-                    {
-                        "Check_ID": "FS-52",
-                        "Finding": "Only In Alias",
-                        "Region": "us-east-1",
-                        "Status": "Failed",
-                    }
-                ]
-            ),
-        }
-        client = self._fake_s3_client(keys)
-        with patch.object(owasp_app.boto3, "client", return_value=client):
-            rows = owasp_app._read_service_csvs_for_region(
-                bucket_name="b",
-                execution_id=exec_id,
-                region="us-east-1",
-                include_finserv=True,
-            )
-        check_ids = {r.get("Check_ID") for r in rows}
-        assert "FS-51" in check_ids
-        assert "FS-52" in check_ids
 
 
 # ---------------------------------------------------------------------------

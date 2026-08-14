@@ -1,7 +1,7 @@
 """OWASP Top 10 for LLM assessment Lambda.
 
 This Lambda runs after the per-service Lambdas (Bedrock, SageMaker, AgentCore,
-FinServ) have written their region CSVs. It:
+Responsible AI GRC) have written their region CSVs. It:
 
 1. Reads those CSVs from S3.
 2. Applies OWASP_CHECK_MAPPINGS to emit OW-01..OW-10 rows derived from
@@ -819,30 +819,21 @@ def _list_all_items(
 # CSV I/O — read the per-service region CSVs written by earlier Lambdas.
 #
 # Per-region-scoped services (Bedrock, SageMaker, AgentCore) write one CSV per
-# region as `<prefix>_<execution_id>_<region>.csv`. FinServ is different: it
-# runs once (RegionIndex==0), emits per-region Region values in its rows, and
-# writes a single un-suffixed `finserv_security_report_<execution_id>.csv`.
-# So the OWASP Lambda must key on RegionIndex too — mappings that read
-# per-region CSVs run in every region, but FS→OW mappings run only from
-# RegionIndex==0's invocation to avoid duplicate emission across regions and
-# to match FinServ's actual filename.
+# region as `<prefix>_<execution_id>_<region>.csv`. Responsible AI GRC is
+# different: it runs once (RegionIndex==0), emits per-region Region values in
+# its rows, and writes a single un-suffixed
+# `responsible_ai_grc_security_report_<execution_id>.csv`. So the OWASP
+# Lambda must key on RegionIndex too — mappings that read per-region CSVs run
+# in every region, but FS→OW mappings run only from RegionIndex==0's
+# invocation to avoid duplicate emission across regions and to match
+# Responsible AI GRC's actual filename.
 # ---------------------------------------------------------------------------
 PER_REGION_SERVICE_CSV_PREFIXES = (
     "bedrock_security_report",
     "sagemaker_security_report",
     "agentcore_security_report",
 )
-FINSERV_SERVICE_CSV_PREFIX = "finserv_security_report"
-
-# Phase 2 Stage 2b additive alias (see
-# docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md, item 5).
-# finserv_assessments/app.py's write_to_s3() now dual-writes byte-identical
-# content under this prefix alongside the legacy one above. Reading both here
-# and deduplicating means OWASP mappings are unaffected either way — this is
-# defense against future drift (e.g. a future release that stops the legacy
-# write), not a behavior change today, since the two objects are currently
-# always identical.
-RESPONSIBLE_AI_GOV_SERVICE_CSV_PREFIX = "responsible_ai_gov_security_report"
+RESPONSIBLE_AI_GRC_SERVICE_CSV_PREFIX = "responsible_ai_grc_security_report"
 
 
 def _read_service_csvs_for_region(
@@ -855,38 +846,23 @@ def _read_service_csvs_for_region(
     """Read every per-service CSV that this OWASP invocation should consume.
 
     Always reads bedrock/sagemaker/agentcore's per-region CSVs. When
-    `include_finserv` is True (RegionIndex==0), also reads the FinServ /
-    Responsible AI GRC execution-scoped CSV. Rows already carry per-region
-    Region values, so downstream mapping preserves them without further
-    modification.
-
-    Both the legacy `finserv_security_report` object and the additive
-    `responsible_ai_gov_security_report` alias (Phase 2 Stage 2b, dual-written
-    by finserv_assessments/app.py) are read and deduplicated by (Check_ID,
-    Region, Finding) so a customer never sees FS-* findings counted twice —
-    both objects contain identical rows today, but this keeps the reader
-    correct even if that ever changes.
+    `include_finserv` is True (RegionIndex==0), also reads the Responsible AI
+    GRC execution-scoped CSV. Rows already carry per-region Region values, so
+    downstream mapping preserves them without further modification.
 
     Missing objects are returned to the caller when `return_missing` is True
     so OWASP can emit explicit coverage rows instead of silently dropping all
-    derived OW-01..OW-10 rows for that source. Only the legacy key's absence
-    is reported as missing; the alias key missing is not itself a coverage
-    gap as long as the legacy key was read successfully.
+    derived OW-01..OW-10 rows for that source.
     """
     s3_client = boto3.client("s3", config=boto3_config)
     rows: List[Dict[str, str]] = []
-    seen_row_identities: set[tuple[str, str, str]] = set()
 
     keys: List[str] = [
         f"{prefix}_{execution_id}_{region}.csv"
         for prefix in PER_REGION_SERVICE_CSV_PREFIXES
     ]
-    finserv_alias_keys: List[str] = []
     if include_finserv:
-        keys.append(f"{FINSERV_SERVICE_CSV_PREFIX}_{execution_id}.csv")
-        finserv_alias_keys.append(
-            f"{RESPONSIBLE_AI_GOV_SERVICE_CSV_PREFIX}_{execution_id}.csv"
-        )
+        keys.append(f"{RESPONSIBLE_AI_GRC_SERVICE_CSV_PREFIX}_{execution_id}.csv")
 
     missing_keys: List[str] = []
     for key in keys:
@@ -902,42 +878,7 @@ def _read_service_csvs_for_region(
             raise
         reader = csv.DictReader(StringIO(body))
         for row in reader:
-            row_dict = dict(row)
-            identity = (
-                row_dict.get("Check_ID", ""),
-                row_dict.get("Region", ""),
-                row_dict.get("Finding", ""),
-            )
-            seen_row_identities.add(identity)
-            rows.append(row_dict)
-
-    # Additive alias keys: read and deduplicate against rows already collected
-    # from the legacy key, but a missing alias object is not reported via
-    # missing_keys -- only the legacy source's absence is a coverage gap.
-    for key in finserv_alias_keys:
-        try:
-            response = s3_client.get_object(Bucket=bucket_name, Key=key)
-            body = response["Body"].read().decode("utf-8")
-        except ClientError as e:
-            code = e.response.get("Error", {}).get("Code", "")
-            if code in ("NoSuchKey", "404"):
-                logger.info(
-                    f"OWASP: additive alias CSV not found (not a coverage gap): {key}"
-                )
-                continue
-            raise
-        reader = csv.DictReader(StringIO(body))
-        for row in reader:
-            row_dict = dict(row)
-            identity = (
-                row_dict.get("Check_ID", ""),
-                row_dict.get("Region", ""),
-                row_dict.get("Finding", ""),
-            )
-            if identity in seen_row_identities:
-                continue
-            seen_row_identities.add(identity)
-            rows.append(row_dict)
+            rows.append(dict(row))
 
     if return_missing:
         return rows, missing_keys
@@ -1188,7 +1129,8 @@ def check_system_prompt_in_lambda_env(region: str) -> List[Dict[str, Any]]:
             resolution="No action required.",
             reference=ow11_reference,
             # Control-inherent severity: OW-11 severity is Medium regardless
-            # of Pass/Fail outcome, matching FinServ's severity methodology.
+            # of Pass/Fail outcome, matching Responsible AI GRC's severity
+            # methodology.
             severity="Medium",
             status="Passed",
             region=region,
@@ -1367,8 +1309,9 @@ def check_system_prompt_disclosure_denied_topic(region: str) -> List[Dict[str, A
                 ),
                 resolution="No action required.",
                 reference=ow12_reference,
-                # Control-inherent severity: OW-12 severity is Medium regardless
-                # of Pass/Fail outcome, matching FinServ's severity methodology.
+                # Control-inherent severity: OW-12 severity is Medium
+                # regardless of Pass/Fail outcome, matching Responsible AI
+                # GRC's severity methodology.
                 severity="Medium",
                 status="Passed",
                 region=region,
@@ -1499,14 +1442,15 @@ def write_to_s3(
 def lambda_handler(event, context):
     """Main entry point for the OWASP assessment Lambda.
 
-    Expects the Step Functions payload used by the FinServ Lambda:
+    Expects the Step Functions payload used by the Responsible AI GRC Lambda:
       { Execution: {Name: ...}, StateMachine: ..., Region: ..., RegionIndex: 0 }
 
-    Runs in every region (unlike FinServ which is gated to RegionIndex==0
-    inside the state machine), because BR/SM/AC per-region CSV mappings and
-    OW-11/OW-12 native checks are region-scoped. Only the FS→OW mappings
-    read from FinServ's single un-suffixed CSV, and those are gated to
-    RegionIndex==0 here to avoid duplicate emission across regions.
+    Runs in every region (unlike Responsible AI GRC which is gated to
+    RegionIndex==0 inside the state machine), because BR/SM/AC per-region CSV
+    mappings and OW-11/OW-12 native checks are region-scoped. Only the FS→OW
+    mappings read from Responsible AI GRC's single un-suffixed CSV, and those
+    are gated to RegionIndex==0 here to avoid duplicate emission across
+    regions.
     """
     logger.info("Starting OWASP Top 10 for LLM assessment")
     try:

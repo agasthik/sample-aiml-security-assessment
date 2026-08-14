@@ -77,11 +77,15 @@ def consolidate_html_reports():
         print("Error: BUCKET_REPORT environment variable is not set")
         raise ValueError("BUCKET_REPORT environment variable is required")
 
-    # When ENABLE_OWASP=true but ENABLE_FINSERV=false, the state machine still
-    # runs FinServ (OWASP mappings depend on FS-* rows), but the FinServ UI
-    # must stay hidden. Read the same env vars the buildspec exports.
-    enable_finserv = os.environ.get("ENABLE_FINSERV", "false").strip().lower() == "true"
-    show_finserv = enable_finserv
+    # When ENABLE_OWASP=true but ENABLE_RESPONSIBLE_AI_GRC=false, the state
+    # machine still runs Responsible AI GRC (OWASP mappings depend on FS-*
+    # rows), but the Responsible AI GRC UI must stay hidden. Read
+    # ENABLE_RESPONSIBLE_AI_GRC, the reconciled/effective value buildspec.yml
+    # always exports (EnableFinServAssessment's legacy alias, when set, has
+    # already been folded into it there).
+    show_finserv = (
+        os.environ.get("ENABLE_RESPONSIBLE_AI_GRC", "false").strip().lower() == "true"
+    )
 
     all_findings = []
     account_ids = set()
@@ -94,7 +98,7 @@ def consolidate_html_reports():
         "sagemaker",
         "agentcore",
         "agentic",
-        "finserv",
+        "responsible-ai-grc",
     ] + compliance_slugs
     service_stats = {
         slug: {"passed": 0, "failed": 0, "na": 0} for slug in all_report_slugs
@@ -166,7 +170,7 @@ def consolidate_html_reports():
                             elif check_id.startswith("AG-"):
                                 service = "agentic"
                             elif check_id.startswith("FS-"):
-                                service = "finserv"
+                                service = "responsible-ai-grc"
                             elif check_id_prefix in compliance_prefix_to_slug:
                                 service = compliance_prefix_to_slug[check_id_prefix]
                             else:
@@ -187,9 +191,10 @@ def consolidate_html_reports():
                                 else:
                                     service = "bedrock"
 
-                            # Suppress FinServ rows when FinServ ran only as an
-                            # OWASP dependency (see enable_finserv above).
-                            if not show_finserv and service == "finserv":
+                            # Suppress Responsible AI GRC rows when it ran
+                            # only as an OWASP dependency (see show_finserv
+                            # above).
+                            if not show_finserv and service == "responsible-ai-grc":
                                 continue
 
                             dedup_key = (

@@ -364,9 +364,9 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
   - `bedrock_security_report_{execution_id}.csv` - Amazon Bedrock security assessment results
   - `sagemaker_security_report_{execution_id}.csv` - Amazon SageMaker AI security assessment results
   - `agentcore_security_report_{execution_id}.csv` - Amazon Bedrock AgentCore security assessment results
-  - `finserv_security_report_{execution_id}.csv` - Responsible AI GRC
-    risk assessment results (64 FS-XX checks; present in the report bucket only
-    when `EnableResponsibleAIGRCAssessment` is enabled)
+  - `responsible_ai_grc_security_report_{execution_id}.csv` - Responsible AI
+    GRC risk assessment results (64 FS-XX checks; present in the report bucket
+    only when `EnableResponsibleAIGRCAssessment` is enabled)
   - `owasp_security_report_{execution_id}.csv` - OWASP Top 10 for LLM
     assessment results (12 OW-XX checks; present only when
     `EnableOWASPAssessment` is enabled)

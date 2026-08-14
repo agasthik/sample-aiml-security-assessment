@@ -90,27 +90,21 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
         # first four are hard-coded per-service Lambdas; compliance-standard
         # entries (owasp, and future NIST/EU AI Act) come from the shared
         # COMPLIANCE_STANDARDS registry so adding a standard is data-only.
-        category_slugs = ["bedrock", "sagemaker", "agentcore", "finserv"] + [
+        # The Responsible AI GRC category's CSV filename fragment
+        # (responsible_ai_grc_security_report_) differs from its report
+        # slug (responsible-ai-grc); category_to_csv_fragment maps between
+        # them for the prefix list and the filename-matching loop below.
+        category_slugs = ["bedrock", "sagemaker", "agentcore", "responsible-ai-grc"] + [
             std["slug"] for std in COMPLIANCE_STANDARDS
         ]
-        prefixes = [f"{slug}_security_report_{execution_id}" for slug in category_slugs]
-
-        # Phase 2 Stage 2b additive alias (see
-        # docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md, item 5).
-        # finserv_assessments/app.py's write_to_s3() now dual-writes the same
-        # content under this second prefix. It is deliberately NOT added to
-        # category_slugs above: that list is one-slug-per-report-category, and
-        # this alias's rows must merge into the EXISTING "finserv" category
-        # (see the category-matching loop below), not create a new, separate,
-        # always-duplicate one. It is listed here only so the S3 paginator
-        # actually finds the alias object.
-        responsible_ai_gov_prefix_fragment = "responsible_ai_gov_security_report_"
-        prefixes_to_list = prefixes + [
-            f"{responsible_ai_gov_prefix_fragment}{execution_id}"
+        category_to_csv_fragment = {"responsible-ai-grc": "responsible_ai_grc"}
+        prefixes = [
+            f"{category_to_csv_fragment.get(slug, slug)}_security_report_{execution_id}"
+            for slug in category_slugs
         ]
 
         all_objects = []
-        for prefix in prefixes_to_list:
+        for prefix in prefixes:
             for page in paginator.paginate(Bucket=s3_bucket, Prefix=prefix):
                 all_objects.extend(page.get("Contents", []))
 
@@ -119,14 +113,14 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
             return {}
 
         # Categories the report understands: per-service (bedrock/sagemaker/
-        # agentcore/finserv), the reconstructed agentic lens, and every
-        # registered compliance standard.
+        # agentcore/responsible-ai-grc), the reconstructed agentic lens, and
+        # every registered compliance standard.
         report_categories = [
             "bedrock",
             "sagemaker",
             "agentcore",
             "agentic",
-            "finserv",
+            "responsible-ai-grc",
         ] + [std["slug"] for std in COMPLIANCE_STANDARDS]
         assessment_results = {
             "execution_id": execution_id,
@@ -157,17 +151,11 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
 
                 file_name = os.path.basename(s3_key)
                 category = None
-                # The additive responsible_ai_gov_security_report_* alias
-                # (Phase 2 Stage 2b, item 5) routes into the SAME "finserv"
-                # category as the legacy prefix, since it is the same
-                # capability under an additional name, not a distinct one.
-                if file_name.lower().startswith(responsible_ai_gov_prefix_fragment):
-                    category = "finserv"
-                else:
-                    for slug in category_slugs:
-                        if file_name.lower().startswith(f"{slug}_security_report_"):
-                            category = slug
-                            break
+                for slug in category_slugs:
+                    fragment = category_to_csv_fragment.get(slug, slug)
+                    if file_name.lower().startswith(f"{fragment}_security_report_"):
+                        category = slug
+                        break
                 if category is None:
                     logger.warning(f"Unknown assessment type for file: {s3_key}")
                     continue
@@ -222,7 +210,8 @@ def generate_html_report(
     expected by the shared report_template module.
 
     Args:
-        assessment_results: Dict containing bedrock, sagemaker, agentcore, finserv findings
+        assessment_results: Dict containing bedrock, sagemaker, agentcore,
+            responsible-ai-grc findings
         show_finserv: When False, Responsible AI GRC (FS-*) rows are excluded
             from the report entirely. Used when Responsible AI GRC was
             executed only as an OWASP dependency
@@ -242,7 +231,7 @@ def generate_html_report(
         "sagemaker",
         "agentcore",
         "agentic",
-        "finserv",
+        "responsible-ai-grc",
     ] + compliance_slugs
     all_findings = []
     service_stats = {
@@ -269,7 +258,7 @@ def generate_html_report(
         "bedrock",
         "sagemaker",
         "agentcore",
-        "finserv",
+        "responsible-ai-grc",
     ] + compliance_slugs
     for service in csv_source_slugs:
         if service in assessment_results:
@@ -291,7 +280,7 @@ def generate_html_report(
                     # (customer did not enable it explicitly), drop FS-* rows
                     # so the UI shows a clean OWASP-only view. FS rows still
                     # fed the OW-* mappings inside the OWASP Lambda upstream.
-                    if not show_finserv and output_service == "finserv":
+                    if not show_finserv and output_service == "responsible-ai-grc":
                         continue
                     dedup_key = (
                         finding.get("Account_ID", ""),

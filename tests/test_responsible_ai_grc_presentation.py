@@ -39,6 +39,7 @@ sys.modules["grc_presentation_report_template"] = report_template
 _spec.loader.exec_module(report_template)
 
 CANONICAL_LABEL = "Responsible AI GRC"
+CANONICAL_SLUG = "responsible-ai-grc"
 
 # Every visible capability name the rebrand retires. None may appear in output.
 RETIRED_LABELS = [
@@ -62,10 +63,10 @@ def _render(with_capability: bool = True) -> str:
             "severity": "High",
             "status": "Failed",
             "region": "us-east-1",
-            "_service": "finserv" if with_capability else "bedrock",
+            "_service": CANONICAL_SLUG if with_capability else "bedrock",
         }
     ]
-    slug = "finserv" if with_capability else "bedrock"
+    slug = CANONICAL_SLUG if with_capability else "bedrock"
     return report_template.generate_html_report(
         all_findings=findings,
         service_findings={slug: findings},
@@ -101,8 +102,9 @@ def test_label_constants_are_centralized():
 def test_display_map_renames_the_slug_without_changing_it():
     assert report_template.RESPONSIBLE_AI_GRC_LABEL == CANONICAL_LABEL
     source = open(os.path.join(REPORT_DIR, "report_template.py")).read()
-    assert '"finserv": RESPONSIBLE_AI_GRC_LABEL' in source
+    assert "RESPONSIBLE_AI_GRC_SLUG: RESPONSIBLE_AI_GRC_LABEL" in source
     assert '"finserv": "FinServ"' not in source
+    assert '"finserv": RESPONSIBLE_AI_GRC_LABEL' not in source
 
 
 # ---------------------------------------------------------------------------
@@ -131,8 +133,9 @@ def test_no_financial_services_capability_label_anywhere(html):
 def test_taxonomy_moved_out_of_by_industry(html):
     assert "<h3>By Governance Framework</h3>" in html
     assert "<h3>By Industry</h3>" not in html
-    assert '<div class="scope-industry-label">Governance Framework</div>' in html
+    assert '<div class="scope-governance-label">Governance Framework</div>' in html
     assert '<div class="scope-industry-label">Industry</div>' not in html
+    assert '<div class="scope-industry-label">' not in html
 
 
 def test_capability_absent_from_the_by_service_nav(html):
@@ -142,10 +145,28 @@ def test_capability_absent_from_the_by_service_nav(html):
 
 
 # ---------------------------------------------------------------------------
-# Machine identities survive the rename. Duplicated deliberately from
-# test_legacy_contracts.py: this is the pairing that makes the rebrand safe, so
-# it is asserted in the same breath as the label change.
+# Machine identity. Duplicated deliberately from test_legacy_contracts.py:
+# this is the pairing that makes the rebrand safe, so it is asserted in the
+# same breath as the label change. Unlike an earlier, additive-only revision
+# of this capability, the machine identity itself changed here -- there is no
+# legacy "finserv" selector or industry-* class left to assert alongside the
+# label.
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "selector",
+    [
+        'id="responsible-ai-grc"',
+        'href="#responsible-ai-grc"',
+        'data-service="responsible-ai-grc"',
+        'data-filter-service="responsible-ai-grc"',
+        'data-scope-service="responsible-ai-grc"',
+        '<option value="responsible-ai-grc">',
+    ],
+)
+def test_selectors_use_the_new_slug(html, selector):
+    assert selector in html
 
 
 @pytest.mark.parametrize(
@@ -159,8 +180,23 @@ def test_capability_absent_from_the_by_service_nav(html):
         '<option value="finserv">',
     ],
 )
-def test_selectors_survive_the_rename(html, selector):
-    assert selector in html
+def test_legacy_finserv_selectors_are_retired(html, selector):
+    assert selector not in html
+
+
+@pytest.mark.parametrize(
+    "css_class",
+    [
+        "governance-item",
+        "governance-nav",
+        "governance-chip",
+        "scope-governance",
+        "scope-governance-label",
+    ],
+)
+def test_governance_css_classes_are_present(html, css_class):
+    """The visible heading moved off "Industry"; the class names moved with it."""
+    assert css_class in html
 
 
 @pytest.mark.parametrize(
@@ -173,9 +209,8 @@ def test_selectors_survive_the_rename(html, selector):
         "scope-industry-label",
     ],
 )
-def test_industry_css_classes_survive_the_rename(html, css_class):
-    """The visible heading moved off "Industry"; the class names did not."""
-    assert css_class in html
+def test_legacy_industry_css_classes_are_retired(html, css_class):
+    assert css_class not in html
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +264,6 @@ def test_source_shorthand_never_names_the_capability(html):
 
 def test_capability_chrome_omitted_when_no_findings(html_without):
     assert CANONICAL_LABEL not in html_without
-    assert 'id="finserv"' not in html_without
+    assert 'id="responsible-ai-grc"' not in html_without
     assert "<h3>By Governance Framework</h3>" not in html_without
     assert 'id="bedrock"' in html_without

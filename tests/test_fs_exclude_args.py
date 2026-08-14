@@ -1,13 +1,14 @@
-"""Phase 2 Stage 2b, item 5 — fs_exclude_args covers both CSV prefixes.
+"""fs_exclude_args -- excludes the Responsible AI GRC CSV prefix when disabled.
 
 Executes the actual `fs_exclude_args` shell snippet from buildspec.yml
-(extracted verbatim, not reimplemented) to confirm that when FinServ /
-Responsible AI GRC is disabled, BOTH the legacy `finserv_security_report_*`
-and the additive `responsible_ai_gov_security_report_*` CSVs are excluded from
-every `aws s3 cp`/`sync` into the customer-facing report bucket -- and that
-neither is excluded when the capability is enabled.
+(extracted verbatim, not reimplemented) to confirm that when Responsible AI
+GRC is disabled, its `responsible_ai_grc_security_report_*` CSV is excluded
+from every `aws s3 cp`/`sync` into the customer-facing report bucket -- and
+that it is not excluded when the capability is enabled.
 
-See docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md for the full design.
+There is a single prefix and a single exclude flag now: the Phase 2 Stage 2b
+additive alias prefix (`responsible_ai_gov_security_report_*`) has been
+retired along with its dual-write, so there is nothing left to pair it with.
 """
 
 import os
@@ -58,10 +59,10 @@ def _load_fs_exclude_args_script():
 _FS_EXCLUDE_SCRIPT = _load_fs_exclude_args_script()
 
 
-def _run_fs_exclude_resolution(enable_finserv):
+def _run_fs_exclude_resolution(enable_responsible_ai_grc):
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
-    if enable_finserv is not None:
-        env["ENABLE_FINSERV"] = enable_finserv
+    if enable_responsible_ai_grc is not None:
+        env["ENABLE_RESPONSIBLE_AI_GRC"] = enable_responsible_ai_grc
     script = _FS_EXCLUDE_SCRIPT + '\nprintf "%s\\n" "${fs_exclude_args[@]}"\n'
     result = subprocess.run(
         ["bash", "-c", script],
@@ -73,39 +74,50 @@ def _run_fs_exclude_resolution(enable_finserv):
     return result.returncode, [line for line in result.stdout.splitlines() if line]
 
 
-class TestFsExcludeArgsCoversBothPrefixes:
-    def test_disabled_excludes_both_legacy_and_alias_prefixes(self):
-        code, output_lines = _run_fs_exclude_resolution(enable_finserv="false")
+class TestFsExcludeArgsCoversTheSinglePrefix:
+    def test_disabled_excludes_the_responsible_ai_grc_prefix(self):
+        code, output_lines = _run_fs_exclude_resolution(
+            enable_responsible_ai_grc="false"
+        )
         assert code == 0
-        assert "--exclude" in output_lines
-        assert "finserv_security_report_*.csv" in output_lines
-        assert "responsible_ai_gov_security_report_*.csv" in output_lines
+        assert output_lines == [
+            "--exclude",
+            "responsible_ai_grc_security_report_*.csv",
+        ]
 
-    def test_disabled_by_absence_excludes_both_prefixes(self):
-        # ENABLE_FINSERV genuinely unset -- the shell default ${ENABLE_FINSERV:-false}
-        # must behave identically to an explicit "false".
-        code, output_lines = _run_fs_exclude_resolution(enable_finserv=None)
+    def test_disabled_by_absence_excludes_the_prefix(self):
+        # ENABLE_RESPONSIBLE_AI_GRC genuinely unset -- the shell default
+        # ${ENABLE_RESPONSIBLE_AI_GRC:-false} must behave identically to an
+        # explicit "false".
+        code, output_lines = _run_fs_exclude_resolution(enable_responsible_ai_grc=None)
         assert code == 0
-        assert "finserv_security_report_*.csv" in output_lines
-        assert "responsible_ai_gov_security_report_*.csv" in output_lines
+        assert output_lines == [
+            "--exclude",
+            "responsible_ai_grc_security_report_*.csv",
+        ]
 
-    def test_enabled_excludes_neither_prefix(self):
-        code, output_lines = _run_fs_exclude_resolution(enable_finserv="true")
+    def test_enabled_excludes_nothing(self):
+        code, output_lines = _run_fs_exclude_resolution(
+            enable_responsible_ai_grc="true"
+        )
         assert code == 0
         assert output_lines == [], (
             f"expected an empty fs_exclude_args array when enabled, got {output_lines}"
         )
 
-    def test_both_exclude_flags_are_paired_with_exclude_option(self):
-        """Confirms the array is well-formed for its actual use site: each
+    def test_exclude_flag_is_paired_with_exclude_option(self):
+        """Confirms the array is well-formed for its actual use site: the
         CSV glob must be preceded by its own --exclude flag (a bash array
-        expanded as "${fs_exclude_args[@]}" into an aws cli command), not a
-        single --exclude followed by two globs (which aws cli would not
-        interpret as two separate exclusions)."""
-        _, output_lines = _run_fs_exclude_resolution(enable_finserv="false")
+        expanded as "${fs_exclude_args[@]}" into an aws cli command)."""
+        _, output_lines = _run_fs_exclude_resolution(enable_responsible_ai_grc="false")
         assert output_lines == [
             "--exclude",
-            "finserv_security_report_*.csv",
-            "--exclude",
-            "responsible_ai_gov_security_report_*.csv",
+            "responsible_ai_grc_security_report_*.csv",
         ]
+
+    def test_legacy_prefixes_are_not_referenced(self):
+        """The legacy finserv_security_report prefix and the retired
+        responsible_ai_gov_security_report alias prefix must not appear in
+        the buildspec snippet at all -- there is no dual-write to exclude."""
+        assert "finserv_security_report" not in _FS_EXCLUDE_SCRIPT
+        assert "responsible_ai_gov_security_report" not in _FS_EXCLUDE_SCRIPT

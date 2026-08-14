@@ -568,7 +568,7 @@ def _run_handler_and_extract_tuples(mock_client_side_effect, event):
     ):
         mock_client.side_effect = mock_client_side_effect
         mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
-        mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/finserv_security_report_equivalence-test-001.csv"
+        mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/responsible_ai_grc_security_report_equivalence-test-001.csv"
 
         result = app.lambda_handler(event, None)
 

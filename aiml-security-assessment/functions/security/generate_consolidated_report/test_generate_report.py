@@ -230,26 +230,26 @@ class TestHtmlReportGeneration(unittest.TestCase):
             {
                 "account_id": "444455556666",
                 "check_id": "FS-01",
-                "finding": "FinServ Regional Scope Not Applicable",
+                "finding": "Responsible AI GRC Regional Scope Not Applicable",
                 "details": "No regional AI/ML resources found.",
                 "resolution": "No action required.",
                 "reference": "https://example.com",
                 "severity": "Informational",
                 "status": "N/A",
-                "_service": "finserv",
+                "_service": "responsible-ai-grc",
             },
         ]
         service_findings = {
             "bedrock": [all_findings[0]],
             "sagemaker": [all_findings[1]],
             "agentcore": [all_findings[2]],
-            "finserv": [all_findings[3]],
+            "responsible-ai-grc": [all_findings[3]],
         }
         service_stats = {
             "bedrock": {"passed": 0, "failed": 1},
             "sagemaker": {"passed": 0, "failed": 1},
             "agentcore": {"passed": 1, "failed": 0},
-            "finserv": {"passed": 0, "failed": 0, "na": 1},
+            "responsible-ai-grc": {"passed": 0, "failed": 0, "na": 1},
         }
 
         html_content = generate_report_direct(
@@ -277,11 +277,11 @@ class TestHtmlReportGeneration(unittest.TestCase):
             self.assertIn("111122223333", content)
             self.assertIn("444455556666", content)
             self.assertIn("<h3>By Governance Framework</h3>", content)
-            # CSS class names are a preserved contract even though the visible
-            # heading moved from "By Industry" to "By Governance Framework".
-            self.assertIn('class="nav-section industry-nav"', content)
+            # governance-* CSS class names accompany the "By Governance
+            # Framework" heading (renamed from industry-*/"By Industry").
+            self.assertIn('class="nav-section governance-nav"', content)
             self.assertIn("Responsible AI GRC", content)
-            self.assertIn('class="scope-industry"', content)
+            self.assertIn('class="scope-governance"', content)
             by_service_nav = content.split("<h3>By Service</h3>", 1)[1].split(
                 "<h3>By Governance Framework</h3>", 1
             )[0]
@@ -332,10 +332,11 @@ class TestHtmlReportGeneration(unittest.TestCase):
         self.assertTrue(os.path.exists(report_path))
 
     def test_finserv_renders_when_present(self):
-        """REQ-1: FinServ findings render as a first-class service in the HTML."""
+        """REQ-1: Responsible AI GRC findings render as a first-class service
+        in the HTML."""
         data = dict(self.test_assessment_results)
-        data["finserv"] = {
-            "finserv_security_report": [
+        data["responsible-ai-grc"] = {
+            "responsible_ai_grc_security_report": [
                 {
                     "Account_ID": "123456789012",
                     "Check_ID": "FS-01",
@@ -361,18 +362,18 @@ class TestHtmlReportGeneration(unittest.TestCase):
             ]
         }
         html = generate_html_report(data)
-        self.assertIn('id="finserv"', html)
+        self.assertIn('id="responsible-ai-grc"', html)
         self.assertIn('id="findingsTable"', html)
         self.assertNotIn('id="finservTable"', html)
-        self.assertIn('<option value="finserv">', html)
+        self.assertIn('<option value="responsible-ai-grc">', html)
         self.assertIn("FS-01", html)
-        self.assertIn('data-service="finserv"', html)
-        self.assertIn('data-filter-service="finserv"', html)
+        self.assertIn('data-service="responsible-ai-grc"', html)
+        self.assertIn('data-filter-service="responsible-ai-grc"', html)
         self.assertIn("View failed findings", html)
-        self.assertIn('data-scope-service="finserv"', html)
-        self.assertIn('class="scope-industry"', html)
-        self.assertIn('class="scope-chip industry-chip"', html)
-        self.assertIn('class="nav-section industry-nav"', html)
+        self.assertIn('data-scope-service="responsible-ai-grc"', html)
+        self.assertIn('class="scope-governance"', html)
+        self.assertIn('class="scope-chip governance-chip"', html)
+        self.assertIn('class="nav-section governance-nav"', html)
         self.assertIn("Responsible AI GRC", html)
         self.assertIn("Assessment Area", html)
         self.assertIn("All Assessment Areas", html)
@@ -389,22 +390,28 @@ class TestHtmlReportGeneration(unittest.TestCase):
             "<h3>By Governance Framework</h3>", 1
         )[0]
         self.assertNotIn("Responsible AI GRC", by_service_nav)
-        # The rebrand retires every "Financial Services" capability label.
+        # The rebrand retires every "Financial Services" capability label,
+        # and every legacy "finserv"/industry-* machine identity.
         self.assertNotIn("Financial Services Risk", html)
         self.assertNotIn("Financial Services GenAI Risk", html)
+        self.assertNotIn('id="finserv"', html)
+        self.assertNotIn('data-service="finserv"', html)
+        self.assertNotIn("industry-nav", html)
+        self.assertNotIn("scope-industry", html)
         # Required non-Lens disambiguation must accompany the name.
         self.assertIn("is not the", html)
         self.assertIn("Responsible AI Lens", html)
         self.assertIn("eight focus areas", html)
 
     def test_finserv_omitted_when_absent(self):
-        """REQ-1/REQ-7: with no FinServ data the FinServ section is omitted cleanly."""
+        """REQ-1/REQ-7: with no Responsible AI GRC data the section is
+        omitted cleanly."""
         html = generate_html_report(self.test_assessment_results)
-        self.assertNotIn('id="finserv"', html)
+        self.assertNotIn('id="responsible-ai-grc"', html)
         self.assertNotIn("<h3>By Governance Framework</h3>", html)
-        self.assertNotIn('<option value="finserv">', html)
-        self.assertNotIn('data-scope-service="finserv"', html)
-        self.assertNotIn('class="scope-industry"', html)
+        self.assertNotIn('<option value="responsible-ai-grc">', html)
+        self.assertNotIn('data-scope-service="responsible-ai-grc"', html)
+        self.assertNotIn('class="scope-governance"', html)
         self.assertNotIn("Responsible AI GRC", html)
         self.assertIn(
             "wellarchitected/latest/generative-ai-lens/generative-ai-lens.html", html

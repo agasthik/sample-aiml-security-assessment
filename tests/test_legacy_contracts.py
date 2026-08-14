@@ -1,19 +1,20 @@
 """Compatibility locks for report selectors, CSS classes, and deployment identities.
 
-Phase 1 changed visible *labels* only and froze every machine identity. Phase 2
-Stage 2b is the deliberate, reviewed exception: it renames the CloudFormation
-logical ID, the physical Lambda name suffix, all four Step Functions state
-names, and the ASL error result path, from FinServ-branded names to
-Responsible AI GRC-branded names. Those renames are intentional breaking
-changes — see docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md — and this file
-was updated to lock in the NEW values rather than deleted, per its own
-principle below.
+Phase 1 changed visible *labels* only and froze every machine identity. Phase
+2 Stage 2b (see docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md, now
+superseded) renamed the CloudFormation logical ID, the physical Lambda name
+suffix, all four Step Functions state names, and the ASL error result path
+from FinServ-branded names to Responsible AI GRC-branded names, and this file
+was updated to lock in those new values.
 
-Everything NOT explicitly renamed by Stage 2b remains frozen: report
-selectors, CSS classes, the "finserv" slug, the CSV filename prefix, and the
-"aiml-security-" physical-name prefix (kept for a reason specific to Stage 2b
-— see the physical-name test below) must not change here or in any future
-phase without the same explicit, reviewed exception.
+A later, full rebrand (this commit) went further and hard-renamed every
+remaining FinServ-branded machine identity as well: the report DOM slug and
+CSS class names, the CSV filename prefix, the doc filenames, and the IAM Sid.
+There is no dual-write and no additive alias for any of these — the old
+"finserv" values are fully retired, and the assertions below lock in the new
+values, not the old ones. Only the "aiml-security-" physical-name prefix
+(kept for a reason specific to Stage 2b — see the physical-name test below)
+remains genuinely unchanged.
 
 If an INTENTIONAL, reviewed rename makes one of these fail, update the
 assertion to lock in the new value and record why in the commit — do not
@@ -320,30 +321,34 @@ def test_infeasible_full_name_candidates_are_recorded_as_infeasible():
 
 # ---------------------------------------------------------------------------
 # Report DOM: slug, anchor, data attributes, and CSS class names. The visible
-# text above these may change; these strings may not.
+# text above these may change; these strings may not. The rebrand replaced
+# the legacy "finserv" slug and industry-* CSS classes with
+# "responsible-ai-grc" and governance-* everywhere -- there is no dual-write
+# and no additive alias; the values below are the only ones this report ever
+# emits now.
 # ---------------------------------------------------------------------------
 
-SERVICE_SLUG = "finserv"
+SERVICE_SLUG = "responsible-ai-grc"
 
 FROZEN_SELECTORS = [
-    'id="finserv"',
-    'data-service="finserv"',
-    'data-filter-service="finserv"',
-    'data-scope-service="finserv"',
-    '<option value="finserv">',
-    'href="#finserv"',
+    'id="responsible-ai-grc"',
+    'data-service="responsible-ai-grc"',
+    'data-filter-service="responsible-ai-grc"',
+    'data-scope-service="responsible-ai-grc"',
+    '<option value="responsible-ai-grc">',
+    'href="#responsible-ai-grc"',
 ]
 
 FROZEN_CSS_CLASSES = [
-    "industry-item",
-    "industry-nav",
-    "industry-chip",
-    "scope-industry",
-    "scope-industry-label",
+    "governance-item",
+    "governance-nav",
+    "governance-chip",
+    "scope-governance",
+    "scope-governance-label",
 ]
 
 
-def _render_with_finserv() -> str:
+def _render_with_responsible_ai_grc() -> str:
     findings = [
         {
             "account_id": "123456789012",
@@ -370,7 +375,7 @@ def _render_with_finserv() -> str:
 
 @pytest.fixture(scope="module")
 def rendered_html():
-    return _render_with_finserv()
+    return _render_with_responsible_ai_grc()
 
 
 @pytest.mark.parametrize("selector", FROZEN_SELECTORS)
@@ -383,75 +388,33 @@ def test_report_css_classes_are_frozen(rendered_html, css_class):
     assert css_class in rendered_html
 
 
-# ---------------------------------------------------------------------------
-# Phase 2 Stage 2b, item 4: additive Responsible AI GRC selectors ALONGSIDE
-# (never replacing) every frozen selector above. Every legacy selector must
-# still be present in the exact same rendered output that also carries these.
-# ---------------------------------------------------------------------------
-
-ADDITIVE_SELECTORS = [
-    'data-service-alias="responsible-ai-grc"',
-    'data-scope-service-alias="responsible-ai-grc"',
-    'data-service-section-alias="responsible-ai-grc"',
-    'id="responsible-ai-grc"',
-]
-
-
-@pytest.mark.parametrize("selector", ADDITIVE_SELECTORS)
-def test_additive_responsible_ai_grc_selectors_are_present(rendered_html, selector):
-    assert selector in rendered_html
-
-
-@pytest.mark.parametrize("selector", FROZEN_SELECTORS)
-def test_legacy_selectors_still_present_alongside_additive_ones(
-    rendered_html, selector
-):
-    """Redundant with test_report_selectors_are_frozen, run again here to make
-    the additive/legacy coexistence explicit as its own regression class: a
-    change that adds new selectors by MOVING or REPLACING old ones (rather
-    than purely adding) would pass the additive test above while failing this
-    one, or vice versa. Both must hold in the same render.
+def test_legacy_finserv_selectors_are_fully_retired(rendered_html):
+    """The rebrand is a hard rename, not an alias: the legacy "finserv" slug
+    and industry-* CSS classes must not appear anywhere in rendered output.
     """
-    assert selector in rendered_html
-
-
-def test_additive_selector_does_not_change_the_service_attribute_value():
-    """The client-side filter in report_template.py's applyFilters() matches
-    data-service by exact string against <option value="finserv">. Item 4 must
-    add a SIBLING attribute, never alter data-service's own value — doing the
-    latter would silently break the existing "finserv" filter dropdown entry.
-    """
-    findings = [
-        {
-            "account_id": "123456789012",
-            "check_id": "FS-01",
-            "finding": "Example Responsible AI GRC Finding",
-            "details": "Example details.",
-            "resolution": "Example resolution.",
-            "reference": "https://example.com/doc",
-            "severity": "High",
-            "status": "Failed",
-            "region": "us-east-1",
-            "_service": SERVICE_SLUG,
-        }
-    ]
-    html = report_template.generate_html_report(
-        all_findings=findings,
-        service_findings={SERVICE_SLUG: findings},
-        service_stats={SERVICE_SLUG: {"passed": 0, "failed": 1, "na": 0}},
-        mode="single",
-        account_id="123456789012",
-        regions=["us-east-1"],
-    )
-    assert 'data-service="finserv"' in html
-    assert 'data-service="responsible-ai-grc"' not in html
-    assert '<option value="responsible-ai-grc">' not in html
+    for legacy_selector in (
+        'id="finserv"',
+        'data-service="finserv"',
+        'data-filter-service="finserv"',
+        'data-scope-service="finserv"',
+        '<option value="finserv">',
+        'href="#finserv"',
+    ):
+        assert legacy_selector not in rendered_html
+    for legacy_css_class in (
+        "industry-item",
+        "industry-nav",
+        "industry-chip",
+        "scope-industry",
+        "scope-industry-label",
+    ):
+        assert legacy_css_class not in rendered_html
 
 
 def test_service_slug_is_frozen():
     """The display name may change; the slug keyed by the parser may not."""
-    assert SERVICE_SLUG == "finserv"
-    assert report_template.FINSERV_GUIDE_URL.startswith("https://")
+    assert SERVICE_SLUG == "responsible-ai-grc"
+    assert report_template.RESPONSIBLE_AI_GRC_GUIDE_URL.startswith("https://")
 
 
 @pytest.mark.parametrize(
@@ -486,4 +449,8 @@ def test_csv_prefix_is_frozen():
         "app.py",
     )
     source = open(owasp_app_path).read()
-    assert 'FINSERV_SERVICE_CSV_PREFIX = "finserv_security_report"' in source
+    assert (
+        'RESPONSIBLE_AI_GRC_SERVICE_CSV_PREFIX = "responsible_ai_grc_security_report"'
+        in source
+    )
+    assert 'FINSERV_SERVICE_CSV_PREFIX = "finserv_security_report"' not in source
