@@ -60,7 +60,7 @@ This guide covers common issues, debugging tips, and frequently asked questions 
 
 - Monitor state machine executions in each account
 - Check Lambda function logs for errors
-- Verify Lambda has sufficient timeout. Most assessment Lambdas default to 10 minutes; FinServ has its own timeout in the SAM templates
+- Verify Lambda has sufficient timeout. Most assessment Lambdas default to 10 minutes; Responsible AI GRC has its own timeout in the SAM templates
 - Verify AWS IAM permissions allow Lambda to access required services
 - In multi-region scans, review each region's Map state iteration. A single service branch can be marked incomplete while the state machine still generates a report for the remaining services and regions
 
@@ -109,36 +109,38 @@ For full bucket cleanup guidance, see [Cleanup Guide](CLEANUP.md#emptying-and-de
 **Symptoms:** The report does not include the **Responsible AI GRC** section or
 any `FS-` findings.
 
-> **Note on names.** The capability is displayed as **Responsible AI GRC**, but its
-> machine identifiers still say `FinServ` and are preserved deliberately, so search
-> the console for those: the `EnableFinServAssessment` parameter, the
-> `ENABLE_FINSERV` environment variable, the `enableFinServ` execution input, the
-> `FinServSecurityAssessmentFunction` logical ID, the
-> `aiml-security-<stack>-FinServAssessment` Lambda, the four Step Functions states
-> `FinServ Enabled?`, `FinServ Security Assessment`, `FinServ Assessment
-> Incomplete`, and `FinServ Assessment Skipped`, the `$.finservError` result path,
-> the `finserv` report slug with its `#finserv` anchor, and
-> `finserv_security_report_*.csv`.
+> **Note on names.** The capability is displayed as, and its machine identifiers
+> are named, **Responsible AI GRC**: the `EnableResponsibleAIGRCAssessment`
+> parameter, the `ENABLE_RESPONSIBLE_AI_GRC` environment variable, the
+> `enableResponsibleAIGRC` execution input, the `ResponsibleAIGRCAssessmentFunction`
+> logical ID, the `aiml-security-<stack>-RAIGRCAssessment` Lambda, the four Step
+> Functions states `Responsible AI GRC Enabled?`, `Responsible AI GRC Security
+> Assessment`, `Responsible AI GRC Assessment Incomplete`, and `Responsible AI
+> GRC Assessment Skipped`, the `$.responsibleAIGRCError` result path, the
+> `responsible-ai-grc` report slug with its `#responsible-ai-grc` anchor, and
+> `responsible_ai_grc_security_report_*.csv`. A legacy `EnableFinServAssessment` /
+> `ENABLE_FINSERV` alias is also accepted — see
+> [Responsible AI GRC alias migration guide](RESPONSIBLE_AI_GRC_ALIAS_MIGRATION.md).
 
 **Expected when OWASP-only:** If `EnableOWASPAssessment=true` and
-`EnableFinServAssessment=false`, the `FS-*` assessment still runs as an OWASP
-source dependency, but the Responsible AI GRC section, `FS-` rows, and
-`finserv_security_report_*.csv` are intentionally omitted from the
+`EnableResponsibleAIGRCAssessment=false`, the `FS-*` assessment still runs as an
+OWASP source dependency, but the Responsible AI GRC section, `FS-` rows, and
+`responsible_ai_grc_security_report_*.csv` are intentionally omitted from the
 customer-facing report bucket.
 
 **Solutions:**
 
-- Confirm the infrastructure stack parameter `EnableFinServAssessment` is set to
-  `true`
-- Confirm CodeBuild logs show `FinServ assessment enabled is true`
+- Confirm the infrastructure stack parameter `EnableResponsibleAIGRCAssessment`
+  is set to `true`
+- Confirm CodeBuild logs show `Responsible AI GRC assessment enabled is true`
 - If you updated an existing deployment, re-run the CodeBuild project after the
   CloudFormation update completes. The parameter is passed to the Step Functions
   execution input when CodeBuild starts the assessment.
 - Use the CodeBuild-based deployment templates for normal operation. If you
   deploy the SAM template directly and start Step Functions manually, include
-  `"enableFinServ": "true"` in the `StartExecution` input.
-- Check the Step Functions execution for the `FinServ Enabled?` choice state and
-  `FinServ Security Assessment` task.
+  `"enableResponsibleAIGRC": "true"` in the `StartExecution` input.
+- Check the Step Functions execution for the `Responsible AI GRC Enabled?`
+  choice state and `Responsible AI GRC Security Assessment` task.
 
 ### 7. TargetRegions Validation or Unexpected Region Coverage
 
@@ -191,7 +193,7 @@ customer-facing report bucket.
 1. **Wrong bucket**: Use the bucket from the **Infrastructure Stack** outputs,
    not the assessment stack.
 2. **Still running**: Check CodeBuild console. Multi-region, multi-account, or
-   FinServ-enabled assessments can take longer than a single-region run.
+   Responsible AI GRC-enabled assessments can take longer than a single-region run.
 3. **Wrong prefix**: Look under `{account_id}/` for per-account reports and
    `consolidated-reports/` for the multi-account consolidated HTML report.
 4. **Post-build copy failed**: In multi-account mode, CodeBuild copies CSV/HTML
@@ -201,11 +203,11 @@ customer-facing report bucket.
 5. **Permissions**: Check CloudWatch Logs for Lambda execution errors and
    CodeBuild logs for S3 sync errors.
 
-**Note:** If OWASP is enabled and FinServ is disabled, absence of
-`finserv_security_report_*.csv` in the report bucket is expected. The internal
-SAM assessment bucket may still contain FinServ source artifacts created during
-the run; use the infrastructure stack's report bucket for customer-facing
-results.
+**Note:** If OWASP is enabled and Responsible AI GRC is disabled, absence of
+`responsible_ai_grc_security_report_*.csv` in the report bucket is expected. The
+internal SAM assessment bucket may still contain Responsible AI GRC source
+artifacts created during the run; use the infrastructure stack's report bucket
+for customer-facing results.
 
 ### 11. Confused by Multiple CloudFormation Stacks
 
@@ -376,15 +378,15 @@ A: Minimal ongoing costs:
 **Q: Can I customize which security checks are included?**
 
 A: Currently, all 71 core checks and 27 Agentic AI Security checks run by
-default to provide comprehensive coverage. If `EnableFinServAssessment` is
-enabled, the 64 optional Responsible AI GRC checks also run. If
+default to provide comprehensive coverage. If `EnableResponsibleAIGRCAssessment`
+is enabled, the 64 optional Responsible AI GRC checks also run. If
 `EnableOWASPAssessment` is enabled, the 12 optional OWASP Top 10 for LLM checks
-run; FinServ also runs as a hidden source dependency when OWASP needs `FS-*`
-mappings, but its UI rows and raw CSV are omitted from the customer-facing
-report bucket unless FinServ is explicitly enabled. You can filter results in
-the generated HTML reports by severity, status, assessment area, industry,
-compliance standard, or region. Future versions may support selective check
-execution.
+run; Responsible AI GRC also runs as a hidden source dependency when OWASP
+needs `FS-*` mappings, but its UI rows and raw CSV are omitted from the
+customer-facing report bucket unless Responsible AI GRC is explicitly enabled.
+You can filter results in the generated HTML reports by severity, status,
+assessment area, governance framework, compliance standard, or region. Future
+versions may support selective check execution.
 
 **Q: Can I add custom security checks?**
 
@@ -429,7 +431,7 @@ The target role must trust `events.amazonaws.com` and allow `codebuild:StartBuil
 A: Common causes:
 
 1. **Wrong bucket**: Verify you're looking at the bucket from the **Infrastructure Stack** outputs (not the assessment stack)
-2. **Still running**: Check AWS CodeBuild console. Multi-region, multi-account, or FinServ-enabled assessments can take longer than a single-region run
+2. **Still running**: Check AWS CodeBuild console. Multi-region, multi-account, or Responsible AI GRC-enabled assessments can take longer than a single-region run
 3. **Wrong prefix**: Look under `{account_id}/` for per-account reports and `consolidated-reports/` for the multi-account consolidated HTML report
 4. **Post-build copy failed**: Search CodeBuild logs for `Copying files from`, `Failed to list bucket contents`, `No files to copy`, or S3 sync errors
 5. **Permissions issue**: Check AWS CloudWatch Logs for Lambda errors and CodeBuild logs for S3 access errors
@@ -452,7 +454,7 @@ A: Performance factors:
 - **API throttling**: AWS API rate limits may slow down assessments in large environments
 - **Concurrent executions**: Multi-account assessments run in parallel (configurable through the `ConcurrentAccountScans` parameter)
 - **Region scope**: Multi-region scans multiply the amount of service inventory collected
-- **Responsible AI GRC and OWASP checks**: Enabling `EnableFinServAssessment` adds the optional `FS-` checks; enabling `EnableOWASPAssessment` adds the optional `OW-` checks and may also run the `FS-*` assessment as a source dependency, increasing run time
+- **Responsible AI GRC and OWASP checks**: Enabling `EnableResponsibleAIGRCAssessment` adds the optional `FS-` checks; enabling `EnableOWASPAssessment` adds the optional `OW-` checks and may also run the `FS-*` assessment as a source dependency, increasing run time
 
 If assessments consistently timeout, increase `CodeBuildTimeout`, reduce `TargetRegions`, reduce the account batch size with `MultiAccountListOverride`, or lower concurrency if throttling is the bottleneck. Lambda timeout changes require editing the SAM templates.
 

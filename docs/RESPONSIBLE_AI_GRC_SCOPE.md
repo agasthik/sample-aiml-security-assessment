@@ -173,21 +173,29 @@ Permanently preserved:
 |---|---|
 | `FS-00`, `FS-01`–`FS-69` | check IDs |
 | `^[A-Z]{2,3}-\d{2}$` | check ID schema |
-| `finserv_security_report_{execution_id}.csv` | S3 object name |
 | 9-column CSV schema; `Failed`/`Passed`/`N/A`; `High`/`Medium`/`Low`/`Informational` | CSV contract |
 | `COULD NOT ASSESS: `, `ADVISORY: ` | reserved finding-name prefixes |
-| `finserv` service slug, `#finserv` anchor, `data-service` / `data-filter-service` / `data-scope-service` | report DOM |
-| `industry-nav`, `industry-item`, `industry-chip`, `scope-industry`, `scope-industry-label` | CSS class names |
-| `EnableFinServAssessment`, `ENABLE_FINSERV`, `enableFinServ` | deployment and execution inputs |
-| `FinServSecurityAssessmentFunction`, `aiml-security-${AWS::StackName}-FinServAssessment` | CloudFormation logical ID and physical name |
-| `FinServ Enabled?`, `FinServ Security Assessment`, `FinServ Assessment Incomplete`, `FinServ Assessment Skipped` | Step Functions state names |
-| `$.finservError` | Step Functions result path |
-| `show_finserv` | report visibility flag |
-| `docs/SECURITY_CHECKS_FINSERV*.md` filenames | live GitHub Pages URLs |
+| `show_finserv` | report visibility flag (internal identifier; not customer-visible) |
 
-Legacy names appearing in code comments, docstrings, and these compatibility tables are retained
-deliberately. Renaming them would obscure the relationship between the code and the contracts it
-implements.
+Renamed from the original FinServ branding to Responsible AI GRC (no dual-write, no additive
+alias — the old name is fully retired everywhere it was previously frozen):
+
+| Was | Now |
+|---|---|
+| `finserv_security_report_{execution_id}.csv` (S3 object name) | `responsible_ai_grc_security_report_{execution_id}.csv` |
+| `finserv` service slug, `#finserv` anchor, `data-service` / `data-filter-service` / `data-scope-service` values | `responsible-ai-grc` |
+| `industry-nav`, `industry-item`, `industry-chip`, `scope-industry`, `scope-industry-label` CSS classes | `governance-nav`, `governance-item`, `governance-chip`, `scope-governance`, `scope-governance-label` |
+| `EnableFinServAssessment`, `ENABLE_FINSERV`, `enableFinServ` (primary deployment/execution inputs) | `EnableResponsibleAIGRCAssessment`, `ENABLE_RESPONSIBLE_AI_GRC`, `enableResponsibleAIGRC` (primary); `EnableFinServAssessment`/`ENABLE_FINSERV` retained as a legacy alias, see `docs/RESPONSIBLE_AI_GRC_ALIAS_MIGRATION.md` |
+| `FinServSecurityAssessmentFunction`, `aiml-security-${AWS::StackName}-FinServAssessment` | `ResponsibleAIGRCAssessmentFunction`, `aiml-security-${AWS::StackName}-RAIGRCAssessment` |
+| `FinServ Enabled?`, `FinServ Security Assessment`, `FinServ Assessment Incomplete`, `FinServ Assessment Skipped` (Step Functions state names) | `Responsible AI GRC Enabled?`, `Responsible AI GRC Security Assessment`, `Responsible AI GRC Assessment Incomplete`, `Responsible AI GRC Assessment Skipped` |
+| `$.finservError` (Step Functions result path) | `$.responsibleAIGRCError` |
+| `finserv_assessments/`, `finserv_tests/` directories | `responsible_ai_grc_assessments/`, `responsible_ai_grc_tests/` |
+| `docs/SECURITY_CHECKS_FINSERV*.md` filenames | `docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC*.md` |
+| `FinServGenAIRiskAssessmentPermissions` IAM `Sid` | `ResponsibleAIGRCAssessmentPermissions` |
+
+Archived reports and CSVs generated before this rename retain their original filenames and DOM
+selectors — this table describes what the tool produces going forward, not a retroactive rewrite
+of historical artifacts.
 
 One declared, intentional change: `Compliance_Frameworks` CSV **values** were corrected to match
 in-code provenance. Fourteen checks gained a sourced mapping and eight had an unfounded assertion

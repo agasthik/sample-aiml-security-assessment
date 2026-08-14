@@ -250,14 +250,19 @@ def test_stack_outputs_are_frozen(template):
     ["aiml-security-single-account.yaml", "2-aiml-security-codebuild.yaml"],
 )
 def test_legacy_toggle_parameter_is_frozen(deployment_template):
-    """EnableFinServAssessment is a customer-supplied CloudFormation parameter.
+    """EnableFinServAssessment is a customer-supplied CloudFormation parameter,
+    retained permanently as a legacy alias for EnableResponsibleAIGRCAssessment
+    (the primary parameter).
 
     It lives in the deployment templates, not in the SAM application template —
-    the toggle reaches the state machine as the ENABLE_FINSERV CodeBuild
-    environment variable and then the enableFinServ execution input.
+    the effective toggle reaches the state machine as the
+    ENABLE_RESPONSIBLE_AI_GRC CodeBuild environment variable and then the
+    enableResponsibleAIGRC execution input, with ENABLE_FINSERV resolved into
+    it upstream in buildspec.yml.
     """
     parsed = _load_template(os.path.join(REPO_ROOT, "deployment", deployment_template))
     assert "EnableFinServAssessment" in parsed["Parameters"]
+    assert "EnableResponsibleAIGRCAssessment" in parsed["Parameters"]
 
 
 SUFFIX = "RAIGRCAssessment"

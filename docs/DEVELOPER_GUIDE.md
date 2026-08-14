@@ -95,7 +95,7 @@ The AI/ML Security Assessment Framework is a serverless, multi-account security 
 1. **Account Discovery**: In multi-account mode, lists active accounts from AWS Organizations or uses `MultiAccountListOverride`
 2. **Role Assumption**: In multi-account mode, assumes `AIMLSecurityMemberRole` in each target account
 3. **AWS SAM Deployment**: Deploys or updates the AI/ML assessment stack through AWS SAM
-4. **Assessment Execution**: Triggers AWS Step Functions workflow in each account, passing `enableFinServ` and `enableOWASP` from the deployment parameters
+4. **Assessment Execution**: Triggers AWS Step Functions workflow in each account, passing `enableResponsibleAIGRC` and `enableOWASP` from the deployment parameters
 5. **Results Consolidation**: Syncs per-account reports to the infrastructure bucket and creates a consolidated report for multi-account runs
 
 #### Project Structure
@@ -148,7 +148,7 @@ sample-aiml-security-assessment/
 
 - **AWS SAM Application**: AI/ML security assessment stack
 - **AWS Step Functions**: Single workflow orchestrating all assessments
-- **AWS Lambda Functions**: One per core service (Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore), one FinServ assessment Lambda invoked when FinServ or OWASP needs FS-* source rows, one OWASP assessment Lambda invoked only when enabled, plus utilities
+- **AWS Lambda Functions**: One per core service (Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore), one Responsible AI GRC assessment Lambda invoked when Responsible AI GRC or OWASP needs FS-* source rows, one OWASP assessment Lambda invoked only when enabled, plus utilities
 - **Local Amazon S3 Bucket**: Storage for account-specific results
 
 ### Assessment Execution Workflow
@@ -200,14 +200,14 @@ sample-aiml-security-assessment/
               {"StartAt": "Sagemaker Security Assessment", "States": {...}},
               {"StartAt": "AgentCore Security Assessment", "States": {...}},
               {
-                "StartAt": "FinServ Enabled?",
+                "StartAt": "Responsible AI GRC Enabled?",
                 "States": {
-                  "FinServ Enabled?": {
+                  "Responsible AI GRC Enabled?": {
                     "Type": "Choice",
-                    "Comment": "Runs FinServ when enableFinServ or enableOWASP is true and RegionIndex is 0"
+                    "Comment": "Runs Responsible AI GRC when enableResponsibleAIGRC or enableOWASP is true and RegionIndex is 0"
                   },
-                  "FinServ Security Assessment": {"Type": "Task", "Resource": "arn:aws:states:::lambda:invoke", "End": true},
-                  "FinServ Assessment Skipped": {"Type": "Pass", "End": true}
+                  "Responsible AI GRC Security Assessment": {"Type": "Task", "Resource": "arn:aws:states:::lambda:invoke", "End": true},
+                  "Responsible AI GRC Assessment Skipped": {"Type": "Pass", "End": true}
                 }
               }
             ],
@@ -227,7 +227,7 @@ sample-aiml-security-assessment/
 
 ## Assessment Structure
 
-The framework includes **71 core security checks** across three AI/ML services, plus **27 always-on Agentic AI Security checks**, **64 optional Responsible AI GRC checks** when `EnableFinServAssessment` is enabled, and **12 optional OWASP Top 10 for LLM checks** when `EnableOWASPAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
+The framework includes **71 core security checks** across three AI/ML services, plus **27 always-on Agentic AI Security checks**, **64 optional Responsible AI GRC checks** when `EnableResponsibleAIGRCAssessment` is enabled, and **12 optional OWASP Top 10 for LLM checks** when `EnableOWASPAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
 
 ### AWS Lambda Functions
 
@@ -242,9 +242,15 @@ Each core service assessment AWS Lambda function:
 7. Uploads results to Amazon S3 with region-suffixed filename
 8. Returns findings summary to AWS Step Functions
 
-The Responsible AI GRC assessment Lambda is different. It is deployed in both SAM templates, but Step Functions invokes it only from the first region iteration (`RegionIndex == 0`) when the execution input includes `"enableFinServ": "true"` or `"enableOWASP": "true"`. The OWASP path uses `FS-*` findings as hidden source rows unless the capability was explicitly enabled. It receives the full `TargetRegions` list and emits findings with Region values so the report can display the same regional filters as the core services.
+The Responsible AI GRC assessment Lambda is different. It is deployed in both SAM templates, but Step Functions invokes it only from the first region iteration (`RegionIndex == 0`) when the execution input includes `"enableResponsibleAIGRC": "true"` or `"enableOWASP": "true"`. The OWASP path uses `FS-*` findings as hidden source rows unless the capability was explicitly enabled. It receives the full `TargetRegions` list and emits findings with Region values so the report can display the same regional filters as the core services.
 
-> **Display names versus compatibility contracts.** The capability is displayed as **Responsible AI GRC**, but every machine-facing identifier still says `FinServ`: the `EnableFinServAssessment` parameter, the `ENABLE_FINSERV` environment variable, the `enableFinServ` execution input, the `FinServSecurityAssessmentFunction` logical ID, the `aiml-security-${AWS::StackName}-FinServAssessment` physical name, all four `FinServ ...` Step Functions state names, the `$.finservError` result path, the `finserv` report slug with its `#finserv` anchor and `data-*-service` attributes, the `industry-*` CSS class names, the `finserv_security_report_*.csv` object name, and the `FS-*` check IDs. These are persisted or cross-process contracts read by archived reports, the OWASP mappings, and customer automation, so they are preserved permanently in this release. Renaming any of them requires a major release with a migration guide — see [Responsible AI GRC — scope, sources, and compatibility](RESPONSIBLE_AI_GRC_SCOPE.md#compatibility-policy).
+> **Compatibility contracts.** The `FS-*` check IDs are permanent. `EnableFinServAssessment` /
+> `ENABLE_FINSERV` are retained permanently as a legacy alias for the primary
+> `EnableResponsibleAIGRCAssessment` / `ENABLE_RESPONSIBLE_AI_GRC` / `enableResponsibleAIGRC`
+> names — see [Responsible AI GRC alias migration guide](RESPONSIBLE_AI_GRC_ALIAS_MIGRATION.md) —
+> and archived reports/CSVs generated before this rename keep their original filenames and
+> selectors. See [Responsible AI GRC — scope, sources, and compatibility](RESPONSIBLE_AI_GRC_SCOPE.md#compatibility-policy)
+> for the full list of what changed and what stayed the same.
 
 **Additional Functions:**
 
@@ -578,7 +584,7 @@ sam deploy --stack-name aiml-security-test --capabilities CAPABILITY_IAM
 # Execute AWS Step Functions
 aws stepfunctions start-execution \
   --state-machine-arn arn:aws:states:region:account:stateMachine:TestStateMachine \
-  --input '{"accountId":"123456789012","enableFinServ":"false","enableOWASP":"false"}'
+  --input '{"accountId":"123456789012","enableResponsibleAIGRC":"false","enableOWASP":"false"}'
 ```
 
 ### 3. Multi-Account Testing
@@ -610,7 +616,7 @@ For detailed troubleshooting guidance, common issues, and debugging tips, see th
 - Each AWS AI/ML service gets its own dedicated AWS Lambda function
 - AWS Step Functions orchestrates parallel execution of service assessments
 - Multi-region scans use a Step Functions Map state with configurable `MaxRegionConcurrency`
-- FinServ checks are opt-in through `EnableFinServAssessment`; the Lambda is deployed by default and also runs as a hidden OWASP source dependency when `EnableOWASPAssessment` is enabled
+- Responsible AI GRC checks are opt-in through `EnableResponsibleAIGRCAssessment`; the Lambda is deployed by default and also runs as a hidden OWASP source dependency when `EnableOWASPAssessment` is enabled
 - OWASP checks are opt-in through `EnableOWASPAssessment`; the Lambda is deployed by default but invoked only when enabled
 - Results are consolidated into a single HTML/CSV report
 - AWS CodeBuild orchestrates deployment and execution across multiple accounts

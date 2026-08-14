@@ -274,11 +274,11 @@
                                             {
                                                 "And": [
                                                     {
-                                                        "Variable": "$.OriginalInput.enableFinServ",
+                                                        "Variable": "$.OriginalInput.enableResponsibleAIGRC",
                                                         "IsPresent": true
                                                     },
                                                     {
-                                                        "Variable": "$.OriginalInput.enableFinServ",
+                                                        "Variable": "$.OriginalInput.enableResponsibleAIGRC",
                                                         "StringEquals": "true"
                                                     },
                                                     {

@@ -9,8 +9,8 @@ Metadata:
         Parameters:
           - EmailAddress
           - TargetRegions
+          - EnableResponsibleAIGRCAssessment
           - EnableFinServAssessment
-          - EnableResponsibleAIGovAssessment
           - EnableOWASPAssessment
       - Label:
           default: Advanced Options
@@ -23,10 +23,10 @@ Metadata:
         default: Notification email address
       TargetRegions:
         default: AWS regions to scan
+      EnableResponsibleAIGRCAssessment:
+        default: Responsible AI GRC checks
       EnableFinServAssessment:
-        default: Responsible AI GRC checks (legacy parameter name; see alias below)
-      EnableResponsibleAIGovAssessment:
-        default: Responsible AI GRC checks (alias for the option above)
+        default: Responsible AI GRC checks (legacy parameter name; see option above)
       EnableOWASPAssessment:
         default: OWASP Top 10 for LLM checks
       CodeBuildTimeout:
@@ -82,30 +82,27 @@ Parameters:
     Default: 60
     ConstraintDescription: Must be between 5 and 480 minutes.
 
-  EnableFinServAssessment:
+  EnableResponsibleAIGRCAssessment:
     Description: >
       Run the Responsible AI GRC checks (FS-01 through FS-69) — cross-industry
       technical controls for AI governance, risk, and compliance, originally
       developed for financial services and found applicable across
       industries. Enable this only when you need the additional risk
-      assessment; the findings add a dedicated report section. The parameter
-      name is retained as a compatibility contract for existing stacks and
-      automation; see EnableResponsibleAIGovAssessment below for the current
-      name.
+      assessment; the findings add a dedicated report section.
     Type: String
     AllowedValues: ["true", "false"]
     Default: "false"
 
-  EnableResponsibleAIGovAssessment:
+  EnableFinServAssessment:
     Description: >
-      Additive alias for EnableFinServAssessment under the Responsible AI GRC
-      rebrand name (same FS-01 through FS-69 checks). Leave as "__UNSET__" to
-      defer to EnableFinServAssessment. Setting this explicitly to "true" or
-      "false" takes effect while EnableFinServAssessment is left at its "false"
-      default; if EnableFinServAssessment has been explicitly set to "true" and
-      this alias disagrees, the build fails fast with an explicit error instead
-      of silently picking one value. See the rebrand plan's Phase 2 Stage 2a
-      section for the full precedence table.
+      Legacy alias for EnableResponsibleAIGRCAssessment (same FS-01 through
+      FS-69 checks), retained as a compatibility contract for existing
+      stacks and automation. Leave as "__UNSET__" to defer to
+      EnableResponsibleAIGRCAssessment. Setting this explicitly to "true" or
+      "false" takes effect while EnableResponsibleAIGRCAssessment is left at
+      its "false" default; if EnableResponsibleAIGRCAssessment has been
+      explicitly set to "true" and this alias disagrees, the build fails
+      fast with an explicit error instead of silently picking one value.
     Type: String
     AllowedValues: ["true", "false", "__UNSET__"]
     Default: "__UNSET__"
@@ -615,14 +612,14 @@ Resources:
           - Name: BUILD_TIMEOUT_MINUTES
             Value: !Ref CodeBuildTimeout
             Type: PLAINTEXT
-          - Name: ENABLE_FINSERV
-            Value: !Ref EnableFinServAssessment
+          - Name: ENABLE_RESPONSIBLE_AI_GRC
+            Value: !Ref EnableResponsibleAIGRCAssessment
             Type: PLAINTEXT
           - Name: ENABLE_OWASP
             Value: !Ref EnableOWASPAssessment
             Type: PLAINTEXT
-          - Name: ENABLE_RESPONSIBLE_AI_GOV
-            Value: !Ref EnableResponsibleAIGovAssessment
+          - Name: ENABLE_FINSERV
+            Value: !Ref EnableFinServAssessment
             Type: PLAINTEXT
       Description: Run AIML Security single-account assessment
       ServiceRole: !GetAtt CodeBuildRole.Arn

@@ -28,43 +28,42 @@ phases:
   build:
     commands:
       - echo "Starting AIML Security Assessment"
-      # EnableFinServAssessment toggle (CodeBuild env var; default false). Threaded
-      # into the Step Functions execution input as enableFinServ; the ASL FinServ
-      # branch runs only when this is "true". Lower-cased here so the ASL's
-      # case-sensitive StringEquals "true" gate matches a "True"/"TRUE" input.
-      - export ENABLE_FINSERV="$(echo "${ENABLE_FINSERV:-false}" | tr '[:upper:]' '[:lower:]')"
+      # EnableResponsibleAIGRCAssessment toggle (CodeBuild env var; default false).
+      # Threaded into the Step Functions execution input as enableResponsibleAIGRC;
+      # the ASL Responsible AI GRC branch runs only when this is "true".
+      # Lower-cased here so the ASL's case-sensitive StringEquals "true" gate
+      # matches a "True"/"TRUE" input.
+      - export ENABLE_RESPONSIBLE_AI_GRC="$(echo "${ENABLE_RESPONSIBLE_AI_GRC:-false}" | tr '[:upper:]' '[:lower:]')"
       - |
-        # Phase 2 Stage 2a — additive ENABLE_RESPONSIBLE_AI_GOV alias.
+        # EnableFinServAssessment legacy alias.
         #
-        # EnableFinServAssessment/ENABLE_FINSERV always materializes a value in
-        # CloudFormation (default "false"), so there is no CFN-level way to
-        # distinguish "customer left this at its default" from "customer
-        # explicitly chose false". EnableResponsibleAIGovAssessment therefore
-        # uses the literal sentinel "__UNSET__" as its default so this script
-        # CAN tell "alias not touched" apart from "alias explicitly set".
+        # EnableResponsibleAIGRCAssessment/ENABLE_RESPONSIBLE_AI_GRC always
+        # materializes a value in CloudFormation (default "false"), so there is
+        # no CFN-level way to distinguish "customer left this at its default"
+        # from "customer explicitly chose false". EnableFinServAssessment
+        # therefore uses the literal sentinel "__UNSET__" as its default so this
+        # script CAN tell "alias not touched" apart from "alias explicitly set".
         #
-        # Precedence (mirrors the alias table in rebrand-plan.md §18.3 Stage 2a),
-        # with ENABLE_FINSERV's own default standing in for "legacy absent" since
-        # CloudFormation cannot produce a truly absent legacy value:
-        #   alias unset                                  -> legacy value wins
-        #   alias set, legacy at its "false" default      -> alias value wins
-        #   alias set, legacy explicitly "true", agree    -> shared value
-        #   alias set, legacy explicitly "true", disagree -> explicit build failure
-        ENABLE_RESPONSIBLE_AI_GOV_RAW="${ENABLE_RESPONSIBLE_AI_GOV:-__UNSET__}"
-        if [[ "$ENABLE_RESPONSIBLE_AI_GOV_RAW" == "__UNSET__" ]]; then
-          echo "ENABLE_RESPONSIBLE_AI_GOV not set; using ENABLE_FINSERV ($ENABLE_FINSERV)"
+        # Precedence:
+        #   alias unset                                  -> primary value wins
+        #   alias set, primary at its "false" default     -> alias value wins
+        #   alias set, primary explicitly "true", agree    -> shared value
+        #   alias set, primary explicitly "true", disagree -> explicit build failure
+        ENABLE_FINSERV_RAW="${ENABLE_FINSERV:-__UNSET__}"
+        if [[ "$ENABLE_FINSERV_RAW" == "__UNSET__" ]]; then
+          echo "ENABLE_FINSERV not set; using ENABLE_RESPONSIBLE_AI_GRC ($ENABLE_RESPONSIBLE_AI_GRC)"
         else
-          ENABLE_RESPONSIBLE_AI_GOV_NORMALIZED="$(echo "$ENABLE_RESPONSIBLE_AI_GOV_RAW" | tr '[:upper:]' '[:lower:]')"
-          if [[ "$ENABLE_FINSERV" == "true" && "$ENABLE_RESPONSIBLE_AI_GOV_NORMALIZED" != "true" ]]; then
-            echo "ERROR: EnableFinServAssessment is explicitly \"true\" but EnableResponsibleAIGovAssessment is explicitly \"$ENABLE_RESPONSIBLE_AI_GOV_NORMALIZED\"."
-            echo "These are aliases for the same toggle and must agree. Set them to the same value, or leave EnableResponsibleAIGovAssessment unset."
+          ENABLE_FINSERV_NORMALIZED="$(echo "$ENABLE_FINSERV_RAW" | tr '[:upper:]' '[:lower:]')"
+          if [[ "$ENABLE_RESPONSIBLE_AI_GRC" == "true" && "$ENABLE_FINSERV_NORMALIZED" != "true" ]]; then
+            echo "ERROR: EnableResponsibleAIGRCAssessment is explicitly \"true\" but EnableFinServAssessment is explicitly \"$ENABLE_FINSERV_NORMALIZED\"."
+            echo "These are aliases for the same toggle and must agree. Set them to the same value, or leave EnableFinServAssessment unset."
             exit 1
           fi
-          export ENABLE_FINSERV="$ENABLE_RESPONSIBLE_AI_GOV_NORMALIZED"
-          echo "ENABLE_RESPONSIBLE_AI_GOV set to $ENABLE_FINSERV; overriding the effective FinServ/Responsible-AI-GRC toggle"
+          export ENABLE_RESPONSIBLE_AI_GRC="$ENABLE_FINSERV_NORMALIZED"
+          echo "ENABLE_FINSERV set to $ENABLE_RESPONSIBLE_AI_GRC; overriding the effective Responsible AI GRC toggle"
         fi
-        unset ENABLE_RESPONSIBLE_AI_GOV_RAW ENABLE_RESPONSIBLE_AI_GOV_NORMALIZED
-      - echo "FinServ / Responsible AI GRC assessment enabled is $ENABLE_FINSERV"
+        unset ENABLE_FINSERV_RAW ENABLE_FINSERV_NORMALIZED
+      - echo "Responsible AI GRC assessment enabled is $ENABLE_RESPONSIBLE_AI_GRC"
       # EnableOWASPAssessment toggle (CodeBuild env var; default false). Threaded
       # into the Step Functions execution input as enableOWASP; the ASL OWASP
       # branch runs only when this is "true". Lower-cased here so the ASL's
@@ -209,7 +208,7 @@ phases:
 
             STATE_MACHINE_ARN=$(aws cloudformation describe-stacks --stack-name aiml-security-$accountId --query 'Stacks[0].Outputs[?OutputKey==`AIMLAssessmentStateMachineArn`].OutputValue' --output text 2>/dev/null)
             if [[ $STATE_MACHINE_ARN != "" && $STATE_MACHINE_ARN != "None" ]]; then
-              if EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$accountId\",\"enableFinServ\":\"$ENABLE_FINSERV\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text); then
+              if EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$accountId\",\"enableResponsibleAIGRC\":\"$ENABLE_RESPONSIBLE_AI_GRC\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text); then
                 echo "Started execution: $EXECUTION_ARN"
                 # Save execution ARN for post-build phase
                 echo "$EXECUTION_ARN" > /tmp/execution_arns/$accountId.txt
@@ -237,7 +236,7 @@ phases:
           else
             STATE_MACHINE_ARN=$(aws cloudformation describe-stacks --stack-name aiml-security-mgmt --query 'Stacks[0].Outputs[?OutputKey==`AIMLAssessmentStateMachineArn`].OutputValue' --output text 2>/dev/null)
             if [[ $STATE_MACHINE_ARN != "" && $STATE_MACHINE_ARN != "None" ]]; then
-              if MGMT_EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableFinServ\":\"$ENABLE_FINSERV\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text); then
+              if MGMT_EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableResponsibleAIGRC\":\"$ENABLE_RESPONSIBLE_AI_GRC\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text); then
                 echo "Started management account execution: $MGMT_EXECUTION_ARN"
                 # Save execution ARN for post-build phase
                 echo "$MGMT_EXECUTION_ARN" > /tmp/execution_arns/$AWS_ACCOUNT_ID.txt
@@ -266,7 +265,7 @@ phases:
             exit 1
           fi
           # Capture execution ARN for post-build phase to wait on
-          EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableFinServ\":\"$ENABLE_FINSERV\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text)
+          EXECUTION_ARN=$(aws stepfunctions start-execution --state-machine-arn $STATE_MACHINE_ARN --input "{\"accountId\":\"$AWS_ACCOUNT_ID\",\"enableResponsibleAIGRC\":\"$ENABLE_RESPONSIBLE_AI_GRC\",\"enableOWASP\":\"$ENABLE_OWASP\"}" --query 'executionArn' --output text)
           if [[ -z "$EXECUTION_ARN" || "$EXECUTION_ARN" == "None" ]]; then
             echo "ERROR: Failed to start Step Function execution"
             exit 1
@@ -286,24 +285,18 @@ phases:
 
         echo "Assessment completed. Results in S3:$BUCKET_REPORT"
 
-        # When FinServ runs only as an OWASP dependency (EnableFinServAssessment=false
-        # but EnableOWASPAssessment=true), its CSV must never reach the customer-facing
-        # report bucket. The report layer already strips FS-* rows from the HTML, but
-        # the raw finserv_security_report_*.csv would otherwise be copied verbatim. Build
-        # an exclude flag (empty when FinServ is enabled) and apply it to every copy/sync
-        # into the report bucket. ENABLE_FINSERV is already normalised to lowercase in the
-        # build phase, so a direct "true" comparison is sufficient here.
-        #
-        # Phase 2 Stage 2b (see docs/RESPONSIBLE_AI_GRC_PHASE2_STAGE2B_DESIGN.md,
-        # item 5) adds the same exclusion for the additive
-        # responsible_ai_gov_security_report_*.csv alias that
-        # finserv_assessments/app.py now dual-writes alongside the legacy CSV.
-        # Both share this one guard condition intentionally: the alias tracks
-        # the SAME enable/disable state as the legacy prefix, it is not an
-        # independently toggled second capability.
+        # When Responsible AI GRC runs only as an OWASP dependency
+        # (EnableResponsibleAIGRCAssessment=false but EnableOWASPAssessment=true),
+        # its CSV must never reach the customer-facing report bucket. The report
+        # layer already strips FS-* rows from the HTML, but the raw
+        # finserv_security_report_*.csv would otherwise be copied verbatim. Build
+        # an exclude flag (empty when Responsible AI GRC is enabled) and apply it
+        # to every copy/sync into the report bucket. ENABLE_RESPONSIBLE_AI_GRC is
+        # already normalised to lowercase in the build phase, so a direct "true"
+        # comparison is sufficient here.
         fs_exclude_args=()
-        if [[ "${ENABLE_FINSERV:-false}" != "true" ]]; then
-          fs_exclude_args=(--exclude "finserv_security_report_*.csv" --exclude "responsible_ai_gov_security_report_*.csv")
+        if [[ "${ENABLE_RESPONSIBLE_AI_GRC:-false}" != "true" ]]; then
+          fs_exclude_args=(--exclude "finserv_security_report_*.csv")
         fi
 
         # Derive how long to wait for Step Function completion from the overall

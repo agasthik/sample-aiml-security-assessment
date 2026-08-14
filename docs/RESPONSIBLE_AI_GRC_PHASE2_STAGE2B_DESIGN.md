@@ -1,5 +1,19 @@
 # Phase 2, Stage 2b — resource-identity and contract-breaking changes
 
+**SUPERSEDED.** A later change replaced the mechanisms this document describes with a full,
+one-name rename: `EnableResponsibleAIGovAssessment` (the Gov alias, items described throughout
+this document) has been retired entirely rather than kept as a second alias, and the additive
+dual-write/dual-selector machinery (items 4 and 5 below) has been removed in favor of a single
+name everywhere — `finserv_assessments/` and `finserv_tests/` directories, the
+`SECURITY_CHECKS_FINSERV*.md` filenames, the `finserv_security_report_*.csv` prefix, the
+`data-service="finserv"` DOM slug, and the `FinServGenAIRiskAssessmentPermissions` IAM Sid are all
+renamed to their Responsible AI GRC equivalents, with only the rebranded name visible anywhere.
+`EnableFinServAssessment` itself survives, but demoted to a legacy alias for a new primary
+parameter, `EnableResponsibleAIGRCAssessment` — see `docs/RESPONSIBLE_AI_GRC_ALIAS_MIGRATION.md`
+for the current alias relationship. This document is retained as a historical record of the
+additive, backward-compatible approach that preceded that decision; nothing below reflects the
+current state of the repository.
+
 **Status: IMPLEMENTED IN THIS WORKSPACE. NOT APPROVED FOR MERGE OR DEPLOYMENT.**
 
 This document originally recorded a design with zero implementation. That is no longer accurate: items

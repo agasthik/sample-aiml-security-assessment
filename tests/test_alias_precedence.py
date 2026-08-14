@@ -1,24 +1,28 @@
-"""Phase 2 Stage 2a — EnableResponsibleAIGovAssessment alias precedence.
+"""EnableFinServAssessment legacy alias precedence.
 
 These tests execute the *actual* shell snippet from buildspec.yml (extracted
 verbatim, not reimplemented) in a real bash subprocess, so a future edit to
 the buildspec's alias-resolution block is exercised by this suite rather than
 silently diverging from it.
 
-Precedence contract (rebrand-plan.md, section 18.3, Stage 2a):
+`EnableResponsibleAIGRCAssessment` is the primary parameter. `EnableFinServAssessment`
+is the legacy alias, retained as a compatibility contract for existing stacks and
+automation.
 
-    | New value (alias)  | Legacy value (ENABLE_FINSERV) | Effective result |
-    |---------------------|--------------------------------|-------------------|
-    | Absent (__UNSET__)  | Absent (default "false")       | "false"           |
-    | Absent (__UNSET__)  | "true" / "false"               | legacy value      |
-    | "true" / "false"    | Absent (default "false")       | alias value       |
-    | Both, equal         | Same                            | shared value      |
-    | Both, different     | legacy explicitly "true"        | explicit failure  |
+Precedence contract:
 
-CloudFormation can never produce a truly *absent* legacy value -- FS always
-materializes its "false" default -- so "legacy absent" and "legacy explicitly
+    | Legacy value (alias) | Primary value (ENABLE_RESPONSIBLE_AI_GRC) | Effective result |
+    |-----------------------|--------------------------------------------|-------------------|
+    | Absent (__UNSET__)    | Absent (default "false")                   | "false"           |
+    | Absent (__UNSET__)    | "true" / "false"                           | primary value     |
+    | "true" / "false"      | Absent (default "false")                   | legacy value      |
+    | Both, equal           | Same                                        | shared value      |
+    | Both, different       | primary explicitly "true"                   | explicit failure  |
+
+CloudFormation can never produce a truly *absent* primary value -- ENABLE_RESPONSIBLE_AI_GRC
+always materializes its "false" default -- so "primary absent" and "primary explicitly
 false" are the same wire value. The precedence logic therefore only rejects a
-conflict when the legacy value is explicitly "true" and the alias disagrees.
+conflict when the primary value is explicitly "true" and the legacy alias disagrees.
 """
 
 import os
@@ -32,8 +36,8 @@ BUILDSPEC_PATH = os.path.join(REPO_ROOT, "buildspec.yml")
 
 
 def _load_alias_resolution_script():
-    """Extract the ENABLE_FINSERV normalization + alias-precedence commands
-    verbatim from buildspec.yml's build phase, in file order.
+    """Extract the ENABLE_RESPONSIBLE_AI_GRC normalization + alias-precedence
+    commands verbatim from buildspec.yml's build phase, in file order.
 
     buildspec.yml has no CloudFormation intrinsics, so a plain yaml.safe_load
     is sufficient here (unlike the deployment/ and SAM templates elsewhere in
@@ -46,17 +50,17 @@ def _load_alias_resolution_script():
     normalize_cmd = None
     alias_cmd = None
     for command in commands:
-        if command.strip().startswith('export ENABLE_FINSERV="$(echo'):
+        if command.strip().startswith('export ENABLE_RESPONSIBLE_AI_GRC="$(echo'):
             normalize_cmd = command
-        elif "Phase 2 Stage 2a" in command and "ENABLE_RESPONSIBLE_AI_GOV" in command:
+        elif "ENABLE_FINSERV_RAW" in command:
             alias_cmd = command
 
     assert normalize_cmd is not None, (
-        "Could not find the ENABLE_FINSERV normalization command in "
+        "Could not find the ENABLE_RESPONSIBLE_AI_GRC normalization command in "
         "buildspec.yml -- has it moved or been reworded?"
     )
     assert alias_cmd is not None, (
-        "Could not find the Phase 2 Stage 2a alias-precedence command in "
+        "Could not find the EnableFinServAssessment alias-precedence command in "
         "buildspec.yml -- has it moved or been reworded?"
     )
     return normalize_cmd + "\n" + alias_cmd
@@ -67,7 +71,7 @@ _ALIAS_SCRIPT = _load_alias_resolution_script()
 
 def _run_alias_resolution(env_overrides):
     """Run the extracted script in bash with the given env vars set, and
-    return (exit_code, effective_ENABLE_FINSERV_or_None, stdout, stderr).
+    return (exit_code, effective_ENABLE_RESPONSIBLE_AI_GRC_or_None, stdout, stderr).
 
     Only the variables in env_overrides are set; anything not passed is left
     genuinely absent from the subprocess environment (not merely empty), to
@@ -77,7 +81,7 @@ def _run_alias_resolution(env_overrides):
     env.update(env_overrides)
     script = (
         _ALIAS_SCRIPT
-        + '\necho "RESOLVED_ENABLE_FINSERV=${ENABLE_FINSERV-__UNSET_SENTINEL__}"\n'
+        + '\necho "RESOLVED_ENABLE_RESPONSIBLE_AI_GRC=${ENABLE_RESPONSIBLE_AI_GRC-__UNSET_SENTINEL__}"\n'
     )
     result = subprocess.run(
         ["bash", "-c", script],
@@ -88,7 +92,7 @@ def _run_alias_resolution(env_overrides):
     )
     resolved = None
     for line in result.stdout.splitlines():
-        if line.startswith("RESOLVED_ENABLE_FINSERV="):
+        if line.startswith("RESOLVED_ENABLE_RESPONSIBLE_AI_GRC="):
             resolved = line.split("=", 1)[1]
             if resolved == "__UNSET_SENTINEL__":
                 resolved = None
@@ -101,61 +105,62 @@ class TestAliasPrecedence:
         assert code == 0
         assert resolved == "false"
 
+    @pytest.mark.parametrize("primary_value", ["true", "false", "TRUE", "False"])
+    def test_legacy_absent_primary_present_uses_primary(self, primary_value):
+        code, resolved, _, _ = _run_alias_resolution(
+            {"ENABLE_RESPONSIBLE_AI_GRC": primary_value}
+        )
+        assert code == 0
+        assert resolved == primary_value.lower()
+
     @pytest.mark.parametrize("legacy_value", ["true", "false", "TRUE", "False"])
-    def test_alias_absent_legacy_present_uses_legacy(self, legacy_value):
+    def test_legacy_present_primary_absent_uses_legacy(self, legacy_value):
+        # Primary absent is indistinguishable on the wire from primary's own
+        # "false" default -- CodeBuild always materializes ENABLE_RESPONSIBLE_AI_GRC.
+        # Simulate the true "customer never touched
+        # EnableResponsibleAIGRCAssessment" case as ENABLE_RESPONSIBLE_AI_GRC
+        # genuinely unset in the subprocess env.
         code, resolved, _, _ = _run_alias_resolution({"ENABLE_FINSERV": legacy_value})
         assert code == 0
         assert resolved == legacy_value.lower()
 
-    @pytest.mark.parametrize("alias_value", ["true", "false", "TRUE", "False"])
-    def test_alias_present_legacy_absent_uses_alias(self, alias_value):
-        # Legacy absent is indistinguishable on the wire from legacy's own
-        # "false" default -- CodeBuild always materializes ENABLE_FINSERV.
-        # Simulate the true "customer never touched EnableFinServAssessment"
-        # case as ENABLE_FINSERV genuinely unset in the subprocess env.
-        code, resolved, _, _ = _run_alias_resolution(
-            {"ENABLE_RESPONSIBLE_AI_GOV": alias_value}
-        )
-        assert code == 0
-        assert resolved == alias_value.lower()
-
-    @pytest.mark.parametrize("alias_value", ["true", "false"])
-    def test_alias_present_legacy_at_default_uses_alias(self, alias_value):
-        # Legacy explicitly re-asserts its own default ("false") -- this is
+    @pytest.mark.parametrize("legacy_value", ["true", "false"])
+    def test_legacy_present_primary_at_default_uses_legacy(self, legacy_value):
+        # Primary explicitly re-asserts its own default ("false") -- this is
         # the value CloudFormation actually sends when a customer leaves
-        # EnableFinServAssessment untouched. Alias must still win.
+        # EnableResponsibleAIGRCAssessment untouched. Legacy must still win.
         code, resolved, _, _ = _run_alias_resolution(
-            {"ENABLE_FINSERV": "false", "ENABLE_RESPONSIBLE_AI_GOV": alias_value}
+            {"ENABLE_RESPONSIBLE_AI_GRC": "false", "ENABLE_FINSERV": legacy_value}
         )
         assert code == 0
-        assert resolved == alias_value
+        assert resolved == legacy_value
 
     def test_both_present_and_equal_shares_value(self):
         code, resolved, _, _ = _run_alias_resolution(
-            {"ENABLE_FINSERV": "true", "ENABLE_RESPONSIBLE_AI_GOV": "true"}
+            {"ENABLE_RESPONSIBLE_AI_GRC": "true", "ENABLE_FINSERV": "true"}
         )
         assert code == 0
         assert resolved == "true"
 
     def test_both_present_agree_on_false(self):
         code, resolved, _, _ = _run_alias_resolution(
-            {"ENABLE_FINSERV": "false", "ENABLE_RESPONSIBLE_AI_GOV": "false"}
+            {"ENABLE_RESPONSIBLE_AI_GRC": "false", "ENABLE_FINSERV": "false"}
         )
         assert code == 0
         assert resolved == "false"
 
     def test_both_present_and_conflicting_fails_explicitly(self):
         code, resolved, stdout, _ = _run_alias_resolution(
-            {"ENABLE_FINSERV": "true", "ENABLE_RESPONSIBLE_AI_GOV": "false"}
+            {"ENABLE_RESPONSIBLE_AI_GRC": "true", "ENABLE_FINSERV": "false"}
         )
         assert code != 0
         assert "ERROR" in stdout
+        assert "EnableResponsibleAIGRCAssessment" in stdout
         assert "EnableFinServAssessment" in stdout
-        assert "EnableResponsibleAIGovAssessment" in stdout
 
     def test_conflict_detection_is_case_insensitive(self):
         code, _, stdout, _ = _run_alias_resolution(
-            {"ENABLE_FINSERV": "true", "ENABLE_RESPONSIBLE_AI_GOV": "FALSE"}
+            {"ENABLE_RESPONSIBLE_AI_GRC": "true", "ENABLE_FINSERV": "FALSE"}
         )
         assert code != 0
         assert "ERROR" in stdout
@@ -164,18 +169,16 @@ class TestAliasPrecedence:
         # The CloudFormation parameter's own default value literal must be
         # treated identically to a shell-level absent alias.
         code, resolved, _, _ = _run_alias_resolution(
-            {"ENABLE_FINSERV": "true", "ENABLE_RESPONSIBLE_AI_GOV": "__UNSET__"}
+            {"ENABLE_RESPONSIBLE_AI_GRC": "true", "ENABLE_FINSERV": "__UNSET__"}
         )
         assert code == 0
         assert resolved == "true"
 
 
 class TestMixedDeploymentVersionSkew:
-    """The ASL is untouched by Stage 2a (see rebrand-plan.md section 18.3), so
-    the classic four-way old/new buildspec x old/new ASL matrix collapses:
-    there is only one ASL, and it never sees the alias -- it only ever reads
-    the single `enableFinServ` Step Functions input key, which is resolved
-    upstream of `start-execution`.
+    """The ASL reads a single execution-input key,
+    `$.OriginalInput.enableResponsibleAIGRC`, resolved upstream of
+    `start-execution` -- it never sees the legacy alias directly.
 
     The two skews this repo *can* actually produce are both about the
     deployment-layer CloudFormation template and buildspec.yml being fetched
@@ -183,47 +186,50 @@ class TestMixedDeploymentVersionSkew:
     band, by the customer; buildspec.yml is pulled fresh from GitHub on every
     CodeBuild run):
 
-    1. Old CFN template (predates EnableResponsibleAIGovAssessment) + new
-       buildspec.yml -- the CodeBuild project simply never defines
-       ENABLE_RESPONSIBLE_AI_GOV, so it is genuinely absent from the build
+    1. Old CFN template (predates EnableFinServAssessment's demotion to
+       alias) + new buildspec.yml -- the CodeBuild project simply never
+       defines ENABLE_FINSERV, so it is genuinely absent from the build
        environment. Already covered by every "absent" case above; asserted
        again here under this name for direct traceability to the scenario.
-    2. New CFN template (defines the alias, defaulted to "__UNSET__") + old
-       buildspec.yml (predates the alias-resolution block entirely, so it
-       never reads ENABLE_RESPONSIBLE_AI_GOV at all) -- the alias parameter
-       is silently inert until the customer's CodeBuild project also picks
-       up the new buildspec. This must never crash or change the legacy
-       ENABLE_FINSERV-only behavior.
+    2. New CFN template (defines the legacy alias, defaulted to
+       "__UNSET__") + old buildspec.yml (predates the alias-resolution
+       block entirely, so it never reads ENABLE_FINSERV at all) -- the
+       legacy alias parameter is silently inert until the customer's
+       CodeBuild project also picks up the new buildspec. This must never
+       crash or change the primary-only behavior.
     """
 
     def test_old_template_new_buildspec_alias_genuinely_absent(self):
-        # Scenario 1: no ENABLE_RESPONSIBLE_AI_GOV in the environment at all
-        # (not even empty-string) -- exactly what an old CFN template's
-        # CodeBuild project produces when it has never heard of this alias.
-        code, resolved, _, _ = _run_alias_resolution({"ENABLE_FINSERV": "true"})
+        # Scenario 1: no ENABLE_FINSERV in the environment at all (not even
+        # empty-string) -- exactly what an old CFN template's CodeBuild
+        # project produces when it has never heard of this alias.
+        code, resolved, _, _ = _run_alias_resolution(
+            {"ENABLE_RESPONSIBLE_AI_GRC": "true"}
+        )
         assert code == 0
         assert resolved == "true"
-        assert "ENABLE_RESPONSIBLE_AI_GOV" not in os.environ
+        assert "ENABLE_FINSERV" not in os.environ
 
     def test_new_template_old_buildspec_alias_is_inert_if_unread(self):
         # Scenario 2: simulate an old buildspec.yml by running ONLY the
-        # legacy normalization line (never invoking the alias-resolution
+        # primary normalization line (never invoking the alias-resolution
         # block at all, since an old buildspec doesn't contain it). The
-        # CFN-provided alias value must have zero effect -- proving that a
-        # stack update to the new template does not require simultaneously
-        # updating buildspec.yml for existing behavior to keep working.
-        legacy_only_script = (
-            'export ENABLE_FINSERV="$(echo "${ENABLE_FINSERV:-false}" | '
+        # CFN-provided legacy alias value must have zero effect -- proving
+        # that a stack update to the new template does not require
+        # simultaneously updating buildspec.yml for existing behavior to
+        # keep working.
+        primary_only_script = (
+            'export ENABLE_RESPONSIBLE_AI_GRC="$(echo "${ENABLE_RESPONSIBLE_AI_GRC:-false}" | '
             "tr '[:upper:]' '[:lower:]')\"\n"
-            'echo "RESOLVED_ENABLE_FINSERV=${ENABLE_FINSERV}"\n'
+            'echo "RESOLVED_ENABLE_RESPONSIBLE_AI_GRC=${ENABLE_RESPONSIBLE_AI_GRC}"\n'
         )
         env = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "ENABLE_FINSERV": "false",
-            "ENABLE_RESPONSIBLE_AI_GOV": "true",
+            "ENABLE_RESPONSIBLE_AI_GRC": "false",
+            "ENABLE_FINSERV": "true",
         }
         result = subprocess.run(
-            ["bash", "-c", legacy_only_script],
+            ["bash", "-c", primary_only_script],
             env=env,
             capture_output=True,
             text=True,
@@ -233,19 +239,20 @@ class TestMixedDeploymentVersionSkew:
         resolved = [
             line.split("=", 1)[1]
             for line in result.stdout.splitlines()
-            if line.startswith("RESOLVED_ENABLE_FINSERV=")
+            if line.startswith("RESOLVED_ENABLE_RESPONSIBLE_AI_GRC=")
         ][0]
-        # An old buildspec that never reads the alias must fall through to
-        # the legacy value untouched, not error and not silently adopt the
-        # alias by accident.
+        # An old buildspec that never reads the legacy alias must fall
+        # through to the primary value untouched, not error and not
+        # silently adopt the alias by accident.
         assert resolved == "false"
 
 
 class TestCloudFormationAliasParameters:
-    """Confirm the alias parameter is wired identically in both deployment
-    templates: same AllowedValues/Default, same sentinel, and appended after
-    the existing environment variables (never reordering environment-variable
-    index [0], which the EventBridge InputTransformer reads positionally)."""
+    """Confirm the legacy alias parameter is wired identically in both
+    deployment templates: same AllowedValues/Default sentinel, and appended
+    after the primary environment variable (never reordering
+    environment-variable index [0], which the EventBridge InputTransformer
+    reads positionally)."""
 
     _TEMPLATES = [
         os.path.join(REPO_ROOT, "deployment", "2-aiml-security-codebuild.yaml"),
@@ -256,7 +263,7 @@ class TestCloudFormationAliasParameters:
     def test_alias_parameter_declared_with_unset_sentinel(self, template_path):
         with open(template_path) as handle:
             text = handle.read()
-        assert "EnableResponsibleAIGovAssessment:" in text
+        assert "EnableFinServAssessment:" in text
         assert '["true", "false", "__UNSET__"]' in text
         assert 'Default: "__UNSET__"' in text
 
@@ -273,9 +280,9 @@ class TestCloudFormationAliasParameters:
         )
 
     @pytest.mark.parametrize("template_path", _TEMPLATES)
-    def test_alias_env_var_appended_after_legacy_ones(self, template_path):
+    def test_alias_env_var_appended_after_primary_one(self, template_path):
         with open(template_path) as handle:
             text = handle.read()
-        finserv_pos = text.index("- Name: ENABLE_FINSERV")
-        alias_pos = text.index("- Name: ENABLE_RESPONSIBLE_AI_GOV")
-        assert alias_pos > finserv_pos
+        primary_pos = text.index("- Name: ENABLE_RESPONSIBLE_AI_GRC")
+        alias_pos = text.index("- Name: ENABLE_FINSERV")
+        assert alias_pos > primary_pos

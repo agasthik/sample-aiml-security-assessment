@@ -67,7 +67,7 @@ def _flag_is_true(value: Any) -> bool:
 
 def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[str, Any]:
     """
-    Download and parse Bedrock, SageMaker, AgentCore, and FinServ assessment CSV files for a given execution
+    Download and parse Bedrock, SageMaker, AgentCore, and Responsible AI GRC assessment CSV files for a given execution
 
     Args:
         s3_bucket (str): Source S3 bucket name
@@ -223,18 +223,19 @@ def generate_html_report(
 
     Args:
         assessment_results: Dict containing bedrock, sagemaker, agentcore, finserv findings
-        show_finserv: When False, FinServ (FS-*) rows are excluded from the
-            report entirely. Used when FinServ was executed only as an OWASP
-            dependency (enableFinServ=false, enableOWASP=true) so its rows
+        show_finserv: When False, Responsible AI GRC (FS-*) rows are excluded
+            from the report entirely. Used when Responsible AI GRC was
+            executed only as an OWASP dependency
+            (enableResponsibleAIGRC=false, enableOWASP=true) so its rows
             still power OW-* mappings but are not surfaced in the UI.
 
     Returns:
         HTML report string
     """
     # Transform assessment_results into flat findings lists. Bedrock/SageMaker/
-    # AgentCore/Agentic/FinServ are fixed report categories; compliance
-    # standards (OWASP + future NIST/EU AI Act) are appended from the shared
-    # COMPLIANCE_STANDARDS registry so adding a standard is data-only.
+    # AgentCore/Agentic/Responsible AI GRC are fixed report categories;
+    # compliance standards (OWASP + future NIST/EU AI Act) are appended from
+    # the shared COMPLIANCE_STANDARDS registry so adding a standard is data-only.
     compliance_slugs = [std["slug"] for std in COMPLIANCE_STANDARDS]
     all_report_slugs = [
         "bedrock",
@@ -286,10 +287,10 @@ def generate_html_report(
                         ]
                     else:
                         output_service = service
-                    # When FinServ ran only as an OWASP dependency (customer
-                    # did not enable it explicitly), drop FS-* rows so the
-                    # UI shows a clean OWASP-only view. FS rows still fed
-                    # the OW-* mappings inside the OWASP Lambda upstream.
+                    # When Responsible AI GRC ran only as an OWASP dependency
+                    # (customer did not enable it explicitly), drop FS-* rows
+                    # so the UI shows a clean OWASP-only view. FS rows still
+                    # fed the OW-* mappings inside the OWASP Lambda upstream.
                     if not show_finserv and output_service == "finserv":
                         continue
                     dedup_key = (
@@ -406,13 +407,14 @@ def lambda_handler(event, context):
                 "AIML_ASSESSMENT_BUCKET_NAME environment variable is required"
             )
 
-        # The state machine now forces FinServ to run whenever OWASP is
-        # enabled (OWASP's FS→OW mappings need the FinServ CSV). Show the
-        # FinServ UI only when the customer asked for it explicitly. When
-        # OWASP is on but FinServ is off, FS-* rows are consumed silently
-        # by OWASP and hidden from the report.
+        # The state machine now forces Responsible AI GRC to run whenever
+        # OWASP is enabled (OWASP's FS→OW mappings need the Responsible AI
+        # GRC CSV). Show the Responsible AI GRC UI only when the customer
+        # asked for it explicitly. When OWASP is on but Responsible AI GRC
+        # is off, FS-* rows are consumed silently by OWASP and hidden from
+        # the report.
         original_input = event.get("OriginalInput") or {}
-        show_finserv = _flag_is_true(original_input.get("enableFinServ"))
+        show_finserv = _flag_is_true(original_input.get("enableResponsibleAIGRC"))
 
         # Get assessment results
         assessment_results = get_assessment_results(execution_id, account_id)

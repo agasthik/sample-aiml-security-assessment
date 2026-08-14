@@ -8,7 +8,7 @@
 
 > **Responsible AI GRC is not the [AWS Well-Architected Responsible AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/responsible-ai-lens/responsible-ai-lens.html).** The Lens (November 2025) is a separate architectural review framework with eight focus areas. These 64 checks do not implement, validate, or measure conformance to it, and passing them does not indicate Lens alignment. They evaluate selected AWS configuration evidence and do not establish regulatory compliance or certify a system as responsible AI; regulatory framework mappings are preliminary. See [Responsible AI GRC — scope, sources, and compatibility](docs/RESPONSIBLE_AI_GRC_SCOPE.md).
 >
-> These controls originated as financial-services controls and were found applicable across multiple industries — which the AWS GRC User Guide itself now reflects, having dropped "within Financial Services Industries" from its title in the 2026-05-13 update. The `FS-*` check IDs and the `EnableFinServAssessment` parameter are retained permanently as compatibility contracts.
+> These controls originated as financial-services controls and were found applicable across multiple industries — which the AWS GRC User Guide itself now reflects, having dropped "within Financial Services Industries" from its title in the 2026-05-13 update. The `FS-*` check IDs are retained permanently as compatibility contracts, and `EnableFinServAssessment` is retained as a legacy alias for `EnableResponsibleAIGRCAssessment`.
 
 Run **[174 security checks](docs/SECURITY_CHECKS.md)** across your AWS accounts and regions in one deployment. Surfaces IAM misconfigurations, encryption gaps, network isolation issues, missing guardrails, and governance gaps — with interactive HTML reports, severity ratings, and AWS documentation links for remediation. Single-account or full AWS Organizations multi-account scans; all data stays in your account.
 
@@ -99,7 +99,7 @@ Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), 
 - **[Amazon SageMaker AI](docs/SECURITY_CHECKS.md#amazon-sagemaker-ai-security-checks-25)** (25 always-on core checks) - Covers AWS Security Hub controls, internet and VPC exposure, notebook root access, encryption at rest and in transit, network isolation, IAM permissions, Amazon GuardDuty integration, MLOps pipelines, SageMaker Clarify, Model Monitor, Model Registry, Feature Store, model approval, drift detection, safe deployment patterns, and lineage tracking.
 - **[Amazon Bedrock AgentCore](docs/SECURITY_CHECKS.md#amazon-bedrock-agentcore-security-checks-13)** (13 always-on core checks) - Covers runtime VPC configuration, IAM least privilege and stale access, CloudWatch Logs and AWS X-Ray observability, Amazon ECR repository encryption, browser tool storage, memory encryption, policy engine encryption, gateway encryption, VPC endpoints, service-linked roles, resource-based policies, and gateway security configuration.
 - **[Agentic AI Security](docs/SECURITY_CHECKS.md#agentic-ai-security-checks-27)** (27 always-on checks) - Covers bounded autonomy, agent identity and access, tool authorization, guardrail enforcement, prompt/input protection, memory privacy, auditability and observability, and abuse/cost protection. Maps selected Amazon Bedrock and Amazon Bedrock AgentCore findings into the [AWS Well-Architected Agentic AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html) view and adds native AgentCore gateway checks.
-- **[Responsible AI GRC](docs/SECURITY_CHECKS.md#responsible-ai-grc-checks-64-additional-5-upstream-extensions)** (64 opt-in checks) - Covers unbounded consumption, excessive agency, supply chain, training data poisoning, vector weaknesses, non-compliant output, misinformation, harmful or biased output, PII disclosure, hallucination, prompt injection, improper output handling, off-topic output, and out-of-date training data. Enable with `EnableFinServAssessment`; checks are derived from the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf).
+- **[Responsible AI GRC](docs/SECURITY_CHECKS.md#responsible-ai-grc-checks-64-additional-5-upstream-extensions)** (64 opt-in checks) - Covers unbounded consumption, excessive agency, supply chain, training data poisoning, vector weaknesses, non-compliant output, misinformation, harmful or biased output, PII disclosure, hallucination, prompt injection, improper output handling, off-topic output, and out-of-date training data. Enable with `EnableResponsibleAIGRCAssessment`; checks are derived from the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf).
 - **[OWASP Top 10 for LLM](docs/SECURITY_CHECKS.md#owasp-top-10-for-llm-checks-12)** (12 opt-in checks) - Covers LLM01 through LLM10 by mapping existing Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and Responsible AI GRC findings, plus two native LLM07 checks for system prompt leakage. Enable with `EnableOWASPAssessment`; results align to the [OWASP Top 10 for LLM 2025](https://genai.owasp.org/llm-top-10/) and render in the "By Compliance Standard" report section. When needed, this also runs Responsible AI GRC as a hidden source dependency.
 
 **Deployment Options:**
@@ -210,37 +210,39 @@ The HTML report includes a Region column, filter dropdown, and "Risk by Region /
 
 1. **Deploy** — CloudFormation creates CodeBuild, S3, IAM roles, and a Lambda trigger
 2. **CodeBuild runs** — builds and deploys the SAM assessment stack (per account in multi-account mode)
-3. **Step Functions execute** — orchestrates: S3 cleanup → IAM permission caching → resolve regions → Map state fans out per-region assessments (Bedrock, SageMaker, AgentCore in parallel) → optionally run FinServ checks → optionally run OWASP Top 10 for LLM checks → generate consolidated report
+3. **Step Functions execute** — orchestrates: S3 cleanup → IAM permission caching → resolve regions → Map state fans out per-region assessments (Bedrock, SageMaker, AgentCore in parallel) → optionally run Responsible AI GRC checks → optionally run OWASP Top 10 for LLM checks → generate consolidated report
 4. **Results** — HTML and CSV reports are stored in your S3 bucket
 
-### Optional: Responsible AI GRC Checks (`EnableFinServAssessment`)
+### Optional: Responsible AI GRC Checks (`EnableResponsibleAIGRCAssessment`)
 
 The 64 Responsible AI GRC (FS-XX) checks are **opt-in** and default
-to `false`. Set the `EnableFinServAssessment` deployment parameter to `true`
+to `false`. Set the `EnableResponsibleAIGRCAssessment` deployment parameter to `true`
 when you want the additional Responsible AI GRC assessment. When
-enabled, the FinServ assessment Lambda runs and its findings appear in a
+enabled, the Responsible AI GRC assessment Lambda runs and its findings appear in a
 dedicated **Responsible AI GRC** section of the HTML report. When left `false`,
-no FinServ findings are produced and the report omits the FinServ section
+no Responsible AI GRC findings are produced and the report omits that section
 entirely. The toggle is threaded into the Step Functions execution input
-(`enableFinServ`); the FinServ Lambda is always deployed but is invoked only
-when the flag is `true`.
+(`enableResponsibleAIGRC`); the Responsible AI GRC Lambda is always deployed but is invoked only
+when the flag is `true`. A legacy `EnableFinServAssessment` parameter is also
+available as an alias — see
+[Responsible AI GRC alias migration guide](docs/RESPONSIBLE_AI_GRC_ALIAS_MIGRATION.md).
 
-> **Deployment path note.** The `EnableFinServAssessment` parameter is wired
+> **Deployment path note.** The `EnableResponsibleAIGRCAssessment` parameter is wired
 > through the CodeBuild-based deployment templates
 > (`deployment/aiml-security-single-account.yaml` and
 > `deployment/2-aiml-security-codebuild.yaml`), which thread it into every Step
-> Functions `start-execution` call as `enableFinServ`. This is the supported
+> Functions `start-execution` call as `enableResponsibleAIGRC`. This is the supported
 > install path. If you instead deploy `aiml-security-assessment/template.yaml`
 > directly with `sam deploy` and start executions yourself, the state machine has
-> no built-in trigger, so FinServ stays **off** unless you include
-> `"enableFinServ": "true"` in the execution input you pass to `StartExecution`.
+> no built-in trigger, so Responsible AI GRC checks stay **off** unless you include
+> `"enableResponsibleAIGRC": "true"` in the execution input you pass to `StartExecution`.
 
 ### Optional: OWASP Top 10 for LLM Checks (`EnableOWASPAssessment`)
 
 The 12 OWASP Top 10 for LLM (OW-XX) checks are **opt-in** and default to
 `false`. Set the `EnableOWASPAssessment` deployment parameter to `true` when
 you want the additional compliance-standard assessment. When enabled, the OWASP
-Lambda runs per region after the Bedrock/SageMaker/AgentCore/FinServ Lambdas
+Lambda runs per region after the Bedrock/SageMaker/AgentCore/Responsible AI GRC Lambdas
 complete: it reads each service's per-region CSV, applies mapping rules to emit
 OW-01..OW-10 rows derived from existing findings, and runs two net-new checks
 for LLM07 (System Prompt Leakage). Findings appear in a new **"By Compliance
@@ -249,23 +251,24 @@ findings are produced and the section is omitted entirely. The toggle is
 threaded into the Step Functions execution input (`enableOWASP`); the OWASP
 Lambda is always deployed but is invoked only when the flag is `true`.
 
-> **OWASP → FinServ dependency (transparent to users).** Roughly two-thirds of
-> the OWASP mapping rows — including all of LLM05 (Improper Output Handling) —
-> derive from the FinServ (FS-XX) checks. To guarantee **full** OWASP coverage,
-> the state machine automatically runs the FinServ Lambda whenever
-> `EnableOWASPAssessment=true`, even when `EnableFinServAssessment=false`. When
-> the customer did not enable FinServ explicitly, its findings are used only to
-> power the OW-XX mappings, are **hidden from the report UI** — no FinServ nav
-> item, service card, or section appears — and the raw
-> `finserv_security_report_*.csv` is not copied to the customer-facing report
-> bucket. Setting both flags to `true` surfaces the FinServ section and CSV
-> normally.
+> **OWASP → Responsible AI GRC dependency (transparent to users).** Roughly
+> two-thirds of the OWASP mapping rows — including all of LLM05 (Improper
+> Output Handling) — derive from the Responsible AI GRC (FS-XX) checks. To
+> guarantee **full** OWASP coverage, the state machine automatically runs the
+> Responsible AI GRC Lambda whenever `EnableOWASPAssessment=true`, even when
+> `EnableResponsibleAIGRCAssessment=false`. When the customer did not enable
+> Responsible AI GRC explicitly, its findings are used only to power the
+> OW-XX mappings, are **hidden from the report UI** — no Responsible AI GRC
+> nav item, service card, or section appears — and the raw
+> `responsible_ai_grc_security_report_*.csv` is not copied to the
+> customer-facing report bucket. Setting both flags to `true` surfaces the
+> Responsible AI GRC section and CSV normally.
 
 The "By Compliance Standard" section is **extensible**: adding NIST AI RMF (`EnableNISTAssessment`) or EU AI Act (`EnableEUAIActAssessment`) later follows the same pattern.
 
 #### Scope and limitations
 
-- **FinServ Region scope.** Core Bedrock, SageMaker, AgentCore, and optional FinServ checks use the resolved `TargetRegions` from the deployment parameters. FinServ findings are emitted with Region values so they appear alongside the same regional filter and per-region report views as the core service checks.
+- **Responsible AI GRC Region scope.** Core Bedrock, SageMaker, AgentCore, and optional Responsible AI GRC checks use the resolved `TargetRegions` from the deployment parameters. Responsible AI GRC findings are emitted with Region values so they appear alongside the same regional filter and per-region report views as the core service checks.
 - **Heuristic and advisory checks.** Some controls cannot be verified through an API (application-layer controls, dataset contents, resource associations); these are reported as `ADVISORY`/`N/A` and require manual review. See [How finding severities are determined](#how-finding-severities-are-determined).
 - **Permissions.** A check that lacks an IAM permission is reported as `COULD NOT ASSESS` (not a failure). Re-deploy the member role after any IAM template change so newer actions take effect.
 
@@ -363,7 +366,7 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
   - `agentcore_security_report_{execution_id}.csv` - Amazon Bedrock AgentCore security assessment results
   - `finserv_security_report_{execution_id}.csv` - Responsible AI GRC
     risk assessment results (64 FS-XX checks; present in the report bucket only
-    when `EnableFinServAssessment` is enabled)
+    when `EnableResponsibleAIGRCAssessment` is enabled)
   - `owasp_security_report_{execution_id}.csv` - OWASP Top 10 for LLM
     assessment results (12 OW-XX checks; present only when
     `EnableOWASPAssessment` is enabled)
@@ -389,7 +392,7 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
 
 ### How finding severities are determined
 
-FinServ (`FS-`) check severities are assigned by a documented, reproducible methodology rather than per-check intuition. Each control is scored on two axes — **Impact** (harm if the control is absent) and **Likelihood** (probability the adverse outcome occurs given the control is absent) — and the pair is mapped to a severity via a 3×3 matrix. The labels align with the **AWS Security Hub ASFF** severity scale, so findings can be forwarded to Security Hub with consistent severities:
+Responsible AI GRC (`FS-`) check severities are assigned by a documented, reproducible methodology rather than per-check intuition. Each control is scored on two axes — **Impact** (harm if the control is absent) and **Likelihood** (probability the adverse outcome occurs given the control is absent) — and the pair is mapped to a severity via a 3×3 matrix. The labels align with the **AWS Security Hub ASFF** severity scale, so findings can be forwarded to Security Hub with consistent severities:
 
 | Label | ASFF normalized | Meaning |
 | --- | --- | --- |
@@ -437,7 +440,7 @@ If you need to reduce scope, review the role policies in:
 | --- | --- |
 | [Security Checks Reference](docs/SECURITY_CHECKS.md) | Complete reference for all 174 security checks with severity levels |
 | [OWASP Top 10 for LLM Checks](docs/SECURITY_CHECKS_OWASP.md) | Complete OW-01..12 reference: mapping-derived OWASP LLM01..LLM10 rows, native LLM07 checks, source dependencies, references, and status semantics |
-| [Responsible AI GRC Scope](docs/RESPONSIBLE_AI_GRC_SCOPE.md) | What Responsible AI GRC is and is not, its relationship to the AWS Well-Architected Responsible AI Lens, the per-bucket source catalog, check-count reconciliation, terminology, and the compatibility policy for preserved `FinServ` identifiers |
+| [Responsible AI GRC Scope](docs/RESPONSIBLE_AI_GRC_SCOPE.md) | What Responsible AI GRC is and is not, its relationship to the AWS Well-Architected Responsible AI Lens, the per-bucket source catalog, check-count reconciliation, terminology, and the compatibility policy for preserved identifiers |
 | [Responsible AI GRC Checks](docs/SECURITY_CHECKS_FINSERV.md) | Complete FS-01..69 reference: shared introduction, severity rubric, upstream-overlap table, compliance framework mapping, and all check definitions (Part 1 infrastructure controls, Part 2 guardrails & content safety, Part 3 app-layer controls & gaps) |
 | [Responsible AI GRC Severity Methodology](docs/SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md) | Likelihood × Impact → ASFF severity model, disposition rules, and research basis for FS check severities |
 | [Responsible AI GRC Severity Register](docs/SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md) | Authoritative per-finding severity assignments (the single source of truth enforced by the drift-guard test) |

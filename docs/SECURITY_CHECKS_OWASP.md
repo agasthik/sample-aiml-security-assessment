@@ -12,15 +12,15 @@ underlying BR/SM/AC/FS checks it is derived from.
   (Responsible AI GRC) sections.
 - **Responsible AI GRC auto-runs when OWASP is enabled.** ~2/3 of the OWASP
   mapping rows (and all of LLM05) derive from the `FS-*` checks. To guarantee
-  full OWASP coverage, the state machine automatically runs the FinServ
-  Lambda whenever `EnableOWASPAssessment=true`, even when
-  `EnableFinServAssessment=false`. In that case, FinServ findings are used
-  only to derive OW-XX rows, are **hidden from the report UI** (no
-  FinServ nav item, service card, or section), and the raw
-  `finserv_security_report_*.csv` is not copied to the customer-facing
-  report bucket. Enable
-  `EnableFinServAssessment=true` explicitly if you want the FinServ section
-  to appear alongside OWASP.
+  full OWASP coverage, the state machine automatically runs the Responsible
+  AI GRC Lambda whenever `EnableOWASPAssessment=true`, even when
+  `EnableResponsibleAIGRCAssessment=false`. In that case, Responsible AI GRC
+  findings are used only to derive OW-XX rows, are **hidden from the report
+  UI** (no Responsible AI GRC nav item, service card, or section), and the
+  raw `responsible_ai_grc_security_report_*.csv` is not copied to the
+  customer-facing report bucket. Enable
+  `EnableResponsibleAIGRCAssessment=true` explicitly if you want the
+  Responsible AI GRC section to appear alongside OWASP.
 
 ## Disclaimer
 
@@ -33,17 +33,18 @@ underlying BR/SM/AC/FS checks it is derived from.
 
 OW-01 through OW-10 are **derived** by mapping existing findings, so the
 OWASP Lambda itself does not call AWS APIs for those mapped rows. When OWASP
-is enabled and FinServ is not, the state machine still runs FinServ once to
-produce the FS-* source findings that feed OWASP mappings; that can increase
-scan time and use the FinServ IAM surface. In CodeBuild-based deployments,
-the FinServ source CSV is filtered out when results are copied to the
-customer-facing report bucket unless `EnableFinServAssessment=true`. OW-11
-and OW-12 are the only **native** OWASP checks: they inspect Bedrock guardrails
-and Lambda env vars for signals specific to LLM07 (System Prompt Leakage) that
-the existing checks do not cover.
+is enabled and Responsible AI GRC is not, the state machine still runs
+Responsible AI GRC once to produce the FS-* source findings that feed OWASP
+mappings; that can increase scan time and use the Responsible AI GRC IAM
+surface. In CodeBuild-based deployments, the Responsible AI GRC source CSV
+is filtered out when results are copied to the customer-facing report bucket
+unless `EnableResponsibleAIGRCAssessment=true`. OW-11 and OW-12 are the only
+**native** OWASP checks: they inspect Bedrock guardrails and Lambda env vars
+for signals specific to LLM07 (System Prompt Leakage) that the existing
+checks do not cover.
 
 The OWASP Lambda runs after the per-service Lambdas (Bedrock, SageMaker,
-AgentCore, FinServ) have written their per-region CSVs. It reads those CSVs,
+AgentCore, Responsible AI GRC) have written their per-region CSVs. It reads those CSVs,
 applies the `OWASP_CHECK_MAPPINGS` dict, runs OW-11 and OW-12, and writes
 `owasp_security_report_<execution>_<region>.csv`.
 
@@ -102,7 +103,7 @@ Maps from:
 | BR-26 | Guardrail PII / regex filter policy |
 | FS-43 | CloudWatch log data protection policies |
 | FS-44 | Amazon Macie sensitive-data discovery |
-| FS-45 | Guardrail PII entities coverage (FinServ) |
+| FS-45 | Guardrail PII entities coverage (Responsible AI GRC) |
 | FS-46 | S3 data-classification tagging |
 | SM-03 | SageMaker notebooks, domains, and training jobs use encryption controls |
 | SM-15 | SageMaker Feature Store offline stores use KMS encryption |
@@ -165,8 +166,8 @@ Maps from:
 | BR-29 | Agent idle session TTL bound |
 | AC-02 | AgentCore IAM least privilege |
 | AC-10 | AgentCore resource-based policies |
-| FS-07 | Agent execution role least privilege (FinServ) |
-| FS-08 | AgentCore runtime inbound authorizer (FinServ) |
+| FS-07 | Agent execution role least privilege (Responsible AI GRC) |
+| FS-08 | AgentCore runtime inbound authorizer (Responsible AI GRC) |
 | FS-09 | Agent tool concurrency limits |
 | FS-10 | Step Functions HITL callback tasks |
 | FS-67 | Agent transaction thresholds in Cedar / config |
@@ -205,7 +206,7 @@ Native checks fill the gap:
 
 **Severity convention.** OW-11 and OW-12 are native checks; their
 severity is control-inherent (same on Passed and Failed), matching the
-FinServ severity methodology. OW-01..OW-10 mapping rows inherit the
+Responsible AI GRC severity methodology. OW-01..OW-10 mapping rows inherit the
 source check's severity except when the source is `N/A`, in which case
 the OWASP row is downgraded to `Informational` to avoid inflating
 severity totals with tooling / no-resource rows.
