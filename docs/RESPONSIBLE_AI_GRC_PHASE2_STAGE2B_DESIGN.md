@@ -68,7 +68,7 @@ Per `rebrand-plan.md` section 21.2:
 | 3. ASL state names, result path, substitution key | **Implemented** | All four state names, `$.finservError` → `$.responsibleAIGRCError`, `${FinServSecurityAssessmentFunction}` → `${ResponsibleAIGRCAssessmentFunction}` |
 | 4. Report DOM selectors | **Implemented, additive only** | New `responsible-ai-grc`-named attributes/anchor added alongside every legacy selector. Zero legacy selectors removed or altered. |
 | 5. CSV filename prefix | **Implemented, additive only** | `responsible_ai_gov_security_report_{execution_id}.csv` now dual-written, dual-read, and deduplicated alongside the legacy prefix. |
-| 6. Documentation filenames | **Not implemented — deferred indefinitely** | See its section. |
+| 6. Documentation filenames | **Stale in this table — see its section.** Deferred by Stage 2b as originally drafted; renamed outright by the later, superseding one-name rebrand instead. | See its section. |
 | 7. `FS-*` renumbering | **Not implemented — rejected** | See its section. |
 | 8. Redundant `aiml-security-` prefix removal | **Not implemented — rejected for a reason this document did not originally anticipate** | See its section. |
 
@@ -242,26 +242,38 @@ by the dual-write (`finserv_tests/test_lambda_handler.py::TestWriteToS3::test_wr
 assert both writes rather than only the first, plus a new test confirming an alias-write failure never
 fails the legacy write.
 
-### 6. Documentation filenames — not implemented, deferred indefinitely
+### 6. Documentation filenames — status update: renamed by the superseding change, not by Stage 2b
 
-**Current:** `docs/SECURITY_CHECKS_FINSERV.md`, `docs/SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md`,
-`docs/SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md`. **Unchanged.**
+**This section originally said "not implemented, deferred indefinitely" and described
+`docs/SECURITY_CHECKS_FINSERV.md`, `docs/SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md`, and
+`docs/SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md` as "Current" and "Unchanged." That is stale.**
+As recorded in the SUPERSEDED note at the top of this document, the later, full one-name rebrand
+renamed these three files outright: `docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md`,
+`docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md`, and
+`docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md` are the current filenames — no
+redirect stub, no dual-published pair under both names. This section is retained, unedited below
+this notice, as the historical record of why Stage 2b itself (the additive-only approach this
+document otherwise describes) deferred the rename: the public-GitHub-Pages-URL risk reasoning
+below was real input to that decision, even though the eventual implementation resolved it by
+renaming outright rather than by the redirect-stub approach this section anticipated.
 
-**Why this was not attempted alongside items 1–5:** these three files are published on GitHub Pages and
-search-indexed. Renaming one is a **public-URL risk**, categorically different from items 1–3's
-internal-identity risk: an external search result or bookmark pointing at
+**Original Stage 2b reasoning (historical, not current filenames):** the three files above were,
+at the time this document was drafted, published on GitHub Pages and search-indexed. Renaming one
+is a **public-URL risk**, categorically different from items 1–3's internal-identity risk: an
+external search result or bookmark pointing at
 `https://aws-samples.github.io/sample-aiml-security-assessment/docs/SECURITY_CHECKS_FINSERV.html`
-returns a 404 the moment the file moves, with no server-side redirect layer available to intercept the
-request (GitHub Pages serves static files only). `rebrand-plan.md` section 22.2's no-go criteria already
-treat this as a release blocker unless a redirect stub — a minimal HTML file at the old path with
-`<meta http-equiv="refresh">` and a visible "this page has moved" notice — is committed in the *same*
-change that introduces the new filename.
+returns a 404 the moment the file moves, with no server-side redirect layer available to intercept
+the request (GitHub Pages serves static files only). `rebrand-plan.md` section 22.2's no-go
+criteria treated this as a release blocker unless a redirect stub — a minimal HTML file at the old
+path with `<meta http-equiv="refresh">` and a visible "this page has moved" notice — was committed
+in the *same* change that introduced the new filename.
 
-No redirect-stub infrastructure exists in this repository today, and authoring one correctly (verifying
-it actually resolves once published, which requires GitHub Pages to be live, which this local workspace
-cannot verify) is out of scope for a workspace that has not been deployed. This item remains deferred
-until Stage 2b is actually approved to ship and a real release process exists to publish the redirect
-alongside the rename.
+No redirect-stub infrastructure existed in this repository at the time Stage 2b was drafted, and
+authoring one correctly (verifying it actually resolves once published, which requires GitHub
+Pages to be live) was out of scope for a workspace that had not been deployed. The eventual
+one-name rebrand renamed the files without a redirect stub; whether that leaves a dangling public
+URL is a live question for whoever reviews the rebrand PR, not one this superseded document can
+resolve.
 
 ### 7. `FS-*` check ID renumbering — not implemented, rejected
 
