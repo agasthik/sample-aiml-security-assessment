@@ -1,4 +1,4 @@
-# FinServ GenAI Risk Checks (FS-01 to FS-69)
+# Responsible AI GRC Checks (FS-01 to FS-69)
 
 This document is the complete reference for the **Responsible AI GRC** (`FS-XX`) checks —
 cross-industry technical controls for AI governance, risk, and compliance — derived from the
@@ -58,9 +58,9 @@ with `not_a_control: true`, because registry-based audits would otherwise miss i
 Each check includes how it is **detected** (the AWS API calls or configuration inspected) and
 how a failure is **remediated** (the specific AWS actions to take). Severities follow a
 documented Likelihood × Impact methodology — see the
-[FinServ Severity Methodology](./SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md), with
+[Responsible AI GRC Severity Methodology](./SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md), with
 authoritative per-finding assignments in the
-[FinServ Severity Register](./SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md).
+[Responsible AI GRC Severity Register](./SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md).
 
 ## Table of Contents
 

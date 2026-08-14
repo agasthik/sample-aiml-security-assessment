@@ -1,6 +1,7 @@
-# FinServ Severity Register (authoritative)
+# Responsible AI GRC Severity Register (authoritative)
 
-This register is the **single source of truth** for the severity of every FinServ finding. It is
+This register is the **single source of truth** for the severity of every Responsible AI GRC
+(`FS-`) finding. It is
 derived by applying [`SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md`](./SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md) (Likelihood × Impact →
 ASFF label; §3.4 disposition rules; §3.5 family bands) to the **183 `create_finding` rows / 65
 check IDs** extracted from `finserv_assessments/app.py`. 182 of those call sites carry a static
