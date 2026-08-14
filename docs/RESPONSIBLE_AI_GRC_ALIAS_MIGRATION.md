@@ -42,6 +42,26 @@ failure with a clear message.
 If you see this error, fix it by setting both parameters to the same value (or clearing
 `EnableFinServAssessment` back to `"__UNSET__"` to defer to the primary one).
 
+## Scope of the alias: CloudFormation and CodeBuild only, not the Step Functions execution input
+
+Everything above describes `EnableFinServAssessment` (the CloudFormation parameter) and
+`ENABLE_FINSERV` (the CodeBuild environment variable it becomes). `buildspec.yml` resolves
+whichever of those you set into a single effective value and passes it to Step Functions as
+`"enableResponsibleAIGRC"` in the `StartExecution` input — there is no `"enableFinServ"` key in
+that input, aliased or otherwise.
+
+If you deploy and run assessments through the provided CodeBuild templates
+(`deployment/aiml-security-single-account.yaml`, `deployment/2-aiml-security-codebuild.yaml`),
+this distinction is invisible to you: CodeBuild always calls `StartExecution` with the resolved
+`enableResponsibleAIGRC` value, never with `enableFinServ`.
+
+It matters only if something calls `StartExecution` directly — bypassing CodeBuild and
+`buildspec.yml` — using the pre-rebrand input shape `{"enableFinServ": "true"}`. That input is
+rejected: the execution fails immediately with error `LegacyEnableFinServInputRejected` rather
+than silently skipping the Responsible AI GRC checks. Use `"enableResponsibleAIGRC": "true"` (or
+`"enableOWASP": "true"`) in the execution input instead. See
+[Troubleshooting §6b](TROUBLESHOOTING.md#6b-execution-fails-immediately-with-legacyenablefinservinputrejected).
+
 ## What you do NOT need to do
 
 - You do not need to migrate immediately. There is no removal timeline for

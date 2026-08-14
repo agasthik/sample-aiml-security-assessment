@@ -251,6 +251,18 @@ The Responsible AI GRC assessment Lambda is different. It is deployed in both SA
 > and archived reports/CSVs generated before this rename keep their original filenames and
 > selectors. See [Responsible AI GRC — scope, sources, and compatibility](RESPONSIBLE_AI_GRC_SCOPE.md#compatibility-policy)
 > for the full list of what changed and what stayed the same.
+>
+> **The alias stops at the CloudFormation parameter / CodeBuild environment variable layer —
+> it is not a compatibility contract for the Step Functions execution input.** `buildspec.yml`
+> resolves `EnableFinServAssessment` / `ENABLE_FINSERV` into the effective
+> `ENABLE_RESPONSIBLE_AI_GRC` value and passes only `"enableResponsibleAIGRC"` into
+> `StartExecution`. The state machine's `Responsible AI GRC Enabled?` Choice state does not
+> have a passthrough branch for a legacy `"enableFinServ"` execution-input key: if
+> `"enableFinServ": "true"` reaches `StartExecution` directly (bypassing CodeBuild/buildspec
+> entirely, e.g. a hand-written script or an old runbook), the execution fails immediately with
+> error `LegacyEnableFinServInputRejected` instead of silently skipping the Responsible AI GRC
+> checks. Use `"enableResponsibleAIGRC": "true"` (or `"enableOWASP": "true"`) in the execution
+> input instead.
 
 **Additional Functions:**
 

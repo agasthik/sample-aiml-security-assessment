@@ -304,9 +304,31 @@
                                                     }
                                                 ],
                                                 "Next": "Responsible AI GRC Security Assessment"
+                                            },
+                                            {
+                                                "And": [
+                                                    {
+                                                        "Variable": "$.OriginalInput.enableFinServ",
+                                                        "IsPresent": true
+                                                    },
+                                                    {
+                                                        "Variable": "$.OriginalInput.enableFinServ",
+                                                        "StringEquals": "true"
+                                                    },
+                                                    {
+                                                        "Variable": "$.RegionIndex",
+                                                        "NumericEquals": 0
+                                                    }
+                                                ],
+                                                "Next": "Legacy enableFinServ Input Rejected"
                                             }
                                         ],
                                         "Default": "Responsible AI GRC Assessment Skipped"
+                                    },
+                                    "Legacy enableFinServ Input Rejected": {
+                                        "Type": "Fail",
+                                        "Error": "LegacyEnableFinServInputRejected",
+                                        "Cause": "The Step Functions execution input included \"enableFinServ\": \"true\", which this state machine no longer reads. Use \"enableResponsibleAIGRC\": \"true\" (or \"enableOWASP\": \"true\") in the execution input instead. The EnableFinServAssessment CloudFormation parameter and ENABLE_FINSERV CodeBuild environment variable are still supported as a legacy alias for CodeBuild-driven deployments -- buildspec.yml resolves that alias into enableResponsibleAIGRC before starting this execution. This failure only occurs when enableFinServ is passed directly to StartExecution, bypassing that resolution."
                                     },
                                     "Responsible AI GRC Security Assessment": {
                                         "Type": "Task",

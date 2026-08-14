@@ -176,6 +176,134 @@ def test_asl_state_names_fit_the_step_functions_limit():
 
 
 # ---------------------------------------------------------------------------
+# Legacy enableFinServ execution-input key: rejected loudly, not skipped
+# silently.
+#
+# EnableFinServAssessment / ENABLE_FINSERV are retained as a legacy alias, but
+# only up through the CloudFormation-parameter / CodeBuild-environment-variable
+# layer -- buildspec.yml resolves that alias into the effective
+# ENABLE_RESPONSIBLE_AI_GRC value and passes only "enableResponsibleAIGRC" into
+# StartExecution. There is no execution-input-level alias for "enableFinServ".
+#
+# A direct StartExecution call using the pre-rebrand input shape
+# {"enableFinServ": "true"} (bypassing CodeBuild/buildspec.yml entirely) is
+# therefore rejected with a hard Fail state, rather than silently falling
+# through to "Responsible AI GRC Assessment Skipped" and completing with a
+# report missing the FS section. Fail states cannot carry Retry/Catch/Next, so
+# this error propagates past the "Run Security Assessments" Parallel state and
+# the "Scan Regions" Map state -- neither has a Catch -- failing the whole
+# execution. That full-execution blast radius is intentional: it is the exact
+# fail-fast philosophy buildspec.yml already uses for the analogous
+# EnableFinServAssessment / EnableResponsibleAIGRCAssessment conflict, applied
+# one layer down.
+# ---------------------------------------------------------------------------
+
+
+def _substituted_asl(raw: str) -> dict:
+    """Return the ASL parsed as JSON after simulating SAM's DefinitionSubstitutions.
+
+    Mirrors what SAM actually does at deploy time: every ``${Placeholder}``
+    becomes a plain string. This lets structural assertions (state graph,
+    Fail-state shape, absence of an enclosing Catch) run against a real parsed
+    dict instead of brittle substring matching.
+    """
+    import re
+
+    placeholders = sorted(set(re.findall(r"\$\{([A-Za-z0-9_]+)\}", raw)))
+    substituted = raw
+    for name in placeholders:
+        if name == "MaxRegionConcurrency":
+            substituted = substituted.replace(f"${{{name}}}", "2")
+        else:
+            substituted = substituted.replace(
+                f'"${{{name}}}"',
+                f'"arn:aws:lambda:us-east-1:123456789012:function:{name}"',
+            )
+    return json.loads(substituted)
+
+
+@pytest.fixture(scope="module")
+def asl_parsed(asl):
+    return _substituted_asl(asl)
+
+
+@pytest.fixture(scope="module")
+def responsible_ai_grc_branch(asl_parsed):
+    branches = asl_parsed["States"]["Scan Regions"]["ItemProcessor"]["States"][
+        "Run Security Assessments"
+    ]["Branches"]
+    matches = [b for b in branches if b["StartAt"] == "Responsible AI GRC Enabled?"]
+    assert len(matches) == 1
+    return matches[0]
+
+
+LEGACY_INPUT_FAIL_STATE = "Legacy enableFinServ Input Rejected"
+
+
+def test_legacy_finserv_input_has_a_rejecting_choice_branch(responsible_ai_grc_branch):
+    choice = responsible_ai_grc_branch["States"]["Responsible AI GRC Enabled?"]
+    matching = [c for c in choice["Choices"] if c["Next"] == LEGACY_INPUT_FAIL_STATE]
+    assert len(matching) == 1, (
+        "Expected exactly one Choice branch routing to the legacy-input Fail state"
+    )
+    conditions = matching[0]["And"]
+    variables = {c["Variable"] for c in conditions}
+    assert "$.OriginalInput.enableFinServ" in variables
+    assert "$.RegionIndex" in variables
+    string_equals = {
+        c["Variable"]: c.get("StringEquals") for c in conditions if "StringEquals" in c
+    }
+    assert string_equals.get("$.OriginalInput.enableFinServ") == "true"
+
+
+def test_legacy_finserv_input_choice_does_not_change_the_default(
+    responsible_ai_grc_branch,
+):
+    """Absence of enableFinServ must still fall through to the ordinary skip."""
+    choice = responsible_ai_grc_branch["States"]["Responsible AI GRC Enabled?"]
+    assert choice["Default"] == "Responsible AI GRC Assessment Skipped"
+
+
+def test_legacy_finserv_input_fail_state_shape(responsible_ai_grc_branch):
+    fail_state = responsible_ai_grc_branch["States"][LEGACY_INPUT_FAIL_STATE]
+    assert fail_state["Type"] == "Fail"
+    assert fail_state["Error"] == "LegacyEnableFinServInputRejected"
+    assert "enableFinServ" in fail_state["Cause"]
+    assert "enableResponsibleAIGRC" in fail_state["Cause"]
+    # Fail states cannot carry Retry, Catch, or Next -- ASL rejects the
+    # deployment outright if any of these are present.
+    assert "Retry" not in fail_state
+    assert "Catch" not in fail_state
+    assert "Next" not in fail_state
+    assert "End" not in fail_state
+
+
+def test_legacy_finserv_input_failure_is_not_caught_by_an_ancestor(asl_parsed):
+    """Confirms the intended full-execution blast radius, not an accident.
+
+    A Fail state's error propagates to the nearest ancestor with a Catch. If
+    someone later adds a Catch to "Run Security Assessments" or
+    "Scan Regions" -- to make some other error non-fatal -- it would silently
+    also swallow this one, turning the deliberate loud failure back into a
+    quiet skip. Assert neither ancestor has a Catch/ToleratedFailure today so
+    that regression is caught here instead of discovered in production.
+    """
+    parallel = asl_parsed["States"]["Scan Regions"]["ItemProcessor"]["States"][
+        "Run Security Assessments"
+    ]
+    assert "Catch" not in parallel
+
+    scan_regions = asl_parsed["States"]["Scan Regions"]
+    assert "Catch" not in scan_regions
+    assert "ToleratedFailurePercentage" not in scan_regions
+    assert "ToleratedFailureCount" not in scan_regions
+
+
+def test_legacy_finserv_input_fail_state_name_fits_the_step_functions_limit():
+    assert len(LEGACY_INPUT_FAIL_STATE) <= 80
+
+
+# ---------------------------------------------------------------------------
 # CloudFormation identities: renaming the logical ID or FunctionName forces a
 # Lambda replacement, changing ARNs, permissions, logs, and rollback behavior.
 #

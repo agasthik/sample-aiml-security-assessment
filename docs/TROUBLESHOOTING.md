@@ -118,9 +118,13 @@ any `FS-` findings.
 > Assessment`, `Responsible AI GRC Assessment Incomplete`, and `Responsible AI
 > GRC Assessment Skipped`, the `$.responsibleAIGRCError` result path, the
 > `responsible-ai-grc` report slug with its `#responsible-ai-grc` anchor, and
-> `responsible_ai_grc_security_report_*.csv`. A legacy `EnableFinServAssessment` /
-> `ENABLE_FINSERV` alias is also accepted — see
+> `responsible_ai_grc_security_report_*.csv`. A legacy `EnableFinServAssessment`
+> CloudFormation parameter / `ENABLE_FINSERV` CodeBuild environment variable is
+> also accepted and resolved into the primary name by `buildspec.yml` — see
 > [Responsible AI GRC alias migration guide](RESPONSIBLE_AI_GRC_ALIAS_MIGRATION.md).
+> That alias stops there: the Step Functions execution input only ever carries
+> `"enableResponsibleAIGRC"`, never a legacy `"enableFinServ"` key. See problem 6b
+> below if you start Step Functions directly with the old key.
 
 **Expected when OWASP-only:** If `EnableOWASPAssessment=true` and
 `EnableResponsibleAIGRCAssessment=false`, the `FS-*` assessment still runs as an
@@ -141,6 +145,37 @@ customer-facing report bucket.
   `"enableResponsibleAIGRC": "true"` in the `StartExecution` input.
 - Check the Step Functions execution for the `Responsible AI GRC Enabled?`
   choice state and `Responsible AI GRC Security Assessment` task.
+
+### 6b. Execution Fails Immediately with `LegacyEnableFinServInputRejected`
+
+**Symptoms:** The Step Functions execution fails immediately (every region and
+every service — Bedrock, SageMaker, AgentCore, OWASP, and Responsible AI GRC —
+shows no findings), and the execution's error is
+`LegacyEnableFinServInputRejected`.
+
+**Cause:** The `StartExecution` input included `"enableFinServ": "true"`
+directly. This key was the original (pre-rebrand) execution-input name. It is
+not accepted at the Step Functions layer — only `EnableFinServAssessment` /
+`ENABLE_FINSERV` at the CloudFormation-parameter / CodeBuild-environment-variable
+layer are retained as a legacy alias, and `buildspec.yml` resolves that alias
+into `"enableResponsibleAIGRC"` before ever calling `StartExecution`. This
+failure can only happen if something calls `StartExecution` directly, bypassing
+CodeBuild and `buildspec.yml` entirely — for example a hand-written script, an
+old runbook, or a direct AWS CLI/SDK call using the pre-rebrand input shape.
+
+This is a deliberate, hard failure rather than a silent skip: an execution that
+used the old key would otherwise complete successfully but quietly report no
+Responsible AI GRC findings, which is worse than a visible error.
+
+**Solutions:**
+
+- Replace `"enableFinServ": "true"` with `"enableResponsibleAIGRC": "true"` in
+  whatever is calling `StartExecution` directly.
+- If you deploy and start assessments through the provided CodeBuild templates
+  (`deployment/aiml-security-single-account.yaml`,
+  `deployment/2-aiml-security-codebuild.yaml`), you are not affected — CodeBuild
+  never passes `enableFinServ` to `StartExecution`, only the resolved
+  `enableResponsibleAIGRC` value.
 
 ### 7. TargetRegions Validation or Unexpected Region Coverage
 
