@@ -861,7 +861,7 @@ GitHub Actions workflows run automatically to validate code quality and security
 | Workflow | File | What It Checks |
 | ---------- | ------ | ---------------- |
 | **Python Code Quality** | `.github/workflows/python-lint.yml` | `ruff check` (lint) and `ruff format --check` (formatting) on changed `.py` files |
-| **Python Tests** | `.github/workflows/python-tests.yml` | Runs upstream tests, FinServ tests, and report-pipeline tests in separate pytest sessions |
+| **Python Tests** | `.github/workflows/python-tests.yml` | Runs upstream tests, Responsible AI GRC tests, and report-pipeline tests in separate pytest sessions |
 | **CloudFormation Lint** | `.github/workflows/cfn-lint.yml` | Validates deployment and SAM templates with `cfn-lint` |
 | **SAM Validate & Build** | `.github/workflows/sam-validate.yml` | Runs `sam validate --lint` and `sam build` on SAM templates |
 | **ASH Security Scan** | `.github/workflows/ash-security-scan.yml` | Scans changed files for secrets, dependency vulnerabilities, and IaC misconfigurations |

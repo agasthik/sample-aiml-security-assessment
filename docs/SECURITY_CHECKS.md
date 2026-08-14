@@ -716,9 +716,10 @@ These 12 checks (OW-XX) map the AI/ML Security Assessment findings to the
 [OWASP Top 10 for LLM 2025](https://genai.owasp.org/llm-top-10/) categories.
 OW-01..OW-10 are **derived by mapping** from existing BR/SM/AC/FS findings.
 The OWASP Lambda itself does not call AWS APIs for mapped rows, but enabling
-OWASP can auto-run FinServ to produce FS-* source findings when FinServ is
-otherwise disabled. OW-11 and OW-12 are net-new checks that address LLM07
-(System Prompt Leakage), which the existing checks do not directly cover.
+OWASP can auto-run Responsible AI GRC to produce FS-* source findings when
+Responsible AI GRC is otherwise disabled. OW-11 and OW-12 are net-new checks
+that address LLM07 (System Prompt Leakage), which the existing checks do not
+directly cover.
 If a required source CSV is missing, the OWASP Lambda emits an informational
 `OW-00` completeness row rather than silently dropping derived rows.
 
