@@ -14,6 +14,7 @@ Findings. Exactly one canonical label is permitted now.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import sys
 
@@ -26,6 +27,14 @@ REPORT_DIR = os.path.join(
     "functions",
     "security",
     "generate_consolidated_report",
+)
+PROVENANCE_PATH = os.path.join(
+    REPO_ROOT,
+    "aiml-security-assessment",
+    "functions",
+    "security",
+    "responsible_ai_grc_assessments",
+    "provenance.json",
 )
 
 if REPORT_DIR not in sys.path:
@@ -222,6 +231,27 @@ def test_scope_statement_accompanies_the_name(html):
     assert "64 automated checks" in html
     assert "do not establish regulatory compliance" in html
     assert "Regulatory framework mappings are preliminary" in html
+
+
+def test_scope_statement_check_count_matches_provenance():
+    """The "64 automated checks" figure in RESPONSIBLE_AI_GRC_SCOPE_STATEMENT is a
+    bare string literal in report_template.py, unconnected to any other source
+    of truth for the check count. provenance.json's control_count (also
+    generated, and gated against staleness by test_provenance.py) is that
+    source of truth. This test is the tripwire: if the check count ever
+    changes, this fails loudly instead of the two silently drifting apart.
+    """
+    with open(PROVENANCE_PATH) as handle:
+        provenance = json.load(handle)
+    expected = provenance["control_count"]
+    assert (
+        f"{expected} automated checks"
+        in report_template.RESPONSIBLE_AI_GRC_SCOPE_STATEMENT
+    ), (
+        f"RESPONSIBLE_AI_GRC_SCOPE_STATEMENT says a different count than "
+        f"provenance.json's control_count ({expected}). Update the literal in "
+        f"report_template.py to match."
+    )
 
 
 def test_lens_disambiguation_is_present(html):

@@ -32,10 +32,14 @@ extend-exclude = ["*.md"]
 #   F  — Pyflakes (undefined names, unused imports, f-string problems)
 select = ["E4", "E7", "E9", "F"]
 
-[lint.per-file-ignores]
-# Test modules bind fixtures and helpers that are intentionally unused in some
-# parametrized signatures.
-"**/test_*.py" = ["F811"]
+# No per-file-ignores: a previous "**/test_*.py" = ["F811"] entry was removed.
+# `ruff check --select F811 .` is clean repo-wide under this rule set, so the
+# ignore was a no-op. Its stated rationale (fixtures/helpers "intentionally
+# unused in some parametrized signatures") describes F401/ARG001, not F811
+# (redefinition of an unused name) — those aren't selected above either. If a
+# genuine F811 case shows up in test code later, add a narrowly-scoped
+# `# noqa: F811` at the offending line instead of reinstating a blanket
+# per-file ignore that would suppress real redefinition bugs too.
 
 [format]
 quote-style = "double"
