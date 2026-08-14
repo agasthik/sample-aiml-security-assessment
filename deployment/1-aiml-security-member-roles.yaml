@@ -242,13 +242,13 @@ Resources:
                   - guardduty:GetRemainingFreeTrialDays
                   - guardduty:GetUsageStatistics
                 Resource: "*"
-              # FinServ GenAI Risk Assessment Permissions (FS-01 to FS-69)
-              # Read-only list/describe/get actions required by the 64 FinServ
-              # security checks. Resource: "*" is required for inventory-style
-              # checks where resource ARNs are not known in advance. Validated
-              # with cfn-lint (no unrecognized actions).
+              # Responsible AI GRC Assessment Permissions (FS-01 to FS-69)
+              # Read-only list/describe/get actions required by the 64
+              # Responsible AI GRC security checks. Resource: "*" is required
+              # for inventory-style checks where resource ARNs are not known
+              # in advance. Validated with cfn-lint (no unrecognized actions).
               - Effect: Allow
-                Sid: FinServGenAIRiskAssessmentPermissions
+                Sid: ResponsibleAIGRCAssessmentPermissions
                 Action:
                   # WAF / Shield (FS-01)
                   - wafv2:ListWebACLs

@@ -361,10 +361,11 @@ Resources:
                   - s3:GetBucketVersioning
                   - s3:GetBucketTagging
                   - s3:HeadBucket
-                  # FinServ GenAI Risk Assessment Permissions (FS-01 to FS-69)
-                  # Read-only list/describe/get actions required by the FinServ
-                  # security checks. Kept in sync with the canonical member role
-                  # in deployment/1-aiml-security-member-roles.yaml.
+                  # Responsible AI GRC Assessment Permissions (FS-01 to FS-69)
+                  # Read-only list/describe/get actions required by the
+                  # Responsible AI GRC security checks. Kept in sync with the
+                  # canonical member role in
+                  # deployment/1-aiml-security-member-roles.yaml.
                   # WAF / Shield (FS-01)
                   - wafv2:ListWebACLs
                   - wafv2:GetWebACL
