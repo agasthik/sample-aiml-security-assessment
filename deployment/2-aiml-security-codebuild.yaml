@@ -30,7 +30,7 @@ Metadata:
       TargetRegions:
         default: AWS regions to scan
       EnableFinServAssessment:
-        default: Financial Services GenAI risk checks
+        default: Responsible AI GRC checks (legacy parameter name; see alias below)
       EnableResponsibleAIGovAssessment:
         default: Responsible AI GRC checks (alias for the option above)
       EnableOWASPAssessment:
@@ -137,10 +137,14 @@ Parameters:
 
   EnableFinServAssessment:
     Description: >
-      Run the Financial Services GenAI risk checks (FS-01 through FS-69) in every
-      scanned account. Enable this only when you need the additional industry
-      risk assessment; the findings add a dedicated report section and increase
-      report size.
+      Run the Responsible AI GRC checks (FS-01 through FS-69) in every scanned
+      account — cross-industry technical controls for AI governance, risk,
+      and compliance, originally developed for financial services and found
+      applicable across industries. Enable this only when you need the
+      additional risk assessment; the findings add a dedicated report
+      section and increase report size. The parameter name is retained as a
+      compatibility contract for existing stacks and automation; see
+      EnableResponsibleAIGovAssessment below for the current name.
     Type: String
     AllowedValues: ["true", "false"]
     Default: "false"
