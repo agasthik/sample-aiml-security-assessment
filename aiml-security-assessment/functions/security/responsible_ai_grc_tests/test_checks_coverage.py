@@ -1,5 +1,5 @@
 """
-Additional tests targeting the uncovered branches in finserv_assessments/app.py.
+Additional tests targeting the uncovered branches in responsible_ai_grc_assessments/app.py.
 These complement test_checks.py to push coverage from 83% → 90%+.
 
 Each class targets a specific uncovered branch identified from coverage.json.

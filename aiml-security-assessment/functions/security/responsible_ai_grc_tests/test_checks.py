@@ -1,5 +1,5 @@
 """
-Tests for all check functions in finserv_assessments/app.py
+Tests for all check functions in responsible_ai_grc_assessments/app.py
 
 Strategy:
   - Every check function is tested for at least two scenarios:
@@ -3603,9 +3603,12 @@ class TestRequirementVersionFloors:
 
     @staticmethod
     def _load_requirements() -> str:
-        """Load finserv_assessments/requirements.txt relative to the tests/ dir."""
+        """Load responsible_ai_grc_assessments/requirements.txt relative to the tests/ dir."""
         req_path = os.path.join(
-            os.path.dirname(__file__), "..", "finserv_assessments", "requirements.txt"
+            os.path.dirname(__file__),
+            "..",
+            "responsible_ai_grc_assessments",
+            "requirements.txt",
         )
         with open(req_path) as f:
             return f.read()
@@ -3624,7 +3627,7 @@ class TestRequirementVersionFloors:
         assert boto3_floor >= self.MIN_BOTO3, (
             f"boto3 floor {boto3_floor} is below minimum {self.MIN_BOTO3}; "
             "FS-06 describe_budgets(ShowFilterExpression=True) requires boto3>=1.43.0. "
-            "Bump the floor in finserv_assessments/requirements.txt."
+            "Bump the floor in responsible_ai_grc_assessments/requirements.txt."
         )
 
     def test_botocore_floor_meets_minimum(self):
@@ -3641,7 +3644,8 @@ class TestRequirementVersionFloors:
         assert botocore_floor >= self.MIN_BOTOCORE, (
             f"botocore floor {botocore_floor} is below minimum {self.MIN_BOTOCORE}; "
             "FS-03 list_aws_default_service_quotas and FS-06 ShowFilterExpression "
-            "require botocore>=1.43.0. Bump the floor in finserv_assessments/requirements.txt."
+            "require botocore>=1.43.0. Bump the floor in "
+            "responsible_ai_grc_assessments/requirements.txt."
         )
 
     def test_pydantic_floor_present(self):

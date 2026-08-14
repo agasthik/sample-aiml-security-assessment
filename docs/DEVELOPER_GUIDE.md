@@ -107,9 +107,9 @@ sample-aiml-security-assessment/
 │   │   ├── bedrock_assessments/      # Bedrock security checks (33)
 │   │   ├── sagemaker_assessments/    # SageMaker security checks (25)
 │   │   ├── agentcore_assessments/    # AgentCore security checks (13)
-│   │   ├── finserv_assessments/      # Optional Responsible AI GRC checks (64)
+│   │   ├── responsible_ai_grc_assessments/  # Optional Responsible AI GRC checks (64)
 │   │   ├── owasp_assessments/        # Optional OWASP Top 10 for LLM checks (12)
-│   │   ├── finserv_tests/            # FinServ-specific unit and coverage tests
+│   │   ├── responsible_ai_grc_tests/ # Responsible AI GRC-specific unit and coverage tests
 │   │   ├── iam_permission_caching/   # AWS IAM permissions cache
 │   │   ├── cleanup_bucket/           # Amazon S3 cleanup
 │   │   ├── resolve_regions/          # Multi-region resolution Lambda
@@ -897,7 +897,7 @@ export AWS_ACCESS_KEY_ID=testing
 export AWS_SECRET_ACCESS_KEY=testing
 
 python -m pytest tests/ -v --tb=short
-python -m pytest aiml-security-assessment/functions/security/finserv_tests/ -v --tb=short
+python -m pytest aiml-security-assessment/functions/security/responsible_ai_grc_tests/ -v --tb=short
 python -m pytest tests/test_consolidate_finserv.py -v --tb=short
 
 cd aiml-security-assessment/functions/security/generate_consolidated_report

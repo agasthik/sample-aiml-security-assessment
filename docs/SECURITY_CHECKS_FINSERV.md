@@ -52,7 +52,7 @@ therefore carries an empty `Compliance_Frameworks` value.
 | Remediation | None required unless GenAI workloads are expected in that region. |
 
 It is recorded in
-[`provenance.json`](../aiml-security-assessment/functions/security/finserv_assessments/provenance.json)
+[`provenance.json`](../aiml-security-assessment/functions/security/responsible_ai_grc_assessments/provenance.json)
 with `not_a_control: true`, because registry-based audits would otherwise miss it entirely.
 
 Each check includes how it is **detected** (the AWS API calls or configuration inspected) and
@@ -157,7 +157,7 @@ GitHub issue, fork + feature branch, Conventional Commits, PR, and reviewer assi
 
 Key quality gates before opening the PR:
 
-1. `ruff check` and `ruff format --check` pass on `functions/security/finserv_assessments/`.
+1. `ruff check` and `ruff format --check` pass on `functions/security/responsible_ai_grc_assessments/`.
 2. `cfn-lint` and `sam validate --lint` pass on the SAM templates.
 3. [ASH v3](https://awslabs.github.io/automated-security-helper/) scan
    (`ash --source-dir . --fail-on-findings --config-overrides
@@ -212,7 +212,7 @@ whether the FS check adds FinServ-specific regulatory specificity, (3) severity 
 
 ### Summary of consolidation recommendations
 
-- **Extend upstream (5 FS checks merged into 5 upstream checks):** FS-17 → SM-07; FS-18 → SM-23; FS-19 → SM-22; FS-23 → BR-06; FS-64 → BR-04. These checks are replaced by upstream-extension notes in Parts 1 and 3 and are removed from `finserv_assessments/app.py`.
+- **Extend upstream (5 FS checks merged into 5 upstream checks):** FS-17 → SM-07; FS-18 → SM-23; FS-19 → SM-22; FS-23 → BR-06; FS-64 → BR-04. These checks are replaced by upstream-extension notes in Parts 1 and 3 and are removed from `responsible_ai_grc_assessments/app.py`.
 - **Keep separate (64 FS checks):** All other FS checks ship as standalone entries. This includes FS-20, FS-22, FS-25, FS-26, FS-39, FS-41, all Guardrail-policy-level checks (FS-27, FS-28, FS-36, FS-38, FS-45, FS-47, FS-50, FS-51, FS-59), and all FS checks that have no upstream overlap at all.
 
 After FinServ consolidation the framework contains **71 upstream + 27 AG + 64 FS = 162 distinct checks** before optional OWASP checks. With the 12 optional OWASP Top 10 for LLM checks enabled, the full catalog contains **174 distinct checks**. The FinServ consolidation reduces duplication without losing FinServ-specific regulatory depth.

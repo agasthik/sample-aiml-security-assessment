@@ -1,5 +1,5 @@
 """
-Integration tests for the lambda_handler in finserv_assessments/app.py
+Integration tests for the lambda_handler in responsible_ai_grc_assessments/app.py
 
 These tests verify:
   - lambda_handler runs end-to-end with all checks mocked

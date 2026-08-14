@@ -208,22 +208,22 @@ def test_physical_function_name_is_frozen(template):
 def test_own_lambda_prefix_matches_self_exclusion_assumption():
     """The "aiml-security-" prefix must survive Stage 2b unchanged.
 
-    finserv_assessments/app.py's _self_lambda_name_prefix() derives the FS-67
-    self-exclusion prefix by checking AWS_LAMBDA_FUNCTION_NAME against this
-    exact literal at runtime — it does not derive the prefix from the stack
-    name. Dropping it (the redundant aiml-security-aiml-security-<acct>-...
-    prefix noted in rebrand-plan.md section 14) would silently disable
-    self-exclusion for every sibling assessment Lambda, not just this one.
-    That is why Stage 2b renames only the function-name SUFFIX and explicitly
-    does not implement the prefix removal recorded as item 8 in the Stage 2b
-    design doc.
+    responsible_ai_grc_assessments/app.py's _self_lambda_name_prefix() derives
+    the FS-67 self-exclusion prefix by checking AWS_LAMBDA_FUNCTION_NAME
+    against this exact literal at runtime — it does not derive the prefix
+    from the stack name. Dropping it (the redundant
+    aiml-security-aiml-security-<acct>-... prefix noted in rebrand-plan.md
+    section 14) would silently disable self-exclusion for every sibling
+    assessment Lambda, not just this one. That is why Stage 2b renames only
+    the function-name SUFFIX and explicitly does not implement the prefix
+    removal recorded as item 8 in the Stage 2b design doc.
     """
     app_path = os.path.join(
         REPO_ROOT,
         "aiml-security-assessment",
         "functions",
         "security",
-        "finserv_assessments",
+        "responsible_ai_grc_assessments",
         "app.py",
     )
     with open(app_path) as handle:

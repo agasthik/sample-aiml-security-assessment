@@ -115,7 +115,7 @@ The controls inspect **selected AWS configuration evidence**. Specifically:
 
 - Regulatory framework mappings are **preliminary** unless separately reviewed and validated. Each
   mapping's basis is recorded in
-  [`provenance.json`](../aiml-security-assessment/functions/security/finserv_assessments/provenance.json).
+  [`provenance.json`](../aiml-security-assessment/functions/security/responsible_ai_grc_assessments/provenance.json).
 - A passed check proves neither legal nor regulatory compliance.
 - A passed check does not certify a system as responsible AI.
 - Several policy, fairness, data, and application-level controls require **manual review** and are

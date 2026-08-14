@@ -1,5 +1,5 @@
 """
-Tests for finserv_assessments/schema.py
+Tests for responsible_ai_grc_assessments/schema.py
 
 Covers:
   - Valid finding creation for all severity/status combinations

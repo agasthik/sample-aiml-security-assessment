@@ -29,7 +29,7 @@ REPO_ROOT = os.path.abspath(
 GENERATOR = os.path.join(REPO_ROOT, "generate_provenance.py")
 PROVENANCE_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "finserv_assessments",
+    "responsible_ai_grc_assessments",
     "provenance.json",
 )
 

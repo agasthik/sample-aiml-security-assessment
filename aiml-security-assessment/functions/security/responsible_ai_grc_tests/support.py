@@ -8,7 +8,9 @@ import sys
 
 
 _THIS_DIR = os.path.dirname(__file__)
-_FINSERV_DIR = os.path.abspath(os.path.join(_THIS_DIR, "..", "finserv_assessments"))
+_FINSERV_DIR = os.path.abspath(
+    os.path.join(_THIS_DIR, "..", "responsible_ai_grc_assessments")
+)
 _APP_PATH = os.path.join(_FINSERV_DIR, "app.py")
 _SCHEMA_PATH = os.path.join(_FINSERV_DIR, "schema.py")
 

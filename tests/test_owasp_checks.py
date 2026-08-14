@@ -42,7 +42,7 @@ SOURCE_CHECK_ID_FILES = {
     "BR": _security_functions_dir / "bedrock_assessments" / "app.py",
     "SM": _security_functions_dir / "sagemaker_assessments" / "app.py",
     "AC": _security_functions_dir / "agentcore_assessments" / "app.py",
-    "FS": _security_functions_dir / "finserv_assessments" / "app.py",
+    "FS": _security_functions_dir / "responsible_ai_grc_assessments" / "app.py",
 }
 
 

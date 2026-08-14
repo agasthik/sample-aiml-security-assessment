@@ -495,13 +495,14 @@ Resources:
       # (16 chars) as part of Phase 2 Stage 2b. The "aiml-security-" prefix is
       # intentionally UNCHANGED even though it duplicates the stack name for
       # member accounts (see rebrand-plan.md section 14): dropping it would
-      # break _self_lambda_name_prefix() in finserv_assessments/app.py, which
-      # derives the FS-67 self-exclusion prefix by checking this exact literal
-      # against AWS_LAMBDA_FUNCTION_NAME at runtime. That check does not derive
+      # break _self_lambda_name_prefix() in
+      # responsible_ai_grc_assessments/app.py, which derives the FS-67
+      # self-exclusion prefix by checking this exact literal against
+      # AWS_LAMBDA_FUNCTION_NAME at runtime. That check does not derive
       # from the stack name, so it is a behavioral dependency on this prefix
       # for every sibling assessment function, not just this one.
       FunctionName: !Sub 'aiml-security-${AWS::StackName}-RAIGRCAssessment'
-      CodeUri: functions/security/finserv_assessments/
+      CodeUri: functions/security/responsible_ai_grc_assessments/
       Handler: app.lambda_handler
       Runtime: python3.12
       Architectures:

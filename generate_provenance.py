@@ -7,12 +7,13 @@ rather than inventing a fourth:
   1. ``docs/SECURITY_CHECKS_FINSERV.md`` — per-check ``[Guide §N.N.N]`` tags,
      with ``, extension`` marking a control that is consistent with the guide's
      risk description but not verbatim in it.
-  2. ``finserv_assessments/app.py`` docstrings — the ``COMPLIANCE_PLACEHOLDER``
-     list, which is the in-code regulatory provenance.
-  3. ``finserv_assessments/app.py`` ``COMPLIANCE_MAP`` — the values actually
-     shipped in the ``Compliance_Frameworks`` CSV column.
+  2. ``responsible_ai_grc_assessments/app.py`` docstrings — the
+     ``COMPLIANCE_PLACEHOLDER`` list, which is the in-code regulatory
+     provenance.
+  3. ``responsible_ai_grc_assessments/app.py`` ``COMPLIANCE_MAP`` — the values
+     actually shipped in the ``Compliance_Frameworks`` CSV column.
 
-Output: ``aiml-security-assessment/functions/security/finserv_assessments/provenance.json``
+Output: ``aiml-security-assessment/functions/security/responsible_ai_grc_assessments/provenance.json``
 
 This file is generated AND checked in. ``test_provenance.py`` regenerates it and
 fails on any diff, so the record cannot drift from the code and docs.
@@ -43,7 +44,7 @@ APP_PATH = os.path.join(
     "aiml-security-assessment",
     "functions",
     "security",
-    "finserv_assessments",
+    "responsible_ai_grc_assessments",
     "app.py",
 )
 DOC_PATH = os.path.join(REPO_ROOT, "docs", "SECURITY_CHECKS_FINSERV.md")
@@ -52,7 +53,7 @@ OUT_PATH = os.path.join(
     "aiml-security-assessment",
     "functions",
     "security",
-    "finserv_assessments",
+    "responsible_ai_grc_assessments",
     "provenance.json",
 )
 

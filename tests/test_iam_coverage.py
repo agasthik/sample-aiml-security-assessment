@@ -60,7 +60,7 @@ _AGENTCORE_PERMISSION_TEMPLATES = [
 
 # IAM actions the FinServ checks (FS-01..FS-69) require, by the check(s) that call
 # them. apigateway:GET covers get_rest_apis/get_request_validators/get_usage_plans/
-# get_models. Keep this in sync with finserv_assessments/app.py.
+# get_models. Keep this in sync with responsible_ai_grc_assessments/app.py.
 REQUIRED_FINSERV_ACTIONS = {
     "wafv2:ListWebACLs",
     "wafv2:GetWebACL",  # FS-01/53/56/68

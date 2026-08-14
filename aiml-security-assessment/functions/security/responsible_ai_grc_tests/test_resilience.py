@@ -1,5 +1,5 @@
 """
-Resilience and partial-inventory tests for finserv_assessments/app.py.
+Resilience and partial-inventory tests for responsible_ai_grc_assessments/app.py.
 
 Verifies:
   1. Single-inventory failure → only dependent checks emit COULD_NOT_ASSESS
