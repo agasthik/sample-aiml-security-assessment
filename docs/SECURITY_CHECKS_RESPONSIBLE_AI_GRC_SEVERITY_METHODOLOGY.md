@@ -123,7 +123,7 @@ a default band. Per-control I×L may refine within ±1 with a documented reason.
 | **Non-verifiable advisory** | app-layer; no API | **Informational** | FS-24, FS-29, FS-32, FS-37, FS-49, FS-54, FS-57, FS-58, FS-60, FS-62 |
 
 The authoritative per-finding assignments are in
-[`SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md`](./SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md).
+[`SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md`](./SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md).
 
 ---
 
@@ -145,7 +145,7 @@ The authoritative per-finding assignments are in
    *(FS-01 emits four finding-names under one Check_ID; the register is keyed by finding-name so Shield=Low and WAF=Medium can coexist under FS-01.)*
 2. **Code matches register.** Every `create_finding(... severity=...)` must equal the register's label for that finding. A unit test enforces this (prevents future drift) — a strong guard for a public tool.
 3. **Docs match register.** The per-check severity columns and the `Severity rubric` section in
-   `SECURITY_CHECKS_FINSERV.md` are regenerated/checked against
+   `SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md` are regenerated/checked against
    the register. The "Advisory" tier in the existing rubric is reconciled (Advisory = the Informational disposition for non-verifiable controls).
 4. **Methodology surfaced to users.** A condensed version of §2–§3 is added to the README and
    linked from the Responsible AI GRC report section so the methodology travels with the artifact (directly answering the reviewer).

@@ -690,7 +690,7 @@ governance, risk, and compliance controls derived from the
 An additional 5 FS checks are contributed as extensions to existing SM-07,
 SM-22, SM-23, BR-04, and BR-06 (see in-file extension notes).
 
-The full catalog is in **[`SECURITY_CHECKS_FINSERV.md`](./SECURITY_CHECKS_FINSERV.md)**,
+The full catalog is in **[`SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md`](./SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md)**,
 organized into three parts:
 
 - **Part 1 — Infrastructure & Resource Controls** — FS-01 to FS-26

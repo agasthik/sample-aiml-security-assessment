@@ -2,9 +2,9 @@
 
 This register is the **single source of truth** for the severity of every Responsible AI GRC
 (`FS-`) finding. It is
-derived by applying [`SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md`](./SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md) (Likelihood × Impact →
+derived by applying [`SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md`](./SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md) (Likelihood × Impact →
 ASFF label; §3.4 disposition rules; §3.5 family bands) to the **183 `create_finding` rows / 65
-check IDs** extracted from `finserv_assessments/app.py`. 182 of those call sites carry a static
+check IDs** extracted from `responsible_ai_grc_assessments/app.py`. 182 of those call sites carry a static
 finding-name; they reduce to **175 distinct names**, which are the 181 rows in the tables below
 (a few names, such as `No Knowledge Bases Found`, are shared by several check IDs and so appear
 once per check). The 183rd is the shared `_could_not_assess_row` helper, whose name is built at
@@ -49,7 +49,7 @@ Medium (FS-02 was High); no `Critical` (capped at High).
 Emitted by `_no_regional_genai_resources_row` and persisted to the CSV, so it needs a
 severity, but FS-00 is deliberately absent from the check registry and from the
 compliance mapping (see the FS-00 section of
-[`SECURITY_CHECKS_FINSERV.md`](./SECURITY_CHECKS_FINSERV.md)). There is no I×L: the
+[`SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md`](./SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md)). There is no I×L: the
 severity comes from the NOT_APPLICABLE disposition rule (§3.4).
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |

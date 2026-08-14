@@ -1,6 +1,6 @@
 """
-Drift-guard for the FinServ severity methodology
-(REQ-6 / SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md).
+Drift-guard for the Responsible AI GRC severity methodology
+(REQ-6 / SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md).
 
 Asserts that:
   1. The Likelihood x Impact matrix helper matches the documented table (methodology §3.3).

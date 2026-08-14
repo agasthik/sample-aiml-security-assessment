@@ -15,8 +15,8 @@ Check ID namespace: FS-01 through FS-69
                    (FS-64 merged into upstream BR-04)
 
 5 checks (FS-17, FS-18, FS-19, FS-23, FS-64) are contributed as upstream extensions
-rather than standalone entries — see extension notes in the SECURITY_CHECKS_FINSERV
-Part 1 and Part 3 markdown files.
+rather than standalone entries — see extension notes in the
+SECURITY_CHECKS_RESPONSIBLE_AI_GRC Part 1 and Part 3 markdown files.
 
 FS-27 is split into two check functions sharing the same check_id:
   1. check_guardrail_contextual_grounding() — verifies contextualGroundingPolicy
@@ -437,8 +437,9 @@ COMPLIANCE_MAP: Dict[str, str] = {
 
 
 # ---------------------------------------------------------------------------
-# SEVERITY METHODOLOGY (see docs/SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md
-# + docs/SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md)
+# SEVERITY METHODOLOGY (see
+# docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md
+# + docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md)
 #
 # Severity = property of the CONTROL (the risk it mitigates), assigned once via a
 # Likelihood (L) x Impact (I) matrix mapped to the AWS Security Hub ASFF label set,
@@ -486,7 +487,8 @@ _DISPOSITION_SEVERITY = {
 
 
 # Authoritative per-finding severity register (keyed by finding-name).
-# Source of truth derived from docs/SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md. The test suite
+# Source of truth derived from
+# docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md. The test suite
 # (test_severity_register.py) asserts every emitted severity matches this map.
 # Entries: finding_name -> (severity, disposition). I/L rationale lives in the doc.
 SEVERITY_REGISTER: Dict[str, str] = {
@@ -740,7 +742,7 @@ def _could_not_assess_row(check_id: str, check_name: str, err: Any) -> Dict[str,
     """
     Synthesize one visible finding row for a check that errored out and produced
     no rows. Uses Status="N/A", Severity="Low" (the COULD_NOT_ASSESS disposition —
-    see SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md §3.4) so the gap surfaces in the report as an
+    see SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md §3.4) so the gap surfaces in the report as an
     unknown/assessment-gap without inflating the Failed count or implying a
     confirmed control failure.
     """
@@ -2412,7 +2414,7 @@ def check_ecr_image_scanning() -> Dict[str, Any]:
 #
 # NOTE: FS-17 (Model Monitor Data Quality → SM-07), FS-18 (Model Drift Detection → SM-23),
 # and FS-19 (Model Registry Approval → SM-22) are merged into upstream checks.
-# See extension notes in SECURITY_CHECKS_FINSERV.md.
+# See extension notes in SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md.
 # ===========================================================================
 
 

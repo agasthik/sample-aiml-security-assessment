@@ -1,7 +1,7 @@
 """Validation for the checked-in Responsible AI GRC provenance record.
 
 provenance.json is generated from three sources that already exist in the repo:
-the per-check [Guide §N.N.N] tags in docs/SECURITY_CHECKS_FINSERV.md, the
+the per-check [Guide §N.N.N] tags in docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md, the
 COMPLIANCE_PLACEHOLDER docstrings in app.py, and COMPLIANCE_MAP. It is generated
 AND checked in, so the record cannot drift silently.
 

@@ -58,9 +58,9 @@ with `not_a_control: true`, because registry-based audits would otherwise miss i
 Each check includes how it is **detected** (the AWS API calls or configuration inspected) and
 how a failure is **remediated** (the specific AWS actions to take). Severities follow a
 documented Likelihood × Impact methodology — see the
-[Responsible AI GRC Severity Methodology](./SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md), with
+[Responsible AI GRC Severity Methodology](./SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md), with
 authoritative per-finding assignments in the
-[Responsible AI GRC Severity Register](./SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md).
+[Responsible AI GRC Severity Register](./SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md).
 
 ## Table of Contents
 
@@ -109,8 +109,8 @@ Severities follow a documented **Likelihood × Impact** methodology mapped to th
 ASFF label set (`Informational | Low | Medium | High`; `Critical` is reserved, not used this
 round). The full methodology, the 3×3 scoring matrix, the N/A **disposition rules**, and the
 authoritative per-finding assignments are in
-[`SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md`](./SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md)
-and [`SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md`](./SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md).
+[`SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md`](./SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md)
+and [`SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md`](./SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md).
 
 | Severity | Criteria (ASFF-aligned) |
 | --- | --- |

@@ -125,10 +125,10 @@ sample-aiml-security-assessment/
 ├── docs/                             # Documentation
 │   ├── DEVELOPER_GUIDE.md            # This guide
 │   ├── SECURITY_CHECKS.md            # Security checks reference (core + Agentic)
-│   ├── SECURITY_CHECKS_FINSERV.md    # FinServ GenAI risk checks reference
+│   ├── SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md  # Responsible AI GRC checks reference
 │   ├── SECURITY_CHECKS_OWASP.md      # OWASP Top 10 for LLM checks reference
-│   ├── SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md  # FinServ severity model
-│   ├── SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md     # FinServ per-finding severities
+│   ├── SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md  # Severity model
+│   ├── SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md     # Per-finding severities
 │   ├── TROUBLESHOOTING.md            # Troubleshooting guide
 │   ├── CLEANUP.md                    # Resource removal guide
 │   ├── diagrams/                     # Architecture diagrams

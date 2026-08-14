@@ -4,9 +4,9 @@
 Reconciles the three provenance artifacts that already exist in this repository
 rather than inventing a fourth:
 
-  1. ``docs/SECURITY_CHECKS_FINSERV.md`` — per-check ``[Guide §N.N.N]`` tags,
-     with ``, extension`` marking a control that is consistent with the guide's
-     risk description but not verbatim in it.
+  1. ``docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md`` — per-check
+     ``[Guide §N.N.N]`` tags, with ``, extension`` marking a control that is
+     consistent with the guide's risk description but not verbatim in it.
   2. ``responsible_ai_grc_assessments/app.py`` docstrings — the
      ``COMPLIANCE_PLACEHOLDER`` list, which is the in-code regulatory
      provenance.
@@ -47,7 +47,7 @@ APP_PATH = os.path.join(
     "responsible_ai_grc_assessments",
     "app.py",
 )
-DOC_PATH = os.path.join(REPO_ROOT, "docs", "SECURITY_CHECKS_FINSERV.md")
+DOC_PATH = os.path.join(REPO_ROOT, "docs", "SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md")
 OUT_PATH = os.path.join(
     REPO_ROOT,
     "aiml-security-assessment",

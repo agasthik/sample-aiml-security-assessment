@@ -403,7 +403,7 @@ Responsible AI GRC (`FS-`) check severities are assigned by a documented, reprod
 
 Severity is a property of the **control** (its inherent risk), so a check's `Passed` and `Failed` rows carry the same severity. The `N/A` family is fixed by disposition: *not-applicable* and *advisory* findings are **Informational**; *could-not-assess* (access-denied / unsupported region) findings are **Low**. `Critical` is reserved and not currently emitted.
 
-For the full methodology (matrix, factor definitions, disposition rules) and the authoritative per-finding assignments, see [Responsible AI GRC Severity Methodology](docs/SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md) and the [Responsible AI GRC Severity Register](docs/SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md). Mappings are preliminary — validate with your MRM/Legal/Compliance teams before relying on them as audit evidence.
+For the full methodology (matrix, factor definitions, disposition rules) and the authoritative per-finding assignments, see [Responsible AI GRC Severity Methodology](docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md) and the [Responsible AI GRC Severity Register](docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md). Mappings are preliminary — validate with your MRM/Legal/Compliance teams before relying on them as audit evidence.
 
 ## Customization
 
@@ -441,10 +441,10 @@ If you need to reduce scope, review the role policies in:
 | [Security Checks Reference](docs/SECURITY_CHECKS.md) | Complete reference for all 174 security checks with severity levels |
 | [OWASP Top 10 for LLM Checks](docs/SECURITY_CHECKS_OWASP.md) | Complete OW-01..12 reference: mapping-derived OWASP LLM01..LLM10 rows, native LLM07 checks, source dependencies, references, and status semantics |
 | [Responsible AI GRC Scope](docs/RESPONSIBLE_AI_GRC_SCOPE.md) | What Responsible AI GRC is and is not, its relationship to the AWS Well-Architected Responsible AI Lens, the per-bucket source catalog, check-count reconciliation, terminology, and the compatibility policy for preserved identifiers |
-| [Responsible AI GRC Checks](docs/SECURITY_CHECKS_FINSERV.md) | Complete FS-01..69 reference: shared introduction, severity rubric, upstream-overlap table, compliance framework mapping, and all check definitions (Part 1 infrastructure controls, Part 2 guardrails & content safety, Part 3 app-layer controls & gaps) |
-| [Responsible AI GRC Severity Methodology](docs/SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md) | Likelihood × Impact → ASFF severity model, disposition rules, and research basis for FS check severities |
-| [Responsible AI GRC Severity Register](docs/SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md) | Authoritative per-finding severity assignments (the single source of truth enforced by the drift-guard test) |
-| [Responsible AI GRC Compliance Mappings](docs/SECURITY_CHECKS_FINSERV.md#compliance-framework-mapping) | Preliminary mapping of FS checks to SR 11-7, FFIEC CAT, NYDFS 500, PCI-DSS, DORA, MAS TRM, ISO 27001, ECOA, and OWASP LLM Top 10 |
+| [Responsible AI GRC Checks](docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md) | Complete FS-01..69 reference: shared introduction, severity rubric, upstream-overlap table, compliance framework mapping, and all check definitions (Part 1 infrastructure controls, Part 2 guardrails & content safety, Part 3 app-layer controls & gaps) |
+| [Responsible AI GRC Severity Methodology](docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md) | Likelihood × Impact → ASFF severity model, disposition rules, and research basis for FS check severities |
+| [Responsible AI GRC Severity Register](docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md) | Authoritative per-finding severity assignments (the single source of truth enforced by the drift-guard test) |
+| [Responsible AI GRC Compliance Mappings](docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md#compliance-framework-mapping) | Preliminary mapping of FS checks to SR 11-7, FFIEC CAT, NYDFS 500, PCI-DSS, DORA, MAS TRM, ISO 27001, ECOA, and OWASP LLM Top 10 |
 | [Troubleshooting Guide](docs/TROUBLESHOOTING.md) | Common issues, stack identification, upgrade guide, debugging |
 | [Developer Guide](docs/DEVELOPER_GUIDE.md) | Architecture details, adding custom checks, and contributing |
 | [Cleanup Guide](docs/CLEANUP.md) | Step-by-step resource removal instructions |
