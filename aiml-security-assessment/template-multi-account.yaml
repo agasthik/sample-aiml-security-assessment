@@ -605,6 +605,7 @@ Resources:
                 - sagemaker:ListModelPackageGroups
                 - sagemaker:ListModelPackages
                 - sagemaker:ListFeatureGroups
+                - sagemaker:DescribeFeatureGroup # FS-20
                 - sagemaker:ListModels
                 - sagemaker:ListEndpoints
                 - sagemaker:ListModelCards
@@ -629,6 +630,11 @@ Resources:
               Action:
                 - ecr:DescribeRepositories
                 - ecr:DescribeImageScanFindings
+              Resource: '*'
+            - Sid: InspectorPermissions
+              Effect: Allow
+              Action:
+                - inspector2:BatchGetAccountStatus # FS-16
               Resource: '*'
             - Sid: CloudTrailPermissions
               Effect: Allow

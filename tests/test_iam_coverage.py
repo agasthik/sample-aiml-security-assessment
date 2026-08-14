@@ -11,6 +11,32 @@ This is what would otherwise surface in customer accounts as AccessDenied /
 "COULD NOT ASSESS". The map is derived from the per-check boto3 API inventory.
 Parsing uses a token regex (not a YAML load) so CloudFormation intrinsics
 (!Ref/!GetAtt/!Sub) do not interfere.
+
+Two grant-source architectures, two matching test strategies:
+  - The SAM templates (template.yaml / template-multi-account.yaml) give each
+    assessment Lambda its OWN Policies block under its own resource. An action
+    granted under one function's block does not help a different function at
+    runtime.
+  - The deployment-layer wrapper templates (1-aiml-security-member-roles.yaml,
+    aiml-security-single-account.yaml, 2-aiml-security-codebuild.yaml) run the
+    whole assessment as one process under a single shared IAM role, so there
+    is no per-function separation to preserve there.
+
+The file-wide `_granted_actions()` scan below is correct for the deployment
+templates, but is NOT resource-aware, so used alone against the SAM templates
+it cannot tell "granted to the function that needs it" apart from "granted to
+some other function's policy in the same file". That gap shipped a real bug:
+inspector2:BatchGetAccountStatus (FS-16) and sagemaker:DescribeFeatureGroup
+(FS-20) were required by ResponsibleAIGRCAssessmentFunction but
+BatchGetAccountStatus was granted only to the unrelated
+BedrockSecurityAssessmentFunction's policy (for its own BR-33 check) — found
+via live AWS testing, not by this test suite, because the file-wide scan saw
+the action present *somewhere* in the file and reported the requirement as
+satisfied. `_granted_actions_for_resource()` and the
+`test_required_*_actions_are_granted_to_the_*_function` tests below scope the
+scan to one resource's own block on the SAM templates specifically, so a
+repeat of this exact bug class (grant landed on the wrong function) fails the
+suite instead of shipping silently.
 """
 
 import os
@@ -139,10 +165,50 @@ REQUIRED_AGENTCORE_ACTIONS = {
 
 _ACTION_RE = re.compile(r"-\s+([a-z0-9-]+:[A-Za-z0-9]+)")
 
+# Matches a top-level (2-space-indented) CloudFormation logical resource ID line,
+# e.g. "  ResponsibleAIGRCAssessmentFunction:". Used to find where one resource's
+# block ends and the next begins in the SAM templates, which are flat YAML
+# mappings under `Resources:` with every top-level resource indented exactly 2
+# spaces. A dedicated regex (rather than a YAML load) is used deliberately:
+# CloudFormation intrinsics (!Ref/!GetAtt/!Sub) are not valid plain YAML/JSON
+# without a CloudFormation-aware loader, and this file otherwise avoids that
+# dependency (see module docstring).
+_RESOURCE_HEADER_RE = re.compile(r"^  [A-Za-z][A-Za-z0-9]*:\s*$", re.MULTILINE)
+
+_SAM_TEMPLATES = [
+    os.path.join(_REPO_ROOT, "aiml-security-assessment", "template.yaml"),
+    os.path.join(_REPO_ROOT, "aiml-security-assessment", "template-multi-account.yaml"),
+]
+
 
 def _granted_actions(path):
     with open(path, encoding="utf-8") as fh:
         return set(_ACTION_RE.findall(fh.read()))
+
+
+def _resource_block(path, logical_id):
+    """Return the raw text of one top-level resource's own block.
+
+    Scoped to the SAM templates (`_SAM_TEMPLATES`), where every assessment
+    Lambda is its own top-level resource with its own `Policies:` block.
+    Slices from the resource's header line up to (but not including) the next
+    top-level resource header, so text belonging to a sibling resource's
+    policy is never included — the exact gap that let an action granted to
+    one function's block satisfy a different function's requirement.
+    """
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    header = f"\n  {logical_id}:"
+    start = text.find(header)
+    assert start != -1, f"resource {logical_id!r} not found in {os.path.basename(path)}"
+    start += 1  # skip the leading newline so the header line itself is included
+    match = _RESOURCE_HEADER_RE.search(text, start + len(header))
+    end = match.start() if match else len(text)
+    return text[start:end]
+
+
+def _granted_actions_for_resource(path, logical_id):
+    return set(_ACTION_RE.findall(_resource_block(path, logical_id)))
 
 
 @pytest.mark.parametrize(
@@ -200,6 +266,90 @@ def test_required_agentcore_actions_are_granted(template):
     assert not missing, (
         f"{os.path.basename(template)} is missing required AgentCore IAM action(s): "
         f"{missing}. Add them or an AgentCore check will hit AccessDenied."
+    )
+
+
+# Resource-scoped guards (SAM templates only) --------------------------------
+#
+# The file-wide tests above are necessary but not sufficient for the SAM
+# templates: they prove an action is granted *somewhere* in the file, not that
+# it is granted to the specific Lambda whose code calls it. The tests below
+# close that gap by scoping the scan to each function's own resource block.
+#
+# Logical IDs are read directly from the SAM templates rather than hardcoded
+# as a second copy, so a future rename only has to happen in one place.
+_RESPONSIBLE_AI_GRC_FUNCTION_ID = "ResponsibleAIGRCAssessmentFunction"
+_SAGEMAKER_FUNCTION_ID = "SagemakerSecurityAssessmentFunction"
+_AGENTCORE_FUNCTION_ID = "AgentCoreSecurityAssessmentFunction"
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=lambda p: os.path.basename(p))
+def test_required_finserv_actions_are_granted_to_the_finserv_function(template):
+    """Same requirement as test_required_finserv_actions_are_granted, but scoped
+    to ResponsibleAIGRCAssessmentFunction's own Policies block on the SAM
+    templates specifically.
+
+    This is the test that would have caught the live bug: inspector2:Batch-
+    GetAccountStatus and sagemaker:DescribeFeatureGroup were both present in
+    template.yaml (satisfying the file-wide test above) but granted only to
+    BedrockSecurityAssessmentFunction / never granted at all — not to this
+    function, which is the one that actually calls them for FS-16 and FS-20.
+    """
+    granted = _granted_actions_for_resource(template, _RESPONSIBLE_AI_GRC_FUNCTION_ID)
+    missing = sorted(a for a in REQUIRED_FINSERV_ACTIONS if a not in granted)
+    assert not missing, (
+        f"{os.path.basename(template)}: {_RESPONSIBLE_AI_GRC_FUNCTION_ID}'s own "
+        f"policy block is missing required IAM action(s): {missing}. A grant "
+        "present elsewhere in this file does not help this function at "
+        "runtime — add the action(s) to this function's own Policies block."
+    )
+
+
+def test_resource_scoped_guard_detects_a_grant_on_the_wrong_function():
+    """Prove the resource-scoped guard fails when a required action is granted
+    only to a different function's block (self-test; reproduces the live bug).
+
+    inspector2:BatchGetAccountStatus is granted to BedrockSecurityAssessment-
+    Function (its own BR-33 check) in template.yaml. Scoping the scan to that
+    *other* function's block must show the action absent from
+    ResponsibleAIGRCAssessmentFunction's requirement, even though the file-wide
+    scan would call it satisfied.
+    """
+    template = _SAM_TEMPLATES[0]
+    granted_elsewhere = _granted_actions_for_resource(
+        template, "BedrockSecurityAssessmentFunction"
+    )
+    assert "inspector2:BatchGetAccountStatus" in granted_elsewhere
+
+    granted_here = _granted_actions_for_resource(
+        template, _RESPONSIBLE_AI_GRC_FUNCTION_ID
+    )
+    granted_here.discard("inspector2:BatchGetAccountStatus")
+    missing = [a for a in REQUIRED_FINSERV_ACTIONS if a not in granted_here]
+    assert "inspector2:BatchGetAccountStatus" in missing
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=lambda p: os.path.basename(p))
+def test_required_sagemaker_actions_are_granted_to_the_sagemaker_function(template):
+    granted = _granted_actions_for_resource(template, _SAGEMAKER_FUNCTION_ID)
+    missing = sorted(a for a in REQUIRED_SAGEMAKER_ACTIONS if a not in granted)
+    assert not missing, (
+        f"{os.path.basename(template)}: {_SAGEMAKER_FUNCTION_ID}'s own policy "
+        f"block is missing required SageMaker IAM action(s): {missing}. A "
+        "grant present elsewhere in this file does not help this function at "
+        "runtime — add the action(s) to this function's own Policies block."
+    )
+
+
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=lambda p: os.path.basename(p))
+def test_required_agentcore_actions_are_granted_to_the_agentcore_function(template):
+    granted = _granted_actions_for_resource(template, _AGENTCORE_FUNCTION_ID)
+    missing = sorted(a for a in REQUIRED_AGENTCORE_ACTIONS if a not in granted)
+    assert not missing, (
+        f"{os.path.basename(template)}: {_AGENTCORE_FUNCTION_ID}'s own policy "
+        f"block is missing required AgentCore IAM action(s): {missing}. A "
+        "grant present elsewhere in this file does not help this function at "
+        "runtime — add the action(s) to this function's own Policies block."
     )
 
 
