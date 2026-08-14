@@ -59,6 +59,18 @@ RETIRED_LABELS = [
     ">FinServ<",
 ]
 
+# ">FinServ<" above is tag-delimited, so it only catches "FinServ" appearing as
+# its own HTML text node -- it cannot catch the word inside a table cell that
+# also contains other text (e.g. a finding name or resolution sentence), or
+# inside prose split across markup. test_bare_finserv_word_is_absent_from_rendered_text
+# below closes that gap with a substring check against de-tagged text content.
+# The one legitimate survivor is the source PDF's URL slug
+# (".../global-FinServ-ComplianceGuide-GenAIRisks-public.pdf"), which names an
+# external AWS document, not this project's retired capability name.
+_ACCEPTABLE_FINSERV_SUBSTRINGS = [
+    "global-FinServ-ComplianceGuide-GenAIRisks-public.pdf",
+]
+
 
 def _render(with_capability: bool = True) -> str:
     findings = [
@@ -128,6 +140,28 @@ def test_canonical_label_renders(html):
 @pytest.mark.parametrize("retired", RETIRED_LABELS)
 def test_retired_labels_do_not_render(html, retired):
     assert retired not in html
+
+
+def test_bare_finserv_word_is_absent_from_rendered_text(html):
+    """Case-insensitive substring check, not tag-delimited.
+
+    ">FinServ<" in RETIRED_LABELS only matches "FinServ" as an isolated HTML
+    text node. It cannot catch the word occurring inside a table cell that
+    also has other text (a finding name, a resolution sentence) or split
+    across markup -- exactly the shape of the 7 finding_details/resolution
+    leaks this test was added to close. Strip every substring known to be an
+    acceptable, non-capability-name occurrence first (currently only the
+    source PDF's URL slug), then require the word to be gone from what
+    remains.
+    """
+    remaining = html
+    for acceptable in _ACCEPTABLE_FINSERV_SUBSTRINGS:
+        remaining = remaining.replace(acceptable, "")
+    assert "finserv" not in remaining.lower(), (
+        "A literal 'FinServ' occurrence survived outside the known-acceptable "
+        "source-URL substrings -- likely a leaked finding_details/resolution "
+        "string or check_name. Reword it to remove the retired capability name."
+    )
 
 
 def test_no_financial_services_capability_label_anywhere(html):

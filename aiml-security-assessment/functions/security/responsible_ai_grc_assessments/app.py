@@ -2150,7 +2150,7 @@ def check_bedrock_model_evaluation_adversarial() -> Dict[str, Any]:
                     finding_name="No Bedrock Evaluation Jobs Found",
                     finding_details=(
                         "No Bedrock Model Evaluation jobs found. Models have not been evaluated "
-                        "for adversarial robustness. FinServ model-risk management (SR 11-7) "
+                        "for adversarial robustness. Model-risk management (SR 11-7) "
                         "expects documented model validation/evaluation."
                     ),
                     resolution=(
@@ -3104,7 +3104,7 @@ def check_guardrail_contextual_grounding(inventory) -> Dict[str, Any]:
                     finding_details="No Bedrock Guardrails configured. Configure guardrails first (see BR-05).",
                     resolution=(
                         "Configure Bedrock Guardrails with contextual grounding checks "
-                        "(grounding threshold ≥0.7 and relevance threshold ≥0.7 for FinServ use cases)."
+                        "(grounding threshold ≥0.7 and relevance threshold ≥0.7 for regulated GenAI use cases)."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-contextual-grounding-check.html",
                     severity="Informational",
@@ -3251,7 +3251,7 @@ def check_automated_reasoning_policies() -> Dict[str, Any]:
                     ),
                     resolution=(
                         "1. In the Amazon Bedrock console → Guardrails → Automated Reasoning, "
-                        "create a policy document encoding your FinServ business rules "
+                        "create a policy document encoding your business rules "
                         "(e.g., eligibility criteria, rate limits, regulatory thresholds).\n"
                         "2. Associate the ARC policy with your guardrail "
                         "(automatedReasoningPolicy.policies field in CreateGuardrail/UpdateGuardrail).\n"
@@ -3399,7 +3399,7 @@ def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
                     ),
                     resolution=(
                         "Verify topics cover regulated financial advice categories. For multilingual "
-                        "FinServ deployments, consider upgrading denied topics to the STANDARD tier "
+                        "deployments, consider upgrading denied topics to the STANDARD tier "
                         "(set topicsTierConfig.tierName=STANDARD via UpdateGuardrail; requires a "
                         "cross-region inference profile on the guardrail). When authoring denied-topic "
                         "policies, use existing compliance materials as the source: employee policies, "
@@ -4118,7 +4118,7 @@ def check_guardrail_content_filters(inventory) -> Dict[str, Any]:
                         "(distinguishes jailbreaks from prompt injection)."
                     ),
                     resolution=(
-                        "Consider upgrading to STANDARD tier content filters for FinServ workloads "
+                        "Consider upgrading to STANDARD tier content filters for workloads "
                         "that handle multiple languages or require higher detection accuracy. "
                         "STANDARD tier requires cross-region inference "
                         "(crossRegionDetails.guardrailProfileArn on the guardrail). "
@@ -5485,7 +5485,7 @@ def check_guardrail_relevance_grounding(inventory) -> Dict[str, Any]:
                         "No guardrails have RELEVANCE contextual grounding filters. "
                         "Without relevance filters, responses that are off-topic or unrelated "
                         "to the user query will not be blocked, increasing hallucination risk "
-                        "in RAG-based FinServ applications."
+                        "in RAG-based applications."
                     ),
                     resolution=(
                         "Enable the RELEVANCE contextual grounding filter in Bedrock Guardrails "
@@ -6201,7 +6201,7 @@ def check_guardrail_topic_allowlist(inventory) -> Dict[str, Any]:
                         "(GA June 2025) adds broader language support for off-topic detection."
                     ),
                     resolution=(
-                        "For multilingual FinServ deployments, consider upgrading denied topics to "
+                        "For multilingual deployments, consider upgrading denied topics to "
                         "the STANDARD tier (topicsTierConfig.tierName=STANDARD via UpdateGuardrail; "
                         "requires a cross-region inference profile)."
                     ),
@@ -7526,7 +7526,7 @@ def _append_no_resource_region_findings(
         return
     findings.append(
         {
-            "check_name": "FinServ Regional Resource Scope",
+            "check_name": "Responsible AI GRC Regional Resource Scope",
             "status": "PASS",
             "details": "No regional GenAI resources found",
             "csv_data": [
