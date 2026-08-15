@@ -264,6 +264,39 @@ def test_legacy_finserv_input_choice_does_not_change_the_default(
     assert choice["Default"] == "Responsible AI GRC Assessment Skipped"
 
 
+def test_legacy_finserv_input_reject_precedes_the_run_choices(
+    responsible_ai_grc_branch,
+):
+    """The reject branch must be evaluated before any branch that runs the scan.
+
+    Choice states are first-match-wins. If a caller passes the retired
+    ``enableFinServ`` shape *alongside* ``enableResponsibleAIGRC`` or
+    ``enableOWASP`` (both routing to "Responsible AI GRC Security Assessment"),
+    an ordering where a run-branch precedes the reject would silently honor the
+    scan and swallow the stale-input signal -- exactly the bug this ordering
+    fixes for the enableOWASP+enableFinServ combination. Lock the reject to the
+    front so it cannot be shadowed.
+    """
+    choices = responsible_ai_grc_branch["States"]["Responsible AI GRC Enabled?"][
+        "Choices"
+    ]
+    reject_indexes = [
+        i for i, c in enumerate(choices) if c["Next"] == LEGACY_INPUT_FAIL_STATE
+    ]
+    run_indexes = [
+        i
+        for i, c in enumerate(choices)
+        if c["Next"] == "Responsible AI GRC Security Assessment"
+    ]
+    assert reject_indexes, "Expected a Choice routing to the legacy-input Fail state"
+    assert run_indexes, "Expected at least one Choice routing to the scan"
+    assert max(reject_indexes) < min(run_indexes), (
+        "The enableFinServ reject Choice must precede every run Choice so it is "
+        "not shadowed when enableFinServ is combined with enableResponsibleAIGRC "
+        "or enableOWASP"
+    )
+
+
 def test_legacy_finserv_input_fail_state_shape(responsible_ai_grc_branch):
     fail_state = responsible_ai_grc_branch["States"][LEGACY_INPUT_FAIL_STATE]
     assert fail_state["Type"] == "Fail"
