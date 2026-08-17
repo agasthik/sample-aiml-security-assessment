@@ -10,9 +10,9 @@ from unittest.mock import MagicMock, patch
 import consolidate_html_reports as chr
 
 
-class TestConsolidateFinservCategorization(unittest.TestCase):
+class TestConsolidateResponsibleAIGRCCategorization(unittest.TestCase):
     ACCT = "999988887777"
-    BASE = tempfile.mkdtemp(prefix="finserv-consolidate-test-")
+    BASE = tempfile.mkdtemp(prefix="responsible-ai-grc-consolidate-test-")
 
     def setUp(self):
         os.makedirs(f"{self.BASE}/{self.ACCT}", exist_ok=True)

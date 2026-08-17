@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Phase 2 — Live AWS integration test for finserv_assessments.
+Phase 2 — Live AWS integration test for responsible_ai_grc_assessments.
 
 Invokes each check function individually against a real AWS account,
 captures results, and produces a triage report showing:

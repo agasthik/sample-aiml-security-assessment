@@ -910,7 +910,7 @@ export AWS_SECRET_ACCESS_KEY=testing
 
 python -m pytest tests/ -v --tb=short
 python -m pytest aiml-security-assessment/functions/security/responsible_ai_grc_tests/ -v --tb=short
-python -m pytest tests/test_consolidate_finserv.py -v --tb=short
+python -m pytest tests/test_consolidate_responsible_ai_grc.py -v --tb=short
 
 cd aiml-security-assessment/functions/security/generate_consolidated_report
 python -m pytest test_generate_report.py -v --tb=short
