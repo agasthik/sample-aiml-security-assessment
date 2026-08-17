@@ -274,40 +274,6 @@
                                             {
                                                 "And": [
                                                     {
-                                                        "Variable": "$.OriginalInput.enableResponsibleAIGRC",
-                                                        "IsPresent": true
-                                                    },
-                                                    {
-                                                        "Variable": "$.OriginalInput.enableResponsibleAIGRC",
-                                                        "StringEquals": "true"
-                                                    },
-                                                    {
-                                                        "Variable": "$.RegionIndex",
-                                                        "NumericEquals": 0
-                                                    }
-                                                ],
-                                                "Next": "Responsible AI GRC Security Assessment"
-                                            },
-                                            {
-                                                "And": [
-                                                    {
-                                                        "Variable": "$.OriginalInput.enableOWASP",
-                                                        "IsPresent": true
-                                                    },
-                                                    {
-                                                        "Variable": "$.OriginalInput.enableOWASP",
-                                                        "StringEquals": "true"
-                                                    },
-                                                    {
-                                                        "Variable": "$.RegionIndex",
-                                                        "NumericEquals": 0
-                                                    }
-                                                ],
-                                                "Next": "Responsible AI GRC Security Assessment"
-                                            },
-                                            {
-                                                "And": [
-                                                    {
                                                         "Variable": "$.OriginalInput.enableFinServ",
                                                         "IsPresent": true
                                                     },
@@ -321,6 +287,40 @@
                                                     }
                                                 ],
                                                 "Next": "Legacy enableFinServ Input Rejected"
+                                            },
+                                            {
+                                                "And": [
+                                                    {
+                                                        "Variable": "$.OriginalInput.enableResponsibleAIGRC",
+                                                        "IsPresent": true
+                                                    },
+                                                    {
+                                                        "Variable": "$.OriginalInput.enableResponsibleAIGRC",
+                                                        "StringEquals": "true"
+                                                    },
+                                                    {
+                                                        "Variable": "$.RegionIndex",
+                                                        "NumericEquals": 0
+                                                    }
+                                                ],
+                                                "Next": "Responsible AI GRC Security Assessment"
+                                            },
+                                            {
+                                                "And": [
+                                                    {
+                                                        "Variable": "$.OriginalInput.enableOWASP",
+                                                        "IsPresent": true
+                                                    },
+                                                    {
+                                                        "Variable": "$.OriginalInput.enableOWASP",
+                                                        "StringEquals": "true"
+                                                    },
+                                                    {
+                                                        "Variable": "$.RegionIndex",
+                                                        "NumericEquals": 0
+                                                    }
+                                                ],
+                                                "Next": "Responsible AI GRC Security Assessment"
                                             }
                                         ],
                                         "Default": "Responsible AI GRC Assessment Skipped"

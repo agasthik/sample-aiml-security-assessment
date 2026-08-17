@@ -163,9 +163,14 @@ All Responsible AI controls
 
 ## Compatibility policy
 
-The rename changes **labels only**. Every machine-facing and persisted identifier is unchanged, because
-archived reports, the OWASP mappings, the report consolidation tooling, and customer automation all
-read them.
+The rename splits machine-facing and persisted identifiers into two buckets. Data-contract identifiers
+that archived reports, the OWASP mappings, the report consolidation tooling, and customer automation
+read are **permanently preserved** unchanged. Identifiers that were purely FinServ *branding* — S3
+object names, DOM selectors and CSS classes, deployment/execution inputs, the Lambda logical and
+physical names, Step Functions state names, directory and doc filenames, and the IAM `Sid` — are
+**renamed** to Responsible AI GRC with no dual-write and no additive alias (the sole exception is the
+`EnableFinServAssessment` / `ENABLE_FINSERV` deployment toggle, retained as a legacy alias; see the
+Renamed table below).
 
 Permanently preserved:
 

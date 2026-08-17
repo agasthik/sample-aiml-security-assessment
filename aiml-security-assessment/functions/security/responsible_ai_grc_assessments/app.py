@@ -7365,7 +7365,7 @@ def _probe_regional_resource_list(probe_label: str, probe_func) -> Optional[bool
         error_code = e.response.get("Error", {}).get("Code", "")
         if _is_access_error(e):
             logger.warning(
-                "Unable to determine FinServ regional footprint from %s: %s",
+                "Unable to determine Responsible AI GRC regional footprint from %s: %s",
                 probe_label,
                 error_code,
             )
@@ -7382,7 +7382,7 @@ def _probe_regional_resource_list(probe_label: str, probe_func) -> Optional[bool
             )
             return False
         logger.warning(
-            "Unexpected error probing %s for FinServ regional footprint: %s",
+            "Unexpected error probing %s for Responsible AI GRC regional footprint: %s",
             probe_label,
             error_code or str(e),
         )
@@ -7393,7 +7393,7 @@ def _probe_regional_resource_list(probe_label: str, probe_func) -> Optional[bool
             logger.info("%s API is not available in this region", probe_label)
             return False
         logger.warning(
-            "Unexpected error probing %s for FinServ regional footprint: %s",
+            "Unexpected error probing %s for Responsible AI GRC regional footprint: %s",
             probe_label,
             error_text,
         )
@@ -7885,7 +7885,7 @@ def lambda_handler(event, context):
     entries share the FS-27 check_id (contextual grounding + ARC policies),
     both contributing rows to the report under the same check namespace.
     """
-    logger.info("Starting FinServ GenAI security assessment")
+    logger.info("Starting Responsible AI GRC security assessment")
     all_findings = []
     region_scopes = _get_region_scopes(event)
 
@@ -7932,7 +7932,7 @@ def lambda_handler(event, context):
     return {
         "statusCode": 200,
         "body": {
-            "message": "FinServ security assessment completed",
+            "message": "Responsible AI GRC security assessment completed",
             "findings": all_findings,
             "report_url": s3_url,
         },
