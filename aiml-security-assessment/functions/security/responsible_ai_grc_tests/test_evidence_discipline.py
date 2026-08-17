@@ -38,6 +38,15 @@ def _guardrail_inventory(topic_policy: dict):
     )
 
 
+def _content_policy_guardrail_inventory(content_policy: dict):
+    return make_resource_inventory(
+        guardrails=app.GuardrailInventory(
+            summaries=[{"id": "g1", "name": "example-guard"}],
+            detail_by_id={"g1": {"contentPolicy": content_policy}},
+        )
+    )
+
+
 # ---------------------------------------------------------------------------
 # FS-28 — an absent tier must be reported as unknown, never assumed CLASSIC.
 # ---------------------------------------------------------------------------
@@ -89,6 +98,121 @@ class TestFS28TierIsObservedNotAssumed:
         )
         result = app.check_guardrail_denied_topics_financial(inv)
         assert "does not establish coverage" in _blob(result)
+
+
+# ---------------------------------------------------------------------------
+# FS-36 — same defect as FS-28, on contentPolicy.tier instead of topicPolicy.tier.
+# An absent tier must be reported as unknown, never assumed CLASSIC.
+# ---------------------------------------------------------------------------
+
+
+class TestFS36TierIsObservedNotAssumed:
+    def test_absent_tier_is_reported_unknown(self):
+        inv = _content_policy_guardrail_inventory(
+            {"filters": [{"type": "HATE", "inputStrength": "HIGH"}]}
+        )
+        result = app.check_guardrail_content_filters(inv)
+        blob = _blob(result)
+        assert "tier unknown" in blob
+        assert "not assumed CLASSIC" in blob
+
+    def test_absent_tier_does_not_produce_the_classic_finding(self):
+        inv = _content_policy_guardrail_inventory(
+            {"filters": [{"type": "HATE", "inputStrength": "HIGH"}]}
+        )
+        result = app.check_guardrail_content_filters(inv)
+        names = [row["Finding"] for row in result["csv_data"]]
+        assert "Guardrail Content Filters on CLASSIC Tier" not in names
+
+    def test_explicit_classic_tier_is_still_reported(self):
+        inv = _content_policy_guardrail_inventory(
+            {
+                "filters": [{"type": "HATE", "inputStrength": "HIGH"}],
+                "tier": {"tierName": "CLASSIC"},
+            }
+        )
+        result = app.check_guardrail_content_filters(inv)
+        names = [row["Finding"] for row in result["csv_data"]]
+        assert "Guardrail Content Filters on CLASSIC Tier" in names
+
+    def test_explicit_standard_tier_still_passes_without_a_classic_claim(self):
+        inv = _content_policy_guardrail_inventory(
+            {
+                "filters": [{"type": "HATE", "inputStrength": "HIGH"}],
+                "tier": {"tierName": "STANDARD"},
+            }
+        )
+        result = app.check_guardrail_content_filters(inv)
+        names = [row["Finding"] for row in result["csv_data"]]
+        assert "Guardrails With Content Filters Found" in names
+        assert "Guardrail Content Filters on CLASSIC Tier" not in names
+        assert "tier unknown" not in _blob(result)
+
+
+# ---------------------------------------------------------------------------
+# FS-51 — same defect as FS-28, on the PROMPT_ATTACK filter's contentPolicy.tier.
+# ---------------------------------------------------------------------------
+
+
+class TestFS51TierIsObservedNotAssumed:
+    def test_absent_tier_is_reported_unknown(self):
+        inv = _content_policy_guardrail_inventory(
+            {"filters": [{"type": "PROMPT_ATTACK", "inputStrength": "HIGH"}]}
+        )
+        result = app.check_prompt_injection_input_validation(inv)
+        blob = _blob(result)
+        assert "tier unknown" in blob
+        assert "not assumed CLASSIC" in blob
+
+    def test_absent_tier_does_not_produce_the_classic_finding(self):
+        inv = _content_policy_guardrail_inventory(
+            {"filters": [{"type": "PROMPT_ATTACK", "inputStrength": "HIGH"}]}
+        )
+        result = app.check_prompt_injection_input_validation(inv)
+        names = [row["Finding"] for row in result["csv_data"]]
+        assert "Prompt Attack Filters on CLASSIC Tier" not in names
+
+    def test_explicit_classic_tier_is_still_reported(self):
+        inv = _content_policy_guardrail_inventory(
+            {
+                "filters": [{"type": "PROMPT_ATTACK", "inputStrength": "HIGH"}],
+                "tier": {"tierName": "CLASSIC"},
+            }
+        )
+        result = app.check_prompt_injection_input_validation(inv)
+        names = [row["Finding"] for row in result["csv_data"]]
+        assert "Prompt Attack Filters on CLASSIC Tier" in names
+
+
+# ---------------------------------------------------------------------------
+# FS-59 — same defect as FS-28, on the off-topic allowlist's topicPolicy.tier.
+# ---------------------------------------------------------------------------
+
+
+class TestFS59TierIsObservedNotAssumed:
+    def test_absent_tier_is_reported_unknown(self):
+        inv = _guardrail_inventory({"topics": [{"name": "off-topic", "type": "DENY"}]})
+        result = app.check_guardrail_topic_allowlist(inv)
+        blob = _blob(result)
+        assert "tier unknown" in blob
+        assert "not assumed CLASSIC" in blob
+
+    def test_absent_tier_does_not_produce_the_classic_finding(self):
+        inv = _guardrail_inventory({"topics": [{"name": "off-topic", "type": "DENY"}]})
+        result = app.check_guardrail_topic_allowlist(inv)
+        names = [row["Finding"] for row in result["csv_data"]]
+        assert "Topic Restrictions Configured on CLASSIC Tier" not in names
+
+    def test_explicit_classic_tier_is_still_reported(self):
+        inv = _guardrail_inventory(
+            {
+                "topics": [{"name": "off-topic", "type": "DENY"}],
+                "tier": {"tierName": "CLASSIC"},
+            }
+        )
+        result = app.check_guardrail_topic_allowlist(inv)
+        names = [row["Finding"] for row in result["csv_data"]]
+        assert "Topic Restrictions Configured on CLASSIC Tier" in names
 
 
 # ---------------------------------------------------------------------------

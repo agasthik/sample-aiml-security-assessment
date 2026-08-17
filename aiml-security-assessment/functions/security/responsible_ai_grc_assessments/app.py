@@ -43,7 +43,7 @@ Contribution workflow:
 
 Pre-commit quality gates (run every edit):
   1. ruff check + ruff format --check on this directory.
-  2. sam local invoke FinServSecurityAssessmentFunction against a test event.
+  2. sam local invoke ResponsibleAIGRCAssessmentFunction against a test event.
   3. cfn-lint / sam validate on the updated SAM templates.
   4. ash --source-dir <repo> --fail-on-findings --config-overrides
      'global_settings.severity_threshold=MEDIUM' — resolve every Critical and High
@@ -620,7 +620,7 @@ SEVERITY_REGISTER: Dict[str, str] = {
     "No Guardrails — Content Filters Not Applicable": "Informational",
     "No Guardrails With Content Filters": "High",
     "Guardrail Content Filters on CLASSIC Tier": "High",
-    "Guardrail Content Filters Configured (STANDARD Tier)": "High",
+    "Guardrails With Content Filters Found": "High",
     # --- FS-37 (advisory) ---
     "ADVISORY: User Feedback Mechanism — Manual Review Required": "Informational",
     # --- FS-38 (word filters = Medium) ---
@@ -678,7 +678,7 @@ SEVERITY_REGISTER: Dict[str, str] = {
     "No Guardrails — Prompt Attack Filters Not Applicable": "Informational",
     "No Guardrails With Prompt Attack Filters": "High",
     "Prompt Attack Filters on CLASSIC Tier": "High",
-    "Prompt Attack Filters Configured (STANDARD Tier)": "High",
+    "Guardrails With Prompt Attack Filters Found": "High",
     # --- FS-52 ---
     "No Bedrock-Related Lambda Functions Found": "Informational",
     "Bedrock Lambda Functions on Deprecated Runtimes": "Medium",
@@ -4038,11 +4038,22 @@ def check_fmeval_harmful_content() -> Dict[str, Any]:
 
 def check_guardrail_content_filters(inventory) -> Dict[str, Any]:
     """
-    FS-36 — Verify Bedrock Guardrails have content filters configured for
-    hate speech, violence, and sexual content at appropriate thresholds.
+    FS-36 — Report whether Bedrock Guardrails have content filters configured
+    for hate speech, violence, and sexual content, and which tier each uses.
+
+    Evidence collected: presence of ``contentPolicy.filters`` and the value of
+    ``contentPolicy.tier.tierName`` from GetGuardrail.
+
+    Deliberately NOT asserted: that filter strength is adequate, or that
+    coverage is complete for a given application. An absent tier is reported
+    as unknown rather than assumed CLASSIC — defaulting it would report an
+    assumption as an observation, the same defect corrected for FS-28's topic
+    policy tier.
+
     COMPLIANCE_PLACEHOLDER: [SR 11-7, FFIEC CAT, MAS TRM 9.2]
     """
-    findings = _empty_findings("Guardrail Content Filters Check")
+    check_name = "Guardrail Content Filters Check"
+    findings = _empty_findings(check_name)
     try:
         guardrail_inv = require(inventory, "guardrails")
         guardrails = guardrail_inv.summaries
@@ -4064,6 +4075,7 @@ def check_guardrail_content_filters(inventory) -> Dict[str, Any]:
 
         guardrails_with_filters = []
         guardrails_classic_tier = []
+        filters_unknown_tier = []
         for g in guardrails:
             detail = guardrail_inv.detail_by_id[g["id"]]
             if isinstance(detail, _Unavailable):
@@ -4072,13 +4084,17 @@ def check_guardrail_content_filters(inventory) -> Dict[str, Any]:
             if content_policy.get("filters"):
                 guardrails_with_filters.append(g["name"])
                 # Check tier: STANDARD offers better accuracy, multilingual support,
-                # and improved prompt-attack detection (GA June 2025). FinServ
-                # workloads benefit from STANDARD for its contextual understanding and
-                # typo-tolerant detection. STANDARD requires cross-region inference.
-                # The tier is nested at contentPolicy.tier.tierName in GetGuardrail response.
-                tier = content_policy.get("tier", {}).get("tierName", "CLASSIC")
+                # and improved prompt-attack detection (GA June 2025). Regulated
+                # workloads benefit from STANDARD for its contextual understanding
+                # and typo-tolerant detection. STANDARD requires cross-region
+                # inference. The tier is nested at contentPolicy.tier.tierName in
+                # GetGuardrail response. An ABSENT tier is reported as unknown
+                # rather than assumed CLASSIC.
+                tier = content_policy.get("tier", {}).get("tierName")
                 if tier == "CLASSIC":
                     guardrails_classic_tier.append(g["name"])
+                elif not tier:
+                    filters_unknown_tier.append(g["name"])
 
         if not guardrails_with_filters:
             findings["status"] = "WARN"
@@ -4132,13 +4148,19 @@ def check_guardrail_content_filters(inventory) -> Dict[str, Any]:
                 )
             )
         else:
+            tier_note = ""
+            if filters_unknown_tier:
+                tier_note = (
+                    " Tier not reported by GetGuardrail for: "
+                    f"{', '.join(filters_unknown_tier)} (tier unknown, not assumed CLASSIC)."
+                )
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-36",
-                    finding_name="Guardrail Content Filters Configured (STANDARD Tier)",
+                    finding_name="Guardrails With Content Filters Found",
                     finding_details=(
-                        f"All {len(guardrails_with_filters)} guardrail(s) with content filters "
-                        "use the STANDARD tier, providing improved accuracy and multilingual support."
+                        f"Guardrails with content filters: {', '.join(guardrails_with_filters)}."
+                        f"{tier_note}"
                     ),
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-filters.html",
@@ -4148,7 +4170,7 @@ def check_guardrail_content_filters(inventory) -> Dict[str, Any]:
                 )
             )
     except Exception as e:
-        return _error_findings("Guardrail Content Filters Check", e)
+        return _error_findings(check_name, e)
     return findings
 
 
@@ -5522,11 +5544,23 @@ def check_guardrail_relevance_grounding(inventory) -> Dict[str, Any]:
 
 def check_prompt_injection_input_validation(inventory) -> Dict[str, Any]:
     """
-    FS-51 — Check for Bedrock Guardrails prompt attack filters to detect
-    and block prompt injection attempts.
+    FS-51 — Report whether Bedrock Guardrails have PROMPT_ATTACK content
+    filters configured to detect prompt injection attempts, and which tier
+    each uses.
+
+    Evidence collected: presence of a PROMPT_ATTACK entry in
+    ``contentPolicy.filters`` and the value of ``contentPolicy.tier.tierName``
+    from GetGuardrail.
+
+    Deliberately NOT asserted: that filter strength or coverage is adequate.
+    An absent tier is reported as unknown rather than assumed CLASSIC —
+    defaulting it would report an assumption as an observation, the same
+    defect corrected for FS-28's topic policy tier.
+
     COMPLIANCE_PLACEHOLDER: [NYDFS 500.06, FFIEC CAT, OWASP LLM01]
     """
-    findings = _empty_findings("Prompt Injection Input Validation Check")
+    check_name = "Prompt Injection Input Validation Check"
+    findings = _empty_findings(check_name)
     try:
         guardrail_inv = require(inventory, "guardrails")
         guardrails = guardrail_inv.summaries
@@ -5548,6 +5582,7 @@ def check_prompt_injection_input_validation(inventory) -> Dict[str, Any]:
 
         guardrails_with_prompt_attack = []
         guardrails_classic_tier_pa = []
+        prompt_attack_unknown_tier = []
         for g in guardrails:
             detail = guardrail_inv.detail_by_id[g["id"]]
             if isinstance(detail, _Unavailable):
@@ -5558,9 +5593,13 @@ def check_prompt_injection_input_validation(inventory) -> Dict[str, Any]:
                     guardrails_with_prompt_attack.append(g["name"])
                     # STANDARD tier (GA June 2025) improves PROMPT_ATTACK detection
                     # by distinguishing jailbreaks from prompt injection attacks.
-                    tier = content_policy.get("tier", {}).get("tierName", "CLASSIC")
+                    # An ABSENT tier is reported as unknown rather than assumed
+                    # CLASSIC.
+                    tier = content_policy.get("tier", {}).get("tierName")
                     if tier == "CLASSIC":
                         guardrails_classic_tier_pa.append(g["name"])
+                    elif not tier:
+                        prompt_attack_unknown_tier.append(g["name"])
                     break
 
         if not guardrails_with_prompt_attack:
@@ -5612,13 +5651,19 @@ def check_prompt_injection_input_validation(inventory) -> Dict[str, Any]:
                 )
             )
         else:
+            tier_note = ""
+            if prompt_attack_unknown_tier:
+                tier_note = (
+                    " Tier not reported by GetGuardrail for: "
+                    f"{', '.join(prompt_attack_unknown_tier)} (tier unknown, not assumed CLASSIC)."
+                )
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-51",
-                    finding_name="Prompt Attack Filters Configured (STANDARD Tier)",
+                    finding_name="Guardrails With Prompt Attack Filters Found",
                     finding_details=(
-                        f"Guardrails with PROMPT_ATTACK filters (STANDARD tier): "
-                        f"{', '.join(guardrails_with_prompt_attack)}."
+                        f"Guardrails with PROMPT_ATTACK filters: "
+                        f"{', '.join(guardrails_with_prompt_attack)}.{tier_note}"
                     ),
                     resolution=(
                         "Ensure input tags are used to scope user content when calling "
@@ -5632,7 +5677,7 @@ def check_prompt_injection_input_validation(inventory) -> Dict[str, Any]:
                 )
             )
     except Exception as e:
-        return _error_findings("Prompt Injection Input Validation Check", e)
+        return _error_findings(check_name, e)
     return findings
 
 
@@ -6127,11 +6172,23 @@ def check_output_schema_validation(inventory) -> Dict[str, Any]:
 
 def check_guardrail_topic_allowlist(inventory) -> Dict[str, Any]:
     """
-    FS-59 — Verify Bedrock Guardrails topic policies restrict GenAI to
-    on-topic financial services responses only.
+    FS-59 — Report whether Bedrock Guardrails topic policies restrict GenAI
+    to on-topic responses, and which tier each uses.
+
+    Evidence collected: presence of ``topicPolicy.topics`` and the value of
+    ``topicPolicy.tier.tierName`` from GetGuardrail.
+
+    Deliberately NOT asserted: that the configured topics cover every
+    relevant off-topic category. An absent tier is reported as unknown
+    rather than assumed CLASSIC — defaulting it would report an assumption
+    as an observation, the same defect corrected for FS-28's topic policy
+    tier (this check reads the same ``topicPolicy`` field for a different
+    purpose).
+
     COMPLIANCE_PLACEHOLDER: [SR 11-7, FFIEC CAT, MAS TRM 9.2]
     """
-    findings = _empty_findings("Guardrail Topic Allowlist Check")
+    check_name = "Guardrail Topic Allowlist Check"
+    findings = _empty_findings(check_name)
     try:
         guardrail_inv = require(inventory, "guardrails")
         guardrails = guardrail_inv.summaries
@@ -6153,6 +6210,7 @@ def check_guardrail_topic_allowlist(inventory) -> Dict[str, Any]:
 
         guardrails_with_topics = []
         topics_classic_tier = []
+        topics_unknown_tier = []
         for g in guardrails:
             detail = guardrail_inv.detail_by_id[g["id"]]
             if isinstance(detail, _Unavailable):
@@ -6160,9 +6218,13 @@ def check_guardrail_topic_allowlist(inventory) -> Dict[str, Any]:
             topic_policy = detail.get("topicPolicy", {})
             if topic_policy.get("topics"):
                 guardrails_with_topics.append(g["name"])
-                tier = topic_policy.get("tier", {}).get("tierName", "CLASSIC")
+                # An ABSENT tier is reported as unknown rather than assumed
+                # CLASSIC.
+                tier = topic_policy.get("tier", {}).get("tierName")
                 if tier == "CLASSIC":
                     topics_classic_tier.append(g["name"])
+                elif not tier:
+                    topics_unknown_tier.append(g["name"])
 
         if not guardrails_with_topics:
             findings["status"] = "WARN"
@@ -6212,11 +6274,20 @@ def check_guardrail_topic_allowlist(inventory) -> Dict[str, Any]:
                 )
             )
         else:
+            tier_note = ""
+            if topics_unknown_tier:
+                tier_note = (
+                    " Tier not reported by GetGuardrail for: "
+                    f"{', '.join(topics_unknown_tier)} (tier unknown, not assumed CLASSIC)."
+                )
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-59",
                     finding_name="Guardrail Topic Restrictions Configured",
-                    finding_details=f"Guardrails with topic policies: {', '.join(guardrails_with_topics)}.",
+                    finding_details=(
+                        f"Guardrails with topic policies: {', '.join(guardrails_with_topics)}."
+                        f"{tier_note}"
+                    ),
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-components.html",
                     severity="Medium",
@@ -6225,7 +6296,7 @@ def check_guardrail_topic_allowlist(inventory) -> Dict[str, Any]:
                 )
             )
     except Exception as e:
-        return _error_findings("Guardrail Topic Allowlist Check", e)
+        return _error_findings(check_name, e)
     return findings
 
 

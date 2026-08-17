@@ -649,7 +649,7 @@ BASELINE: list[tuple[str, str, str, str, str]] = [
     ('FS-33', 'KB Data Source Buckets Have Versioning', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT | ISO 27001 A.12'),
     ('FS-34', 'Foundation Models Are Current', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT'),
     ('FS-35', 'ADVISORY: Harmful-Content Test Coverage \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
-    ('FS-36', 'Guardrail Content Filters on CLASSIC Tier', 'Passed', 'High', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
+    ('FS-36', 'Guardrails With Content Filters Found', 'Passed', 'High', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-37', 'ADVISORY: User Feedback Mechanism \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-38', 'Guardrail Word Filters Configured', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT'),
     ('FS-39', 'No SageMaker Clarify Bias Monitoring', 'Failed', 'High', 'SR 11-7 | FFIEC CAT | ECOA/Fair Housing'),
