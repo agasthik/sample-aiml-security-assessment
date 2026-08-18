@@ -3357,6 +3357,13 @@ def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
                 elif not tier:
                     topics_unknown_tier.append(g["name"])
 
+        tier_note = ""
+        if topics_unknown_tier:
+            tier_note = (
+                " Tier not reported by GetGuardrail for: "
+                f"{', '.join(topics_unknown_tier)} (tier unknown, not assumed CLASSIC)."
+            )
+
         if not guardrails_with_topics:
             findings["status"] = "WARN"
             findings["csv_data"].append(
@@ -3386,6 +3393,12 @@ def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
                 )
             )
         elif topics_classic_tier:
+            # Note: topics_classic_tier and topics_unknown_tier are not mutually
+            # exclusive — a guardrail set can have some CLASSIC-tier members and
+            # some with no tier reported. tier_note (computed above, independent
+            # of which branch fires) discloses any unknown-tier guardrails here
+            # too, so a mixed-tier result never reports Passed on CLASSIC alone
+            # while silently omitting the unknown-tier guardrails.
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-28",
@@ -3395,7 +3408,7 @@ def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
                         f"The following report the CLASSIC tier: {', '.join(topics_classic_tier)}. "
                         "CLASSIC tier supports English, French, and Spanish only. The STANDARD tier "
                         "(GA June 2025) provides broader language support and improved detection for "
-                        f"denied topics. {manual_review}"
+                        f"denied topics.{tier_note} {manual_review}"
                     ),
                     resolution=(
                         "Verify topics cover regulated financial advice categories. For multilingual "
@@ -3413,12 +3426,6 @@ def check_guardrail_denied_topics_financial(inventory) -> Dict[str, Any]:
                 )
             )
         else:
-            tier_note = ""
-            if topics_unknown_tier:
-                tier_note = (
-                    " Tier not reported by GetGuardrail for: "
-                    f"{', '.join(topics_unknown_tier)} (tier unknown, not assumed CLASSIC)."
-                )
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-28",
@@ -4096,6 +4103,13 @@ def check_guardrail_content_filters(inventory) -> Dict[str, Any]:
                 elif not tier:
                     filters_unknown_tier.append(g["name"])
 
+        tier_note = ""
+        if filters_unknown_tier:
+            tier_note = (
+                " Tier not reported by GetGuardrail for: "
+                f"{', '.join(filters_unknown_tier)} (tier unknown, not assumed CLASSIC)."
+            )
+
         if not guardrails_with_filters:
             findings["status"] = "WARN"
             findings["csv_data"].append(
@@ -4120,7 +4134,12 @@ def check_guardrail_content_filters(inventory) -> Dict[str, Any]:
                 )
             )
         elif guardrails_classic_tier:
-            # Content filters exist but using CLASSIC tier — emit advisory finding
+            # Note: guardrails_classic_tier and filters_unknown_tier are not
+            # mutually exclusive — a guardrail set can have some CLASSIC-tier
+            # members and some with no tier reported. tier_note (computed above,
+            # independent of which branch fires) discloses any unknown-tier
+            # guardrails here too, so a mixed-tier result never reports Passed
+            # on CLASSIC alone while silently omitting the unknown-tier ones.
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-36",
@@ -4131,7 +4150,7 @@ def check_guardrail_content_filters(inventory) -> Dict[str, Any]:
                         "CLASSIC tier supports English, French, and Spanish only. The STANDARD tier "
                         "(GA June 2025) provides improved contextual understanding, typographical error "
                         "detection, 60+ language support, and better prompt-attack classification "
-                        "(distinguishes jailbreaks from prompt injection)."
+                        f"(distinguishes jailbreaks from prompt injection).{tier_note}"
                     ),
                     resolution=(
                         "Consider upgrading to STANDARD tier content filters for workloads "
@@ -4148,12 +4167,6 @@ def check_guardrail_content_filters(inventory) -> Dict[str, Any]:
                 )
             )
         else:
-            tier_note = ""
-            if filters_unknown_tier:
-                tier_note = (
-                    " Tier not reported by GetGuardrail for: "
-                    f"{', '.join(filters_unknown_tier)} (tier unknown, not assumed CLASSIC)."
-                )
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-36",
@@ -5602,6 +5615,13 @@ def check_prompt_injection_input_validation(inventory) -> Dict[str, Any]:
                         prompt_attack_unknown_tier.append(g["name"])
                     break
 
+        tier_note = ""
+        if prompt_attack_unknown_tier:
+            tier_note = (
+                " Tier not reported by GetGuardrail for: "
+                f"{', '.join(prompt_attack_unknown_tier)} (tier unknown, not assumed CLASSIC)."
+            )
+
         if not guardrails_with_prompt_attack:
             findings["status"] = "WARN"
             findings["csv_data"].append(
@@ -5629,6 +5649,12 @@ def check_prompt_injection_input_validation(inventory) -> Dict[str, Any]:
                 )
             )
         elif guardrails_classic_tier_pa:
+            # Note: guardrails_classic_tier_pa and prompt_attack_unknown_tier are
+            # not mutually exclusive — a guardrail set can have some CLASSIC-tier
+            # members and some with no tier reported. tier_note (computed above,
+            # independent of which branch fires) discloses any unknown-tier
+            # guardrails here too, so a mixed-tier result never reports Passed
+            # on CLASSIC alone while silently omitting the unknown-tier ones.
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-51",
@@ -5637,7 +5663,7 @@ def check_prompt_injection_input_validation(inventory) -> Dict[str, Any]:
                         f"Guardrails with PROMPT_ATTACK filters: {', '.join(guardrails_with_prompt_attack)}. "
                         f"Using CLASSIC tier: {', '.join(guardrails_classic_tier_pa)}. "
                         "STANDARD tier (GA June 2025) better distinguishes jailbreaks from "
-                        "prompt injection and provides broader language support."
+                        f"prompt injection and provides broader language support.{tier_note}"
                     ),
                     resolution=(
                         "Consider upgrading to STANDARD tier for improved PROMPT_ATTACK detection. "
@@ -5651,12 +5677,6 @@ def check_prompt_injection_input_validation(inventory) -> Dict[str, Any]:
                 )
             )
         else:
-            tier_note = ""
-            if prompt_attack_unknown_tier:
-                tier_note = (
-                    " Tier not reported by GetGuardrail for: "
-                    f"{', '.join(prompt_attack_unknown_tier)} (tier unknown, not assumed CLASSIC)."
-                )
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-51",
@@ -6226,6 +6246,13 @@ def check_guardrail_topic_allowlist(inventory) -> Dict[str, Any]:
                 elif not tier:
                     topics_unknown_tier.append(g["name"])
 
+        tier_note = ""
+        if topics_unknown_tier:
+            tier_note = (
+                " Tier not reported by GetGuardrail for: "
+                f"{', '.join(topics_unknown_tier)} (tier unknown, not assumed CLASSIC)."
+            )
+
         if not guardrails_with_topics:
             findings["status"] = "WARN"
             findings["csv_data"].append(
@@ -6252,6 +6279,12 @@ def check_guardrail_topic_allowlist(inventory) -> Dict[str, Any]:
                 )
             )
         elif topics_classic_tier:
+            # Note: topics_classic_tier and topics_unknown_tier are not mutually
+            # exclusive — a guardrail set can have some CLASSIC-tier members and
+            # some with no tier reported. tier_note (computed above, independent
+            # of which branch fires) discloses any unknown-tier guardrails here
+            # too, so a mixed-tier result never reports Passed on CLASSIC alone
+            # while silently omitting the unknown-tier guardrails.
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-59",
@@ -6260,7 +6293,7 @@ def check_guardrail_topic_allowlist(inventory) -> Dict[str, Any]:
                         f"Guardrails with topic policies: {', '.join(guardrails_with_topics)}. "
                         f"The following use the CLASSIC tier: {', '.join(topics_classic_tier)}. "
                         "CLASSIC tier supports English, French, and Spanish only; the STANDARD tier "
-                        "(GA June 2025) adds broader language support for off-topic detection."
+                        f"(GA June 2025) adds broader language support for off-topic detection.{tier_note}"
                     ),
                     resolution=(
                         "For multilingual deployments, consider upgrading denied topics to "
@@ -6274,12 +6307,6 @@ def check_guardrail_topic_allowlist(inventory) -> Dict[str, Any]:
                 )
             )
         else:
-            tier_note = ""
-            if topics_unknown_tier:
-                tier_note = (
-                    " Tier not reported by GetGuardrail for: "
-                    f"{', '.join(topics_unknown_tier)} (tier unknown, not assumed CLASSIC)."
-                )
             findings["csv_data"].append(
                 create_finding(
                     check_id="FS-59",

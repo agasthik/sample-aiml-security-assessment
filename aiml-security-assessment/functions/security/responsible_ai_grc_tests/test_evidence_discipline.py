@@ -99,6 +99,40 @@ class TestFS28TierIsObservedNotAssumed:
         result = app.check_guardrail_denied_topics_financial(inv)
         assert "does not establish coverage" in _blob(result)
 
+    def test_mixed_tier_results_disclose_the_unknown_tier_guardrail(self):
+        """P1 regression: `elif topics_classic_tier` used to win unconditionally
+        whenever any guardrail was CLASSIC, silently omitting a *different*
+        guardrail whose tier is unknown from the finding entirely — reporting
+        Passed with no tier-unknown disclosure at all."""
+        inv = make_resource_inventory(
+            guardrails=app.GuardrailInventory(
+                summaries=[
+                    {"id": "g1", "name": "classic-guard"},
+                    {"id": "g2", "name": "unknown-guard"},
+                ],
+                detail_by_id={
+                    "g1": {
+                        "topicPolicy": {
+                            "topics": [{"name": "advice", "type": "DENY"}],
+                            "tier": {"tierName": "CLASSIC"},
+                        }
+                    },
+                    "g2": {
+                        "topicPolicy": {
+                            "topics": [{"name": "advice", "type": "DENY"}],
+                        }
+                    },
+                },
+            )
+        )
+        result = app.check_guardrail_denied_topics_financial(inv)
+        names = [row["Finding"] for row in result["csv_data"]]
+        assert "Topic Policies Configured on CLASSIC Tier" in names
+        blob = _blob(result)
+        assert "unknown-guard" in blob
+        assert "tier unknown" in blob
+        assert "not assumed CLASSIC" in blob
+
 
 # ---------------------------------------------------------------------------
 # FS-36 — same defect as FS-28, on contentPolicy.tier instead of topicPolicy.tier.
@@ -148,6 +182,40 @@ class TestFS36TierIsObservedNotAssumed:
         assert "Guardrail Content Filters on CLASSIC Tier" not in names
         assert "tier unknown" not in _blob(result)
 
+    def test_mixed_tier_results_disclose_the_unknown_tier_guardrail(self):
+        """P1 regression: `elif guardrails_classic_tier` used to win
+        unconditionally whenever any guardrail was CLASSIC, silently omitting
+        a *different* guardrail whose tier is unknown from the finding
+        entirely — reporting Passed with no tier-unknown disclosure."""
+        inv = make_resource_inventory(
+            guardrails=app.GuardrailInventory(
+                summaries=[
+                    {"id": "g1", "name": "classic-guard"},
+                    {"id": "g2", "name": "unknown-guard"},
+                ],
+                detail_by_id={
+                    "g1": {
+                        "contentPolicy": {
+                            "filters": [{"type": "HATE", "inputStrength": "HIGH"}],
+                            "tier": {"tierName": "CLASSIC"},
+                        }
+                    },
+                    "g2": {
+                        "contentPolicy": {
+                            "filters": [{"type": "HATE", "inputStrength": "HIGH"}],
+                        }
+                    },
+                },
+            )
+        )
+        result = app.check_guardrail_content_filters(inv)
+        names = [row["Finding"] for row in result["csv_data"]]
+        assert "Guardrail Content Filters on CLASSIC Tier" in names
+        blob = _blob(result)
+        assert "unknown-guard" in blob
+        assert "tier unknown" in blob
+        assert "not assumed CLASSIC" in blob
+
 
 # ---------------------------------------------------------------------------
 # FS-51 — same defect as FS-28, on the PROMPT_ATTACK filter's contentPolicy.tier.
@@ -183,6 +251,44 @@ class TestFS51TierIsObservedNotAssumed:
         names = [row["Finding"] for row in result["csv_data"]]
         assert "Prompt Attack Filters on CLASSIC Tier" in names
 
+    def test_mixed_tier_results_disclose_the_unknown_tier_guardrail(self):
+        """P1 regression: `elif guardrails_classic_tier_pa` used to win
+        unconditionally whenever any guardrail was CLASSIC, silently omitting
+        a *different* guardrail whose tier is unknown from the finding
+        entirely — reporting Passed with no tier-unknown disclosure."""
+        inv = make_resource_inventory(
+            guardrails=app.GuardrailInventory(
+                summaries=[
+                    {"id": "g1", "name": "classic-guard"},
+                    {"id": "g2", "name": "unknown-guard"},
+                ],
+                detail_by_id={
+                    "g1": {
+                        "contentPolicy": {
+                            "filters": [
+                                {"type": "PROMPT_ATTACK", "inputStrength": "HIGH"}
+                            ],
+                            "tier": {"tierName": "CLASSIC"},
+                        }
+                    },
+                    "g2": {
+                        "contentPolicy": {
+                            "filters": [
+                                {"type": "PROMPT_ATTACK", "inputStrength": "HIGH"}
+                            ],
+                        }
+                    },
+                },
+            )
+        )
+        result = app.check_prompt_injection_input_validation(inv)
+        names = [row["Finding"] for row in result["csv_data"]]
+        assert "Prompt Attack Filters on CLASSIC Tier" in names
+        blob = _blob(result)
+        assert "unknown-guard" in blob
+        assert "tier unknown" in blob
+        assert "not assumed CLASSIC" in blob
+
 
 # ---------------------------------------------------------------------------
 # FS-59 — same defect as FS-28, on the off-topic allowlist's topicPolicy.tier.
@@ -213,6 +319,40 @@ class TestFS59TierIsObservedNotAssumed:
         result = app.check_guardrail_topic_allowlist(inv)
         names = [row["Finding"] for row in result["csv_data"]]
         assert "Topic Restrictions Configured on CLASSIC Tier" in names
+
+    def test_mixed_tier_results_disclose_the_unknown_tier_guardrail(self):
+        """P1 regression: `elif topics_classic_tier` used to win unconditionally
+        whenever any guardrail was CLASSIC, silently omitting a *different*
+        guardrail whose tier is unknown from the finding entirely — reporting
+        Passed with no tier-unknown disclosure."""
+        inv = make_resource_inventory(
+            guardrails=app.GuardrailInventory(
+                summaries=[
+                    {"id": "g1", "name": "classic-guard"},
+                    {"id": "g2", "name": "unknown-guard"},
+                ],
+                detail_by_id={
+                    "g1": {
+                        "topicPolicy": {
+                            "topics": [{"name": "off-topic", "type": "DENY"}],
+                            "tier": {"tierName": "CLASSIC"},
+                        }
+                    },
+                    "g2": {
+                        "topicPolicy": {
+                            "topics": [{"name": "off-topic", "type": "DENY"}],
+                        }
+                    },
+                },
+            )
+        )
+        result = app.check_guardrail_topic_allowlist(inv)
+        names = [row["Finding"] for row in result["csv_data"]]
+        assert "Topic Restrictions Configured on CLASSIC Tier" in names
+        blob = _blob(result)
+        assert "unknown-guard" in blob
+        assert "tier unknown" in blob
+        assert "not assumed CLASSIC" in blob
 
 
 # ---------------------------------------------------------------------------
