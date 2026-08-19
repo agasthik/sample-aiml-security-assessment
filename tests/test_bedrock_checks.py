@@ -1698,6 +1698,32 @@ class TestBR16GuardrailTier:
         assert passed_findings[0]["Check_ID"] == "BR-16"
 
     @patch("bedrock_app.boto3.client")
+    def test_br16_absent_tier_returns_na_without_assuming_classic(self, mock_client):
+        check = bedrock_app.check_bedrock_guardrail_tier
+
+        bedrock_client = MagicMock()
+        bedrock_client.list_guardrails.return_value = {
+            "guardrails": [{"id": "gr-123", "name": "tierless-guardrail"}]
+        }
+        bedrock_client.get_guardrail.return_value = {
+            "guardrail": {"contentPolicy": {"filters": []}}
+        }
+        mock_client.return_value = bedrock_client
+
+        result = check(region="us-east-1")
+        findings = extract_csv_data(result)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+        assert "tier unknown" in findings[0]["Finding_Details"]
+        assert "not assumed to be CLASSIC" in findings[0]["Finding_Details"]
+        assert (
+            "is using the 'CLASSIC' content-filter tier"
+            not in findings[0]["Finding_Details"]
+        )
+
+    @patch("bedrock_app.boto3.client")
     def test_br16_non_standard_tier_returns_failed(self, mock_client):
         check = bedrock_app.check_bedrock_guardrail_tier
 
