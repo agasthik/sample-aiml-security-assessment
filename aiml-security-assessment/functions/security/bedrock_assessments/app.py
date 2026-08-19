@@ -3229,11 +3229,24 @@ def check_bedrock_guardrail_tier(region: str = "") -> Dict[str, Any]:
 
                 # The content-filter tier is reported under
                 # contentPolicy.tier.tierName. Valid values are CLASSIC and
-                # STANDARD; STANDARD is the more robust tier. When a guardrail has
-                # no content policy the field is absent, so default to CLASSIC
-                # (the baseline) rather than assuming the enhanced tier.
+                # STANDARD; STANDARD is the more robust tier. If the field is
+                # absent, the tier is unknown and must not be inferred.
                 content_policy = guardrail_config.get("contentPolicy", {})
-                tier = content_policy.get("tier", {}).get("tierName", "CLASSIC")
+                tier = content_policy.get("tier", {}).get("tierName")
+
+                if not tier:
+                    unassessed_guardrails.append(
+                        {
+                            "name": guardrail_name,
+                            "id": guardrail_id,
+                            "reason": (
+                                "GetGuardrail did not report "
+                                "contentPolicy.tier.tierName; tier unknown "
+                                "and was not assumed to be CLASSIC"
+                            ),
+                        }
+                    )
+                    continue
 
                 if tier != "STANDARD":
                     suboptimal_guardrails.append(
@@ -3279,13 +3292,40 @@ def check_bedrock_guardrail_tier(region: str = "") -> Dict[str, Any]:
             if unassessed_guardrails:
                 findings["status"] = "WARN"
                 for gr in unassessed_guardrails:
+                    if "reason" in gr:
+                        finding_details = (
+                            f"Guardrail '{gr['name']}' (ID: {gr['id']}) "
+                            f"could not be assessed because {gr['reason']}."
+                        )
+                        resolution = (
+                            "Review the guardrail configuration and rerun the "
+                            "assessment after GetGuardrail reports the content-filter tier."
+                        )
+                        reference = (
+                            "https://docs.aws.amazon.com/bedrock/latest/userguide/"
+                            "guardrails-components.html"
+                        )
+                    else:
+                        finding_details = (
+                            f"Guardrail '{gr['name']}' (ID: {gr['id']}) could not "
+                            f"be assessed because GetGuardrail returned {gr['error']}."
+                        )
+                        resolution = (
+                            "Retry the assessment. If the error persists, grant "
+                            "bedrock:GetGuardrail and verify the guardrail still exists."
+                        )
+                        reference = (
+                            "https://docs.aws.amazon.com/bedrock/latest/userguide/"
+                            "security_iam_id-based-policy-examples.html"
+                        )
+
                     findings["csv_data"].append(
                         create_finding(
                             check_id="BR-16",
                             finding_name="Guardrail Tier Validation Check",
-                            finding_details=f"Guardrail '{gr['name']}' (ID: {gr['id']}) could not be assessed because GetGuardrail returned {gr['error']}.",
-                            resolution="Retry the assessment. If the error persists, grant bedrock:GetGuardrail and verify the guardrail still exists.",
-                            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
+                            finding_details=finding_details,
+                            resolution=resolution,
+                            reference=reference,
                             severity="Informational",
                             status="N/A",
                             region=region,

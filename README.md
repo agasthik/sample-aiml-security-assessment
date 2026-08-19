@@ -1,16 +1,21 @@
 # AWS AI/ML Security Assessment for Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore
 
-*A serverless framework that scans your AWS accounts for AI/ML security misconfigurations and produces an interactive, shareable report.*
+*A serverless framework based assessment that scans your AWS accounts for AI/ML security misconfigurations and produces an interactive, shareable report.*
 
 [![License: MIT-0](https://img.shields.io/badge/License-MIT--0-yellow.svg)](https://opensource.org/licenses/MIT-0) [![Python 3.12](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/downloads/) [![AWS SAM](https://img.shields.io/badge/AWS-SAM-orange.svg)](https://aws.amazon.com/serverless/sam/)
 
-**Open-source automated security scanner for generative AI and machine learning workloads on AWS.** Core checks for Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore are built on the [AWS Well-Architected Framework — Generative AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html). An optional **Responsible AI GRC** module adds 64 checks — cross-industry technical controls for AI governance, risk, and compliance — informed by the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf) (the AWS GRC User Guide) and by AWS financial-services generative-AI risk guidance. See the [AWS Security Blog announcement](https://aws.amazon.com/blogs/security/introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/) for context on the updated guide.
+**Open-source automated security scanner for generative AI and machine learning workloads on AWS.** It brings together assessments for Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore. Core checks are guided by the [AWS Well-Architected Generative AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html). The optional **Responsible AI GRC** module adds technical checks for AI governance, risk, and compliance. Optional **OWASP Top 10 for LLM** checks extend coverage across common LLM security risks. Responsible AI GRC checks draw on the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf).
 
-> **Responsible AI GRC is not the [AWS Well-Architected Responsible AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/responsible-ai-lens/responsible-ai-lens.html).** The Lens (November 2025) is a separate architectural review framework with eight focus areas. These 64 checks do not implement, validate, or measure conformance to it, and passing them does not indicate Lens alignment. They evaluate selected AWS configuration evidence and do not establish regulatory compliance or certify a system as responsible AI; regulatory framework mappings are preliminary. See [Responsible AI GRC — scope, sources, and compatibility](docs/RESPONSIBLE_AI_GRC_SCOPE.md).
->
-> These controls originated as financial-services controls and were found applicable across multiple industries — which the AWS GRC User Guide itself now reflects, having dropped "within Financial Services Industries" from its title in the 2026-05-13 update. The `FS-*` check IDs are retained permanently as compatibility contracts, and `EnableFinServAssessment` is retained as a legacy alias for `EnableResponsibleAIGRCAssessment`.
+Run **[174 checks](docs/SECURITY_CHECKS.md)** across AWS accounts and regions:
 
-Run **[174 security checks](docs/SECURITY_CHECKS.md)** across your AWS accounts and regions in one deployment. Surfaces IAM misconfigurations, encryption gaps, network isolation issues, missing guardrails, and governance gaps — with interactive HTML reports, severity ratings, and AWS documentation links for remediation. Single-account or full AWS Organizations multi-account scans; all data stays in your account.
+- **71 always-on core checks** for Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore
+- **27 always-on Agentic AI Security checks**, synthesized from service findings and native AgentCore gateway checks
+- **64 optional Responsible AI GRC checks** for selected technical controls informed by AWS governance, risk, and compliance guidance
+- **12 optional OWASP Top 10 for LLM checks**, including mapping-based coverage and native system-prompt-leakage checks
+
+Deploy in a single account or across AWS Organizations. Assessments support multi-region execution and produce interactive, shareable reports with severity ratings, filtering, search, remediation references, and per-account/per-region views. Assessment artifacts are stored in your AWS account; the deployment build pulls source from the configured repository.
+
+> **Scope note:** Responsible AI GRC provides selected AWS configuration checks for AI governance, risk, and compliance. It complements architectural reviews such as the AWS Well-Architected Responsible AI Lens and broader compliance programs. See [Responsible AI GRC scope, sources, and compatibility](docs/RESPONSIBLE_AI_GRC_SCOPE.md).
 
 ---
 
