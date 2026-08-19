@@ -44,7 +44,7 @@
 
 ## Architecture Overview
 
-The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 71 core security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, plus 27 always-on Agentic AI Security checks, with optional 64-check Financial Services GenAI risk and 12-check OWASP Top 10 for LLM assessments, generating interactive HTML reports with findings and remediation guidance.
+The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 71 core security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, plus 27 always-on Agentic AI Security checks, with optional 64-check Responsible AI GRC and 12-check OWASP Top 10 for LLM assessments, generating interactive HTML reports with findings and remediation guidance.
 
 ### Security Design Principles
 
@@ -95,7 +95,7 @@ The AI/ML Security Assessment Framework is a serverless, multi-account security 
 1. **Account Discovery**: In multi-account mode, lists active accounts from AWS Organizations or uses `MultiAccountListOverride`
 2. **Role Assumption**: In multi-account mode, assumes `AIMLSecurityMemberRole` in each target account
 3. **AWS SAM Deployment**: Deploys or updates the AI/ML assessment stack through AWS SAM
-4. **Assessment Execution**: Triggers AWS Step Functions workflow in each account, passing `enableFinServ` and `enableOWASP` from the deployment parameters
+4. **Assessment Execution**: Triggers AWS Step Functions workflow in each account, passing `enableResponsibleAIGRC` and `enableOWASP` from the deployment parameters
 5. **Results Consolidation**: Syncs per-account reports to the infrastructure bucket and creates a consolidated report for multi-account runs
 
 #### Project Structure
@@ -107,9 +107,9 @@ sample-aiml-security-assessment/
 │   │   ├── bedrock_assessments/      # Bedrock security checks (33)
 │   │   ├── sagemaker_assessments/    # SageMaker security checks (25)
 │   │   ├── agentcore_assessments/    # AgentCore security checks (13)
-│   │   ├── finserv_assessments/      # Optional Financial Services GenAI risk checks (64)
+│   │   ├── responsible_ai_grc_assessments/  # Optional Responsible AI GRC checks (64)
 │   │   ├── owasp_assessments/        # Optional OWASP Top 10 for LLM checks (12)
-│   │   ├── finserv_tests/            # FinServ-specific unit and coverage tests
+│   │   ├── responsible_ai_grc_tests/ # Responsible AI GRC-specific unit and coverage tests
 │   │   ├── iam_permission_caching/   # AWS IAM permissions cache
 │   │   ├── cleanup_bucket/           # Amazon S3 cleanup
 │   │   ├── resolve_regions/          # Multi-region resolution Lambda
@@ -125,10 +125,10 @@ sample-aiml-security-assessment/
 ├── docs/                             # Documentation
 │   ├── DEVELOPER_GUIDE.md            # This guide
 │   ├── SECURITY_CHECKS.md            # Security checks reference (core + Agentic)
-│   ├── SECURITY_CHECKS_FINSERV.md    # FinServ GenAI risk checks reference
+│   ├── SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md  # Responsible AI GRC checks reference
 │   ├── SECURITY_CHECKS_OWASP.md      # OWASP Top 10 for LLM checks reference
-│   ├── SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md  # FinServ severity model
-│   ├── SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md     # FinServ per-finding severities
+│   ├── SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md  # Severity model
+│   ├── SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md     # Per-finding severities
 │   ├── TROUBLESHOOTING.md            # Troubleshooting guide
 │   ├── CLEANUP.md                    # Resource removal guide
 │   ├── diagrams/                     # Architecture diagrams
@@ -148,7 +148,7 @@ sample-aiml-security-assessment/
 
 - **AWS SAM Application**: AI/ML security assessment stack
 - **AWS Step Functions**: Single workflow orchestrating all assessments
-- **AWS Lambda Functions**: One per core service (Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore), one FinServ assessment Lambda invoked when FinServ or OWASP needs FS-* source rows, one OWASP assessment Lambda invoked only when enabled, plus utilities
+- **AWS Lambda Functions**: One per core service (Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore), one Responsible AI GRC assessment Lambda invoked when Responsible AI GRC or OWASP needs FS-* source rows, one OWASP assessment Lambda invoked only when enabled, plus utilities
 - **Local Amazon S3 Bucket**: Storage for account-specific results
 
 ### Assessment Execution Workflow
@@ -200,14 +200,14 @@ sample-aiml-security-assessment/
               {"StartAt": "Sagemaker Security Assessment", "States": {...}},
               {"StartAt": "AgentCore Security Assessment", "States": {...}},
               {
-                "StartAt": "FinServ Enabled?",
+                "StartAt": "Responsible AI GRC Enabled?",
                 "States": {
-                  "FinServ Enabled?": {
+                  "Responsible AI GRC Enabled?": {
                     "Type": "Choice",
-                    "Comment": "Runs FinServ when enableFinServ or enableOWASP is true and RegionIndex is 0"
+                    "Comment": "Runs Responsible AI GRC when enableResponsibleAIGRC or enableOWASP is true and RegionIndex is 0"
                   },
-                  "FinServ Security Assessment": {"Type": "Task", "Resource": "arn:aws:states:::lambda:invoke", "End": true},
-                  "FinServ Assessment Skipped": {"Type": "Pass", "End": true}
+                  "Responsible AI GRC Security Assessment": {"Type": "Task", "Resource": "arn:aws:states:::lambda:invoke", "End": true},
+                  "Responsible AI GRC Assessment Skipped": {"Type": "Pass", "End": true}
                 }
               }
             ],
@@ -227,7 +227,7 @@ sample-aiml-security-assessment/
 
 ## Assessment Structure
 
-The framework includes **71 core security checks** across three AI/ML services, plus **27 always-on Agentic AI Security checks**, **64 optional Financial Services GenAI risk checks** when `EnableFinServAssessment` is enabled, and **12 optional OWASP Top 10 for LLM checks** when `EnableOWASPAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
+The framework includes **71 core security checks** across three AI/ML services, plus **27 always-on Agentic AI Security checks**, **64 optional Responsible AI GRC checks** when `EnableResponsibleAIGRCAssessment` is enabled, and **12 optional OWASP Top 10 for LLM checks** when `EnableOWASPAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
 
 ### AWS Lambda Functions
 
@@ -242,7 +242,27 @@ Each core service assessment AWS Lambda function:
 7. Uploads results to Amazon S3 with region-suffixed filename
 8. Returns findings summary to AWS Step Functions
 
-The Financial Services assessment Lambda is different. It is deployed in both SAM templates, but Step Functions invokes it only from the first region iteration (`RegionIndex == 0`) when the execution input includes `"enableFinServ": "true"` or `"enableOWASP": "true"`. The OWASP path uses FinServ findings as hidden source rows unless FinServ was explicitly enabled. FinServ receives the full `TargetRegions` list and emits findings with Region values so the report can display the same regional filters as the core services.
+The Responsible AI GRC assessment Lambda is different. It is deployed in both SAM templates, but Step Functions invokes it only from the first region iteration (`RegionIndex == 0`) when the execution input includes `"enableResponsibleAIGRC": "true"` or `"enableOWASP": "true"`. The OWASP path uses `FS-*` findings as hidden source rows unless the capability was explicitly enabled. It receives the full `TargetRegions` list and emits findings with Region values so the report can display the same regional filters as the core services.
+
+> **Compatibility contracts.** The `FS-*` check IDs are permanent. `EnableFinServAssessment` /
+> `ENABLE_FINSERV` are retained permanently as a legacy alias for the primary
+> `EnableResponsibleAIGRCAssessment` / `ENABLE_RESPONSIBLE_AI_GRC` / `enableResponsibleAIGRC`
+> names — see [Responsible AI GRC alias migration guide](RESPONSIBLE_AI_GRC_ALIAS_MIGRATION.md) —
+> and archived reports/CSVs generated before this rename keep their original filenames and
+> selectors. See [Responsible AI GRC — scope, sources, and compatibility](RESPONSIBLE_AI_GRC_SCOPE.md#compatibility-policy)
+> for the full list of what changed and what stayed the same.
+>
+> **The alias stops at the CloudFormation parameter / CodeBuild environment variable layer —
+> it is not a compatibility contract for the Step Functions execution input.** `buildspec.yml`
+> resolves `EnableFinServAssessment` / `ENABLE_FINSERV` into the effective
+> `ENABLE_RESPONSIBLE_AI_GRC` value and passes only `"enableResponsibleAIGRC"` into
+> `StartExecution`. The state machine's `Responsible AI GRC Enabled?` Choice state does not
+> have a passthrough branch for a legacy `"enableFinServ"` execution-input key: if
+> `"enableFinServ": "true"` reaches `StartExecution` directly (bypassing CodeBuild/buildspec
+> entirely, e.g. a hand-written script or an old runbook), the execution fails immediately with
+> error `LegacyEnableFinServInputRejected` instead of silently skipping the Responsible AI GRC
+> checks. Use `"enableResponsibleAIGRC": "true"` (or `"enableOWASP": "true"`) in the execution
+> input instead.
 
 **Additional Functions:**
 
@@ -507,7 +527,7 @@ sam local invoke ComprehendSecurityAssessmentFunction --event testfile.json
 - **Handle Exceptions**: Implement proper error handling and logging
 - **Follow Least Privilege**: Only request necessary permissions
 - **Standardize Findings**: Use the `create_finding()` function for consistent output
-- **Check ID Convention**: Use service prefixes for check IDs (BR-XX for Amazon Bedrock, SM-XX for Amazon SageMaker AI, AC-XX for Amazon Bedrock AgentCore, AG-XX for Agentic AI Security, FS-XX for Financial Services GenAI risk checks)
+- **Check ID Convention**: Use service prefixes for check IDs (BR-XX for Amazon Bedrock, SM-XX for Amazon SageMaker AI, AC-XX for Amazon Bedrock AgentCore, AG-XX for Agentic AI Security, FS-XX for Responsible AI GRC checks)
 - **Status Semantics**: Use correct status values:
   - `Passed`: Resources were checked and met the assessed best practice
   - `Failed`: Resources were checked and found non-compliant
@@ -576,7 +596,7 @@ sam deploy --stack-name aiml-security-test --capabilities CAPABILITY_IAM
 # Execute AWS Step Functions
 aws stepfunctions start-execution \
   --state-machine-arn arn:aws:states:region:account:stateMachine:TestStateMachine \
-  --input '{"accountId":"123456789012","enableFinServ":"false","enableOWASP":"false"}'
+  --input '{"accountId":"123456789012","enableResponsibleAIGRC":"false","enableOWASP":"false"}'
 ```
 
 ### 3. Multi-Account Testing
@@ -594,7 +614,7 @@ For detailed troubleshooting guidance, common issues, and debugging tips, see th
 
 ### Current Status
 
-- **AI/ML Assessment**: 71 core checks across three services, 27 always-on Agentic AI Security checks, plus 64 optional Financial Services GenAI risk checks and 12 optional OWASP Top 10 for LLM checks (see [Security Checks Reference](SECURITY_CHECKS.md))
+- **AI/ML Assessment**: 71 core checks across three services, 27 always-on Agentic AI Security checks, plus 64 optional Responsible AI GRC checks and 12 optional OWASP Top 10 for LLM checks (see [Security Checks Reference](SECURITY_CHECKS.md))
 
 ### Potential Additions
 
@@ -608,7 +628,7 @@ For detailed troubleshooting guidance, common issues, and debugging tips, see th
 - Each AWS AI/ML service gets its own dedicated AWS Lambda function
 - AWS Step Functions orchestrates parallel execution of service assessments
 - Multi-region scans use a Step Functions Map state with configurable `MaxRegionConcurrency`
-- FinServ checks are opt-in through `EnableFinServAssessment`; the Lambda is deployed by default and also runs as a hidden OWASP source dependency when `EnableOWASPAssessment` is enabled
+- Responsible AI GRC checks are opt-in through `EnableResponsibleAIGRCAssessment`; the Lambda is deployed by default and also runs as a hidden OWASP source dependency when `EnableOWASPAssessment` is enabled
 - OWASP checks are opt-in through `EnableOWASPAssessment`; the Lambda is deployed by default but invoked only when enabled
 - Results are consolidated into a single HTML/CSV report
 - AWS CodeBuild orchestrates deployment and execution across multiple accounts
@@ -853,7 +873,7 @@ GitHub Actions workflows run automatically to validate code quality and security
 | Workflow | File | What It Checks |
 | ---------- | ------ | ---------------- |
 | **Python Code Quality** | `.github/workflows/python-lint.yml` | `ruff check` (lint) and `ruff format --check` (formatting) on changed `.py` files |
-| **Python Tests** | `.github/workflows/python-tests.yml` | Runs upstream tests, FinServ tests, and report-pipeline tests in separate pytest sessions |
+| **Python Tests** | `.github/workflows/python-tests.yml` | Runs upstream tests, Responsible AI GRC tests, and report-pipeline tests in separate pytest sessions |
 | **CloudFormation Lint** | `.github/workflows/cfn-lint.yml` | Validates deployment and SAM templates with `cfn-lint` |
 | **SAM Validate & Build** | `.github/workflows/sam-validate.yml` | Runs `sam validate --lint` and `sam build` on SAM templates |
 | **ASH Security Scan** | `.github/workflows/ash-security-scan.yml` | Scans changed files for secrets, dependency vulnerabilities, and IaC misconfigurations |
@@ -889,8 +909,8 @@ export AWS_ACCESS_KEY_ID=testing
 export AWS_SECRET_ACCESS_KEY=testing
 
 python -m pytest tests/ -v --tb=short
-python -m pytest aiml-security-assessment/functions/security/finserv_tests/ -v --tb=short
-python -m pytest tests/test_consolidate_finserv.py -v --tb=short
+python -m pytest aiml-security-assessment/functions/security/responsible_ai_grc_tests/ -v --tb=short
+python -m pytest tests/test_consolidate_responsible_ai_grc.py -v --tb=short
 
 cd aiml-security-assessment/functions/security/generate_consolidated_report
 python -m pytest test_generate_report.py -v --tb=short

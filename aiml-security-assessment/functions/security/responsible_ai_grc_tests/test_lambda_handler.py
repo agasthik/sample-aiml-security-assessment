@@ -1,5 +1,5 @@
 """
-Integration tests for the lambda_handler in finserv_assessments/app.py
+Integration tests for the lambda_handler in responsible_ai_grc_assessments/app.py
 
 These tests verify:
   - lambda_handler runs end-to-end with all checks mocked
@@ -73,7 +73,7 @@ class TestLambdaHandler:
 
         mock_client.return_value = generic
         mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
-        mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/finserv_security_report_unit-test-001.csv"
+        mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/responsible_ai_grc_security_report_unit-test-001.csv"
 
         result = app.lambda_handler(lambda_event, None)
 
@@ -335,14 +335,18 @@ class TestWriteToS3:
 
         url = app.write_to_s3("exec-123", "col1,col2\nval1,val2", "my-bucket")
 
+        # write_to_s3 writes a single object under the
+        # responsible_ai_grc_security_report prefix -- the only prefix this
+        # assessment ever writes. There is no second, additive write.
         s3.put_object.assert_called_once_with(
             Bucket="my-bucket",
-            Key="finserv_security_report_exec-123.csv",
+            Key="responsible_ai_grc_security_report_exec-123.csv",
             Body="col1,col2\nval1,val2",
             ContentType="text/csv",
         )
         assert "my-bucket" in url
         assert "exec-123" in url
+        assert "responsible_ai_grc_security_report_exec-123.csv" in url
 
     @patch("finserv_app.boto3.client")
     def test_s3_error_propagates(self, mock_client):
@@ -408,7 +412,7 @@ class TestAllCheckFunctionsImportable:
         "check_cloudwatch_token_alarms",
         "check_aws_budgets_for_aiml",
         "check_bedrock_agent_action_boundaries",
-        "check_agentcore_policy_engine",
+        "check_agentcore_runtime_inbound_authorizer",
         "check_agent_transaction_limits",
         "check_human_in_the_loop_for_high_risk_actions",
         "check_agent_rate_alarms",

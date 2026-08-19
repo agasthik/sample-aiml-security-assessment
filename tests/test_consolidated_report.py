@@ -260,7 +260,7 @@ class TestOWASPFindingClassification:
             "bedrock": {},
             "sagemaker": {},
             "agentcore": {},
-            "finserv": {},
+            "responsible-ai-grc": {},
             "owasp": {
                 "owasp_security_report_exec-123_us-east-1": [
                     _finding(
@@ -306,10 +306,10 @@ class TestOWASPFindingClassification:
 
 
 class TestFinServSuppressionWhenOWASPOnly:
-    """When FinServ runs only as an OWASP dependency (customer did not enable
-    it explicitly), FS-* rows must be hidden from the report entirely — no
-    findings, no service_stats, no service_findings — while OW-* rows are
-    kept intact.
+    """When Responsible AI GRC runs only as an OWASP dependency (customer did
+    not enable it explicitly), FS-* rows must be hidden from the report
+    entirely — no findings, no service_stats, no service_findings — while
+    OW-* rows are kept intact.
     """
 
     def _run(self, monkeypatch, results, show_finserv):
@@ -329,8 +329,8 @@ class TestFinServSuppressionWhenOWASPOnly:
             "bedrock": {},
             "sagemaker": {},
             "agentcore": {},
-            "finserv": {
-                "finserv_security_report_exec-123": [
+            "responsible-ai-grc": {
+                "responsible_ai_grc_security_report_exec-123": [
                     _finding("FS-51", "us-east-1", status="Failed"),
                     _finding("FS-52", "us-east-1", status="Passed"),
                 ],
@@ -342,12 +342,12 @@ class TestFinServSuppressionWhenOWASPOnly:
             },
         }
         captured = self._run(monkeypatch, results, show_finserv=False)
-        assert captured["service_stats"]["finserv"] == {
+        assert captured["service_stats"]["responsible-ai-grc"] == {
             "passed": 0,
             "failed": 0,
             "na": 0,
         }
-        assert captured["service_findings"]["finserv"] == []
+        assert captured["service_findings"]["responsible-ai-grc"] == []
         # OWASP rows survive untouched.
         assert captured["service_stats"]["owasp"]["failed"] == 1
 
@@ -358,26 +358,26 @@ class TestFinServSuppressionWhenOWASPOnly:
             "bedrock": {},
             "sagemaker": {},
             "agentcore": {},
-            "finserv": {
-                "finserv_security_report_exec-123": [
+            "responsible-ai-grc": {
+                "responsible_ai_grc_security_report_exec-123": [
                     _finding("FS-51", "us-east-1", status="Failed"),
                 ],
             },
         }
         captured = self._run(monkeypatch, results, show_finserv=True)
-        assert captured["service_stats"]["finserv"]["failed"] == 1
+        assert captured["service_stats"]["responsible-ai-grc"]["failed"] == 1
 
     def test_show_finserv_defaults_to_true(self, monkeypatch):
         # Backwards compatibility: existing callers that don't pass the kwarg
-        # must keep seeing FinServ rows.
+        # must keep seeing Responsible AI GRC rows.
         results = {
             "execution_id": "exec-123",
             "account_id": "111122223333",
             "bedrock": {},
             "sagemaker": {},
             "agentcore": {},
-            "finserv": {
-                "finserv_security_report_exec-123": [
+            "responsible-ai-grc": {
+                "responsible_ai_grc_security_report_exec-123": [
                     _finding("FS-51", "us-east-1", status="Failed"),
                 ],
             },
@@ -389,7 +389,7 @@ class TestFinServSuppressionWhenOWASPOnly:
             lambda **kwargs: captured.update(kwargs) or "<html></html>",
         )
         consolidated_app.generate_html_report(results)
-        assert captured["service_stats"]["finserv"]["failed"] == 1
+        assert captured["service_stats"]["responsible-ai-grc"]["failed"] == 1
 
 
 class TestFlagParsing:

@@ -1,5 +1,5 @@
 """
-Tests for all check functions in finserv_assessments/app.py
+Tests for all check functions in responsible_ai_grc_assessments/app.py
 
 Strategy:
   - Every check function is tested for at least two scenarios:
@@ -688,58 +688,148 @@ class TestFS07AgentActionBoundaries:
         assert result["status"] == "ERROR"
 
 
-class TestFS08AgentcorePolicyEngine:
-    """FS-08 — AgentCore Policy Engine Check."""
+class TestFS08AgentCoreRuntimeInboundAuthorizer:
+    """FS-08 — AgentCore runtime inbound authorizer check.
+
+    ListAgentRuntimes does not return authorizerConfiguration; only
+    GetAgentRuntime does. The fixtures below therefore use the *realistic*
+    ListAgentRuntimes item shape, so a regression back to reading the field off
+    the list response fails these tests instead of passing on a fabricated mock.
+    """
+
+    # Exactly the members botocore declares for ListAgentRuntimes.agentRuntimes[].
+    LIST_ITEM = {
+        "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/rt1",
+        "agentRuntimeId": "rt1-id",
+        "agentRuntimeVersion": "1",
+        "agentRuntimeName": "rt1",
+        "description": "example runtime",
+        "status": "READY",
+    }
 
     @patch("finserv_app.boto3.client")
     def test_pass_runtimes_with_authorizer(self, mock_client):
         c = MagicMock()
-        c.list_agent_runtimes.return_value = {
-            "agentRuntimes": [
-                {
-                    "agentRuntimeName": "rt1",
-                    "authorizerConfiguration": {"customJWTAuthorizer": {}},
-                }
-            ]
+        c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
+        c.get_agent_runtime.return_value = {
+            **self.LIST_ITEM,
+            "authorizerConfiguration": {"customJWTAuthorizer": {}},
         }
         mock_client.return_value = c
-        result = app.check_agentcore_policy_engine()
+        result = app.check_agentcore_runtime_inbound_authorizer()
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
+        c.get_agent_runtime.assert_called_once_with(agentRuntimeId="rt1-id")
+        assert any(r["Status"] == "Passed" for r in result["csv_data"])
 
     @patch("finserv_app.boto3.client")
     def test_warn_runtimes_without_authorizer(self, mock_client):
         c = MagicMock()
-        c.list_agent_runtimes.return_value = {
-            "agentRuntimes": [{"agentRuntimeName": "rt1"}]
-        }
+        c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
+        c.get_agent_runtime.return_value = dict(self.LIST_ITEM)
         mock_client.return_value = c
-        result = app.check_agentcore_policy_engine()
+        result = app.check_agentcore_runtime_inbound_authorizer()
         _assert_finding_structure(result)
         assert result["status"] == "WARN"
+
+    @patch("finserv_app.boto3.client")
+    def test_passed_is_reachable_with_realistic_list_shape(self, mock_client):
+        """Regression guard for the original defect.
+
+        The list response deliberately omits authorizerConfiguration, matching
+        the real API. If the implementation reverts to reading the field from
+        the list item, every runtime looks unauthorized and Passed becomes
+        unreachable — which this test would catch.
+        """
+        c = MagicMock()
+        c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
+        assert (
+            "authorizerConfiguration"
+            not in c.list_agent_runtimes.return_value["agentRuntimes"][0]
+        )
+        c.get_agent_runtime.return_value = {
+            **self.LIST_ITEM,
+            "authorizerConfiguration": {
+                "customJWTAuthorizer": {"discoveryUrl": "https://x"}
+            },
+        }
+        mock_client.return_value = c
+        result = app.check_agentcore_runtime_inbound_authorizer()
+        statuses = {r["Status"] for r in result["csv_data"]}
+        assert "Passed" in statuses
+        assert "Failed" not in statuses
+
+    @patch("finserv_app.boto3.client")
+    def test_does_not_claim_tool_level_authorization(self, mock_client):
+        """The removed overclaim must not come back."""
+        c = MagicMock()
+        c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
+        c.get_agent_runtime.return_value = dict(self.LIST_ITEM)
+        mock_client.return_value = c
+        result = app.check_agentcore_runtime_inbound_authorizer()
+        blob = " ".join(
+            f"{r['Finding']} {r['Finding_Details']} {r['Resolution']}"
+            for r in result["csv_data"]
+        )
+        assert "invoke any registered tool" not in blob
+        assert "Policy Engine" not in blob
+        assert "review authorizer and policy semantics manually" in blob
+
+    @patch("finserv_app.boto3.client")
+    def test_list_call_is_paginated(self, mock_client):
+        c = MagicMock()
+        second = dict(self.LIST_ITEM, agentRuntimeId="rt2-id", agentRuntimeName="rt2")
+        c.list_agent_runtimes.side_effect = [
+            {"agentRuntimes": [dict(self.LIST_ITEM)], "nextToken": "t1"},
+            {"agentRuntimes": [second]},
+        ]
+        c.get_agent_runtime.return_value = {
+            **self.LIST_ITEM,
+            "authorizerConfiguration": {"customJWTAuthorizer": {}},
+        }
+        mock_client.return_value = c
+        result = app.check_agentcore_runtime_inbound_authorizer()
+        _assert_finding_structure(result)
+        assert c.list_agent_runtimes.call_count == 2
+        assert c.get_agent_runtime.call_count == 2
+
+    @patch("finserv_app.boto3.client")
+    def test_get_agent_runtime_denied_reports_could_not_assess(self, mock_client):
+        c = MagicMock()
+        c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
+        c.get_agent_runtime.side_effect = _client_error("AccessDeniedException")
+        mock_client.return_value = c
+        result = app.check_agentcore_runtime_inbound_authorizer()
+        _assert_finding_structure(result)
+        names = [r["Finding"] for r in result["csv_data"]]
+        assert any(n.startswith(app.COULD_NOT_ASSESS_PREFIX) for n in names)
+        # An un-describable runtime must not be counted as a pass or a failure.
+        statuses = {r["Status"] for r in result["csv_data"]}
+        assert statuses == {"N/A"}
 
     @patch("finserv_app.boto3.client")
     def test_na_no_runtimes(self, mock_client):
         c = MagicMock()
         c.list_agent_runtimes.return_value = {"agentRuntimes": []}
         mock_client.return_value = c
-        result = app.check_agentcore_policy_engine()
+        result = app.check_agentcore_runtime_inbound_authorizer()
         _assert_finding_structure(result)
         assert any(r["Status"] == "N/A" for r in result["csv_data"])
+        c.get_agent_runtime.assert_not_called()
 
     @patch("finserv_app.boto3.client")
     def test_access_denied_returns_na(self, mock_client):
         c = MagicMock()
         c.list_agent_runtimes.side_effect = _client_error("AccessDeniedException")
         mock_client.return_value = c
-        result = app.check_agentcore_policy_engine()
+        result = app.check_agentcore_runtime_inbound_authorizer()
         _assert_finding_structure(result)
         assert any(r["Status"] == "N/A" for r in result["csv_data"])
 
     @patch("finserv_app.boto3.client")
     def test_error_on_exception(self, mock_client):
         mock_client.side_effect = RuntimeError("agentcore error")
-        result = app.check_agentcore_policy_engine()
+        result = app.check_agentcore_runtime_inbound_authorizer()
         assert result["status"] == "ERROR"
 
 
@@ -1442,7 +1532,7 @@ class TestFS28GuardrailDeniedTopicsFinancial:
         result = app.check_guardrail_denied_topics_financial(inv)
         _assert_finding_structure(result)
         assert any(
-            r["Finding"] == "Denied Topics Configured on CLASSIC Tier"
+            r["Finding"] == "Topic Policies Configured on CLASSIC Tier"
             and r["Severity"] == "High"
             for r in result["csv_data"]
         )
@@ -2678,38 +2768,118 @@ class TestFS65KbDatasourceS3EventNotifications:
 
 
 class TestFS66AgentcoreEndUserIdentityPropagation:
-    """FS-66 — AgentCore End-User Identity Propagation Check."""
+    """FS-66 — AgentCore end-user identity propagation prerequisite check.
+
+    Same API constraint as FS-08: authorizerConfiguration is returned by
+    GetAgentRuntime, not by ListAgentRuntimes. Fixtures use the realistic list
+    item shape so the previous unreachable-Passed defect cannot return.
+    """
+
+    LIST_ITEM = {
+        "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/rt1",
+        "agentRuntimeId": "rt1-id",
+        "agentRuntimeVersion": "1",
+        "agentRuntimeName": "rt1",
+        "description": "example runtime",
+        "status": "READY",
+    }
 
     @patch("finserv_app.boto3.client")
     def test_pass_authorizer_configured(self, mock_client):
         c = MagicMock()
-        c.list_agent_runtimes.return_value = {
-            "agentRuntimes": [
-                {
-                    "agentRuntimeName": "rt1",
-                    "authorizerConfiguration": {
-                        "customJWTAuthorizer": {"issuerUrl": "https://example.com"}
-                    },
-                }
-            ]
+        c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
+        c.get_agent_runtime.return_value = {
+            **self.LIST_ITEM,
+            "authorizerConfiguration": {
+                "customJWTAuthorizer": {"discoveryUrl": "https://example.com"}
+            },
         }
         mock_client.return_value = c
         result = app.check_agentcore_end_user_identity_propagation()
         _assert_finding_structure(result)
         assert result["status"] == "PASS"
+        c.get_agent_runtime.assert_called_once_with(agentRuntimeId="rt1-id")
 
     @patch("finserv_app.boto3.client")
     def test_warn_no_authorizer(self, mock_client):
         c = MagicMock()
-        c.list_agent_runtimes.return_value = {
-            "agentRuntimes": [
-                {"agentRuntimeName": "rt1", "authorizerConfiguration": {}}
-            ]
+        c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
+        c.get_agent_runtime.return_value = {
+            **self.LIST_ITEM,
+            "authorizerConfiguration": {},
         }
         mock_client.return_value = c
         result = app.check_agentcore_end_user_identity_propagation()
         _assert_finding_structure(result)
         assert result["status"] == "WARN"
+
+    @patch("finserv_app.boto3.client")
+    def test_passed_is_reachable_with_realistic_list_shape(self, mock_client):
+        """Regression guard: Passed must not depend on a fabricated list item."""
+        c = MagicMock()
+        c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
+        c.get_agent_runtime.return_value = {
+            **self.LIST_ITEM,
+            "authorizerConfiguration": {
+                "customJWTAuthorizer": {"discoveryUrl": "https://example.com"}
+            },
+        }
+        mock_client.return_value = c
+        result = app.check_agentcore_end_user_identity_propagation()
+        statuses = {r["Status"] for r in result["csv_data"]}
+        assert "Passed" in statuses
+        assert "Failed" not in statuses
+
+    @patch("finserv_app.boto3.client")
+    def test_makes_no_iam_authorizer_claim(self, mock_client):
+        """authorizerConfiguration has no iamAuthorizer member in the API."""
+        c = MagicMock()
+        c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
+        c.get_agent_runtime.return_value = {
+            **self.LIST_ITEM,
+            "authorizerConfiguration": {},
+        }
+        mock_client.return_value = c
+        result = app.check_agentcore_end_user_identity_propagation()
+        blob = " ".join(
+            f"{r['Finding']} {r['Finding_Details']} {r['Resolution']}"
+            for r in result["csv_data"]
+        )
+        assert "IAM authorizer" not in blob
+        assert "JWT or IAM" not in blob
+        assert "not proof of propagation" in blob
+
+    @patch("finserv_app.boto3.client")
+    def test_list_call_is_paginated(self, mock_client):
+        c = MagicMock()
+        second = dict(self.LIST_ITEM, agentRuntimeId="rt2-id", agentRuntimeName="rt2")
+        c.list_agent_runtimes.side_effect = [
+            {"agentRuntimes": [dict(self.LIST_ITEM)], "nextToken": "t1"},
+            {"agentRuntimes": [second]},
+        ]
+        c.get_agent_runtime.return_value = {
+            **self.LIST_ITEM,
+            "authorizerConfiguration": {
+                "customJWTAuthorizer": {"discoveryUrl": "https://x"}
+            },
+        }
+        mock_client.return_value = c
+        result = app.check_agentcore_end_user_identity_propagation()
+        _assert_finding_structure(result)
+        assert c.list_agent_runtimes.call_count == 2
+        assert c.get_agent_runtime.call_count == 2
+
+    @patch("finserv_app.boto3.client")
+    def test_get_agent_runtime_denied_reports_could_not_assess(self, mock_client):
+        c = MagicMock()
+        c.list_agent_runtimes.return_value = {"agentRuntimes": [dict(self.LIST_ITEM)]}
+        c.get_agent_runtime.side_effect = _client_error("AccessDeniedException")
+        mock_client.return_value = c
+        result = app.check_agentcore_end_user_identity_propagation()
+        _assert_finding_structure(result)
+        names = [r["Finding"] for r in result["csv_data"]]
+        assert any(n.startswith(app.COULD_NOT_ASSESS_PREFIX) for n in names)
+        assert {r["Status"] for r in result["csv_data"]} == {"N/A"}
 
     @patch("finserv_app.boto3.client")
     def test_access_denied_returns_na(self, mock_client):
@@ -3433,9 +3603,12 @@ class TestRequirementVersionFloors:
 
     @staticmethod
     def _load_requirements() -> str:
-        """Load finserv_assessments/requirements.txt relative to the tests/ dir."""
+        """Load responsible_ai_grc_assessments/requirements.txt relative to the tests/ dir."""
         req_path = os.path.join(
-            os.path.dirname(__file__), "..", "finserv_assessments", "requirements.txt"
+            os.path.dirname(__file__),
+            "..",
+            "responsible_ai_grc_assessments",
+            "requirements.txt",
         )
         with open(req_path) as f:
             return f.read()
@@ -3454,7 +3627,7 @@ class TestRequirementVersionFloors:
         assert boto3_floor >= self.MIN_BOTO3, (
             f"boto3 floor {boto3_floor} is below minimum {self.MIN_BOTO3}; "
             "FS-06 describe_budgets(ShowFilterExpression=True) requires boto3>=1.43.0. "
-            "Bump the floor in finserv_assessments/requirements.txt."
+            "Bump the floor in responsible_ai_grc_assessments/requirements.txt."
         )
 
     def test_botocore_floor_meets_minimum(self):
@@ -3471,7 +3644,8 @@ class TestRequirementVersionFloors:
         assert botocore_floor >= self.MIN_BOTOCORE, (
             f"botocore floor {botocore_floor} is below minimum {self.MIN_BOTOCORE}; "
             "FS-03 list_aws_default_service_quotas and FS-06 ShowFilterExpression "
-            "require botocore>=1.43.0. Bump the floor in finserv_assessments/requirements.txt."
+            "require botocore>=1.43.0. Bump the floor in "
+            "responsible_ai_grc_assessments/requirements.txt."
         )
 
     def test_pydantic_floor_present(self):
@@ -3579,6 +3753,76 @@ class TestFinservRegionalFootprint:
         )
 
         assert app.detect_finserv_regional_footprint("eu-west-1") is None
+
+    @patch("finserv_app.boto3.client")
+    def test_detect_returns_none_on_a_mix_of_empty_and_indeterminate_probes(
+        self, mock_client
+    ):
+        """One probe succeeds empty, the rest are denied → the overall picture
+        is still indeterminate, not "no resources found". An earlier revision
+        returned False as soon as ANY probe succeeded empty, so a real
+        footprint an unresolved probe could not rule out (here: SageMaker,
+        AgentCore, and the rest of Bedrock) was silently hidden and the region
+        was reported as having no GenAI resources at all."""
+        bedrock = MagicMock()
+        bedrock.list_guardrails.return_value = {"guardrails": []}  # confirmed empty
+        bedrock_agent = MagicMock()
+        bedrock_agent.list_agents.side_effect = _client_error("AccessDeniedException")
+        bedrock_agent.list_knowledge_bases.side_effect = _client_error(
+            "AccessDeniedException"
+        )
+        agentcore = MagicMock()
+        agentcore.list_agent_runtimes.side_effect = _client_error(
+            "AccessDeniedException"
+        )
+        sagemaker = MagicMock()
+        sagemaker.list_endpoints.side_effect = _client_error("AccessDeniedException")
+        sagemaker.list_models.side_effect = _client_error("AccessDeniedException")
+        sagemaker.list_feature_groups.side_effect = _client_error(
+            "AccessDeniedException"
+        )
+        mock_client.side_effect = self._client_factory(
+            {
+                "bedrock": bedrock,
+                "bedrock-agent": bedrock_agent,
+                "bedrock-agentcore-control": agentcore,
+                "sagemaker": sagemaker,
+            }
+        )
+
+        assert app.detect_finserv_regional_footprint("ap-southeast-1") is None
+
+    @patch("finserv_app.boto3.client")
+    def test_detect_returns_none_when_the_last_probe_is_indeterminate(
+        self, mock_client
+    ):
+        """The inverse ordering: every probe up to the last succeeds empty, and
+        only the final probe is denied. The result must still be None — the
+        bug depended on which probe ran first setting a flag that a later
+        probe's flag could not override, so both orderings must be checked."""
+        bedrock = MagicMock()
+        bedrock.list_guardrails.return_value = {"guardrails": []}
+        bedrock_agent = MagicMock()
+        bedrock_agent.list_agents.return_value = {"agentSummaries": []}
+        bedrock_agent.list_knowledge_bases.return_value = {"knowledgeBaseSummaries": []}
+        agentcore = MagicMock()
+        agentcore.list_agent_runtimes.return_value = {"agentRuntimes": []}
+        sagemaker = MagicMock()
+        sagemaker.list_endpoints.return_value = {"Endpoints": []}
+        sagemaker.list_models.return_value = {"Models": []}
+        sagemaker.list_feature_groups.side_effect = _client_error(
+            "AccessDeniedException"
+        )
+        mock_client.side_effect = self._client_factory(
+            {
+                "bedrock": bedrock,
+                "bedrock-agent": bedrock_agent,
+                "bedrock-agentcore-control": agentcore,
+                "sagemaker": sagemaker,
+            }
+        )
+
+        assert app.detect_finserv_regional_footprint("ap-southeast-2") is None
 
     @patch("finserv_app.detect_finserv_regional_footprint")
     def test_partition_keeps_indeterminate_regions_in_scope(self, mock_detect):

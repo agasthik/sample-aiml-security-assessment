@@ -1228,7 +1228,7 @@ def check_sagemaker_model_monitor_usage(
     # Monitor data-quality baselines to be refreshed on a regulator-aligned cadence
     # (SR 11-7 ongoing monitoring) and for the baseline statistics to be emitted to
     # CloudWatch under namespace /aws/sagemaker/Endpoints/data-metric with
-    # emit_metrics=Enabled. See docs/SECURITY_CHECKS_FINSERV.md
+    # emit_metrics=Enabled. See docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md
     # (FS-17 → SM-07 extension note).
     logger.debug("Starting check for SageMaker Model Monitor usage")
     try:
@@ -3017,7 +3017,7 @@ def check_model_approval_workflow(region: str = "") -> Dict[str, Any]:
     # FinServ extension (FS-19): The FinServ guide (PDF §1.2.14) expects model
     # package groups to enforce ModelApprovalStatus=PendingManualApproval by default
     # and to flag model packages that are auto-approved as their latest version.
-    # See docs/SECURITY_CHECKS_FINSERV.md (FS-19 → SM-22
+    # See docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md (FS-19 → SM-22
     # extension note) for the detection refinement.
     logger.debug("Starting check for model approval workflow")
     try:
@@ -3178,7 +3178,7 @@ def check_model_drift_detection(region: str = "") -> Dict[str, Any]:
     # FinServ extension (FS-18): In addition to ModelQuality drift monitoring, the
     # FinServ guide (PDF §1.2.14) calls out low-entropy classification monitoring
     # as an early-warning indicator of training-data poisoning. See
-    # docs/SECURITY_CHECKS_FINSERV.md (FS-18 → SM-23
+    # docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md (FS-18 → SM-23
     # extension note) for the remediation step to add.
     logger.debug("Starting check for model drift detection")
     try:

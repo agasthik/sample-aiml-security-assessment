@@ -7,7 +7,7 @@ on:
       - "aiml-security-assessment/functions/security/**"
       - "tests/**"
       - "consolidate_html_reports.py"
-      - "tests/test_consolidate_finserv.py"
+      - "tests/test_consolidate_responsible_ai_grc.py"
       - ".github/workflows/python-tests.yml"
   pull_request:
     branches: [main]
@@ -15,7 +15,7 @@ on:
       - "aiml-security-assessment/functions/security/**"
       - "tests/**"
       - "consolidate_html_reports.py"
-      - "tests/test_consolidate_finserv.py"
+      - "tests/test_consolidate_responsible_ai_grc.py"
       - ".github/workflows/python-tests.yml"
 
 jobs:
@@ -53,17 +53,18 @@ jobs:
             --cov=aiml-security-assessment/functions/security \
             --cov-report=term-missing
 
-      - name: Run FinServ assessment tests with coverage
-        # Run separately from tests/: the FinServ suite has its own conftest and
-        # imports the FinServ app as top-level `app`, which would collide in a
-        # single pytest session with the other assessment modules' app.py files.
+      - name: Run Responsible AI GRC assessment tests with coverage
+        # Run separately from tests/: the Responsible AI GRC suite has its own
+        # conftest and imports the app as top-level `app`, which would collide
+        # in a single pytest session with the other assessment modules' app.py
+        # files.
         env:
           AIML_ASSESSMENT_BUCKET_NAME: test-assessment-bucket
           AWS_DEFAULT_REGION: us-east-1
           AWS_ACCESS_KEY_ID: testing
           AWS_SECRET_ACCESS_KEY: testing  # pragma: allowlist secret
         run: |
-          python -m pytest aiml-security-assessment/functions/security/finserv_tests/ \
+          python -m pytest aiml-security-assessment/functions/security/responsible_ai_grc_tests/ \
             -v \
             --tb=short \
             --cov=aiml-security-assessment/functions/security \
@@ -73,15 +74,15 @@ jobs:
 
       - name: Run report-pipeline tests
         # The single- and multi-account HTML report generators (REQ-1) and the
-        # FinServ categorization test. The report generator package ships an
-        # __init__.py, so its tests run with that directory as CWD.
+        # Responsible AI GRC categorization test. The report generator package
+        # ships an __init__.py, so its tests run with that directory as CWD.
         env:
           AIML_ASSESSMENT_BUCKET_NAME: test-assessment-bucket
           AWS_DEFAULT_REGION: us-east-1
           AWS_ACCESS_KEY_ID: testing
           AWS_SECRET_ACCESS_KEY: testing  # pragma: allowlist secret
         run: |
-          python -m pytest tests/test_consolidate_finserv.py -v --tb=short
+          python -m pytest tests/test_consolidate_responsible_ai_grc.py -v --tb=short
           cd aiml-security-assessment/functions/security/generate_consolidated_report
           python -m pytest test_generate_report.py -v --tb=short
 

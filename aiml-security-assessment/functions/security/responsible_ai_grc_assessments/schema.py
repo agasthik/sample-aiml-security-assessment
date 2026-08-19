@@ -1,5 +1,5 @@
 """
-Schema module for FinServ security findings.
+Schema module for Responsible AI GRC security findings.
 Mirrors the schema used in bedrock_assessments/schema.py.
 """
 

@@ -42,7 +42,7 @@ SOURCE_CHECK_ID_FILES = {
     "BR": _security_functions_dir / "bedrock_assessments" / "app.py",
     "SM": _security_functions_dir / "sagemaker_assessments" / "app.py",
     "AC": _security_functions_dir / "agentcore_assessments" / "app.py",
-    "FS": _security_functions_dir / "finserv_assessments" / "app.py",
+    "FS": _security_functions_dir / "responsible_ai_grc_assessments" / "app.py",
 }
 
 
@@ -592,7 +592,8 @@ class TestOW12DeniedTopic:
 
 
 # ---------------------------------------------------------------------------
-# S3 CSV reader — FinServ un-suffixed key must be read only when include_finserv
+# S3 CSV reader — Responsible AI GRC un-suffixed key must be read only when
+# include_finserv is True.
 # ---------------------------------------------------------------------------
 class TestReadServiceCsvsForRegion:
     def _fake_s3_client(self, keys_to_body):
@@ -636,12 +637,13 @@ class TestReadServiceCsvsForRegion:
             )
         return header + body
 
-    def test_finserv_csv_is_at_unsuffixed_key(self):
-        # FinServ writes finserv_security_report_<exec>.csv (no _<region>),
-        # so the reader must fetch that key when include_finserv=True.
+    def test_responsible_ai_grc_csv_is_at_unsuffixed_key(self):
+        # Responsible AI GRC writes responsible_ai_grc_security_report_<exec>.csv
+        # (no _<region>), so the reader must fetch that key when
+        # include_finserv=True.
         exec_id = "exec-abc"
         keys = {
-            f"finserv_security_report_{exec_id}.csv": self._csv(
+            f"responsible_ai_grc_security_report_{exec_id}.csv": self._csv(
                 [
                     {
                         "Check_ID": "FS-51",
@@ -661,15 +663,17 @@ class TestReadServiceCsvsForRegion:
                 include_finserv=True,
             )
         assert any(r.get("Check_ID") == "FS-51" for r in rows), (
-            "reader must fetch finserv_security_report_<exec>.csv when include_finserv=True"
+            "reader must fetch responsible_ai_grc_security_report_<exec>.csv "
+            "when include_finserv=True"
         )
 
-    def test_finserv_csv_skipped_when_include_finserv_false(self):
+    def test_responsible_ai_grc_csv_skipped_when_include_finserv_false(self):
         # In per-region invocations (RegionIndex > 0), OWASP must NOT re-read
-        # the FinServ CSV or the same FS rows would be emitted N times.
+        # the Responsible AI GRC CSV or the same FS rows would be emitted N
+        # times.
         exec_id = "exec-abc"
         keys = {
-            f"finserv_security_report_{exec_id}.csv": self._csv(
+            f"responsible_ai_grc_security_report_{exec_id}.csv": self._csv(
                 [{"Check_ID": "FS-51", "Region": "us-east-1", "Status": "Failed"}]
             ),
         }
@@ -682,7 +686,7 @@ class TestReadServiceCsvsForRegion:
                 include_finserv=False,
             )
         assert not any(r.get("Check_ID", "").startswith("FS-") for r in rows), (
-            "FinServ CSV must be skipped when include_finserv=False"
+            "Responsible AI GRC CSV must be skipped when include_finserv=False"
         )
 
     def test_per_region_service_csvs_use_region_suffix(self):
@@ -716,7 +720,7 @@ class TestReadServiceCsvsForRegion:
             )
         assert rows == []
         assert f"bedrock_security_report_{exec_id}_us-east-1.csv" in missing
-        assert f"finserv_security_report_{exec_id}.csv" in missing
+        assert f"responsible_ai_grc_security_report_{exec_id}.csv" in missing
 
         coverage_rows = owasp_app.build_missing_source_findings(
             missing, region="us-east-1"

@@ -506,7 +506,11 @@ def _build_mock_client(
             c.list_schedules.return_value = {"Schedules": []}
             return c
 
-        if service == "agentcore":
+        # The real client name is "bedrock-agentcore-control"; the previous
+        # "agentcore" branch never matched, so this client silently fell through
+        # to the catch-all MagicMock and FS-08's golden row was an artifact of
+        # unconfigured-mock behavior rather than a stubbed empty inventory.
+        if service == "bedrock-agentcore-control":
             c.list_agent_runtimes.return_value = {"agentRuntimes": []}
             return c
 
@@ -564,7 +568,7 @@ def _run_handler_and_extract_tuples(mock_client_side_effect, event):
     ):
         mock_client.side_effect = mock_client_side_effect
         mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
-        mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/finserv_security_report_equivalence-test-001.csv"
+        mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/responsible_ai_grc_security_report_equivalence-test-001.csv"
 
         result = app.lambda_handler(event, None)
 
@@ -606,7 +610,12 @@ BASELINE: list[tuple[str, str, str, str, str]] = [
     ('FS-05', 'Bedrock CloudWatch Alarms Present', 'Passed', 'Medium', 'FFIEC CAT | DORA Art.6'),
     ('FS-06', 'AI/ML Service Budgets Configured', 'Passed', 'Medium', 'FFIEC CAT | SR 11-7'),
     ('FS-07', 'Agent Action Boundary Check', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT'),
-    ('FS-08', 'AgentCore Policy Engine Configured', 'Passed', 'High', 'SR 11-7 | MAS TRM 9.1'),
+    # Reviewed golden change: the fixture stubs an empty AgentCore runtime
+    # inventory, so the correct row is the not-applicable one. The previous
+    # ('AgentCore Policy Engine Configured', 'Passed', 'High') row could only be
+    # produced by reading authorizerConfiguration off a ListAgentRuntimes item
+    # that never carries it.
+    ('FS-08', 'No AgentCore Runtimes Found', 'N/A', 'Informational', 'SR 11-7 | MAS TRM 9.1'),
     ('FS-09', 'Agent Lambda Concurrency Limits Present', 'Passed', 'Medium', 'FFIEC CAT | SR 11-7'),
     ('FS-10', 'Human-in-the-Loop Check \u2014 No Agent Workflows Found', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-11', 'No Agent Rate Alarms Found', 'Failed', 'Medium', 'FFIEC CAT | DORA Art.6'),
@@ -619,48 +628,68 @@ BASELINE: list[tuple[str, str, str, str, str]] = [
     ('FS-21', 'Training Data Buckets Have Versioning', 'Passed', 'High', 'SR 11-7 | ISO 27001 A.12.3 | FFIEC CAT'),
     ('FS-22', 'Knowledge Base IAM Permissions Look Appropriate', 'Passed', 'High', 'NYDFS 500 | FFIEC CAT | PCI-DSS 12.3.2'),
     ('FS-24', 'ADVISORY: Knowledge Base Metadata Filtering \u2014 Manual Review Required', 'N/A', 'Informational', 'NYDFS 500 | FFIEC CAT | PCI-DSS 12.3.2'),
-    ('FS-25', 'No OpenSearch Serverless Encryption Policies', 'N/A', 'Informational', 'NYDFS 500 | PCI-DSS 3.5 | FFIEC CAT'),
+    # Reviewed golden change: FS-25 now keys off ListCollections instead of
+    # ListSecurityPolicies. The old row name was reached via a branch that read a
+    # 'policy' key ListSecurityPolicies does not return, so every account was
+    # classified as customer-managed regardless of its real encryption key.
+    ('FS-25', 'No OpenSearch Serverless Collections Found', 'N/A', 'Informational', 'NYDFS 500 | PCI-DSS 3.5 | FFIEC CAT'),
     ('FS-26', 'No OpenSearch Serverless Network Policies', 'Failed', 'High', 'NYDFS 500 | FFIEC CAT | PCI-DSS 1.3'),
     ('FS-27', 'Contextual Grounding Enabled on Guardrails', 'Passed', 'High', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-27', 'No Automated Reasoning Policies Found', 'Failed', 'Medium', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
-    ('FS-28', 'Denied Topics Configured on CLASSIC Tier', 'Passed', 'High', 'SR 11-7 | FFIEC CAT | NYDFS 500 | MAS TRM 9.2'),
+    ('FS-28', 'Topic Policies Configured on CLASSIC Tier', 'Passed', 'High', 'SR 11-7 | FFIEC CAT | NYDFS 500 | MAS TRM 9.2'),
     ('FS-29', 'ADVISORY: Compliance Disclaimer \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | NYDFS 500 | MAS TRM 9.2'),
     ('FS-30', 'ADVISORY: Compliance Dataset Coverage \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | NYDFS 500'),
-    ('FS-31', 'Knowledge Base Data Sources Recently Synced', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT'),
+    # Reviewed golden change: FS-31 now reads ingestion-job history rather than the
+    # data source's own updatedAt (which is a configuration timestamp, not a sync
+    # time). The fixture stubs no ingestion jobs, so 'never successfully synced' is
+    # the correct row; the previous 'Recently Synced' PASS was derived from the
+    # config timestamp.
+    ('FS-31', 'Knowledge Base Data Sources Never Successfully Synced', 'Failed', 'Medium', 'SR 11-7 | FFIEC CAT'),
     ('FS-32', 'ADVISORY: Source Attribution \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-33', 'KB Data Source Buckets Have Versioning', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT | ISO 27001 A.12'),
     ('FS-34', 'Foundation Models Are Current', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT'),
-    ('FS-35', 'ADVISORY: Harmful-Content Test Coverage \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT'),
-    ('FS-36', 'Guardrail Content Filters on CLASSIC Tier', 'Passed', 'High', 'SR 11-7 | FFIEC CAT'),
+    ('FS-35', 'ADVISORY: Harmful-Content Test Coverage \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
+    ('FS-36', 'Guardrails With Content Filters Found', 'Passed', 'High', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-37', 'ADVISORY: User Feedback Mechanism \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-38', 'Guardrail Word Filters Configured', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT'),
     ('FS-39', 'No SageMaker Clarify Bias Monitoring', 'Failed', 'High', 'SR 11-7 | FFIEC CAT | ECOA/Fair Housing'),
-    ('FS-40', 'ADVISORY: Bias Dataset Coverage \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | ECOA/Fair Housing'),
-    ('FS-41', 'No SageMaker Clarify Explainability Monitoring', 'Failed', 'High', 'SR 11-7 | FFIEC CAT'),
-    ('FS-42', 'No SageMaker Model Cards Found', 'Failed', 'Medium', 'SR 11-7 | FFIEC CAT'),
-    ('FS-43', 'CloudWatch Logs Data Protection Policies Present', 'Passed', 'High', 'NYDFS 500 | FFIEC CAT | PCI-DSS'),
-    ('FS-44', 'COULD NOT ASSESS: Amazon Macie PII Scanning Check', 'N/A', 'Low', 'NYDFS 500 | FFIEC CAT | PCI-DSS'),
-    ('FS-45', 'Guardrail PII Filters Configured', 'Passed', 'High', 'NYDFS 500 | FFIEC CAT | PCI-DSS'),
-    ('FS-46', 'AI/ML Buckets Have Classification Tags', 'Passed', 'Medium', 'NYDFS 500 | FFIEC CAT | ISO 27001 A.12 | PCI-DSS'),
-    ('FS-47', 'Guardrail Grounding Thresholds Appropriate', 'Passed', 'High', 'SR 11-7 | FFIEC CAT'),
+    ('FS-40', 'ADVISORY: Bias Dataset Coverage \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | ECOA'),
+    ('FS-41', 'No SageMaker Clarify Explainability Monitoring', 'Failed', 'High', 'SR 11-7 | FFIEC CAT | ECOA Adverse Action'),
+    # Reviewed golden change: absence of SageMaker Model Cards is no longer a
+    # Failed/Medium. A Bedrock-only estate legitimately has none, so the row is
+    # N/A + Informational. (The check also stopped paginating on the wrong response
+    # key, ModelCardSummaryList instead of ModelCardSummaries, which made it report
+    # 'no model cards' even when cards existed.)
+    ('FS-42', 'No SageMaker Model Cards Found', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.3'),
+    ('FS-43', 'CloudWatch Logs Data Protection Policies Present', 'Passed', 'High', 'NYDFS 500 | PCI-DSS | GDPR Art.25'),
+    ('FS-44', 'COULD NOT ASSESS: Amazon Macie PII Scanning Check', 'N/A', 'Low', 'NYDFS 500 | FFIEC CAT | PCI-DSS | GDPR Art.25'),
+    ('FS-45', 'Guardrail PII Filters Configured', 'Passed', 'High', 'NYDFS 500 | PCI-DSS | GDPR Art.25'),
+    ('FS-46', 'AI/ML Buckets Have Classification Tags', 'Passed', 'Medium', 'NYDFS 500 | FFIEC CAT | ISO 27001 A.12'),
+    ('FS-47', 'Guardrail Grounding Thresholds Appropriate', 'Passed', 'High', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-48', 'No Active Knowledge Bases for RAG', 'Failed', 'Medium', 'SR 11-7 | FFIEC CAT'),
     ('FS-49', 'ADVISORY: Hallucination Disclaimer \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-50', 'Relevance Grounding Filters Present', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT'),
     ('FS-51', 'No Guardrails With Prompt Attack Filters', 'Failed', 'High', 'NYDFS 500 | FFIEC CAT | OWASP LLM Top 10'),
-    ('FS-52', 'Bedrock Lambda Functions on Current Runtimes', 'Passed', 'Medium', 'NYDFS 500 | FFIEC CAT | ISO 27001 A.12 | OWASP LLM Top 10'),
+    ('FS-52', 'Bedrock Lambda Functions on Current Runtimes', 'Passed', 'Medium', 'NYDFS 500 | FFIEC CAT | ISO 27001 A.12'),
     ('FS-53', 'WAF Injection Protection Rules Present', 'Passed', 'High', 'NYDFS 500 | PCI-DSS | FFIEC CAT | OWASP LLM Top 10'),
-    ('FS-54', 'ADVISORY: Penetration Testing \u2014 Manual Review Required', 'N/A', 'Informational', 'NYDFS 500 | FFIEC CAT | OWASP LLM Top 10'),
-    ('FS-55', 'Output Validation Functions Present', 'Passed', 'Medium', 'FFIEC CAT | OWASP LLM Top 10'),
-    ('FS-56', 'XSS Prevention Common Rule Set Present', 'Passed', 'Medium', 'NYDFS 500 | PCI-DSS | OWASP LLM Top 10'),
+    ('FS-54', 'ADVISORY: Penetration Testing \u2014 Manual Review Required', 'N/A', 'Informational', 'NYDFS 500 | FFIEC CAT | DORA Art.26 | PCI-DSS 11.4'),
+    ('FS-55', 'Output Validation Functions Present', 'Passed', 'Medium', 'FFIEC CAT | OWASP LLM Top 10 | NYDFS 500.06'),
+    ('FS-56', 'XSS Prevention Common Rule Set Present', 'Passed', 'Medium', 'NYDFS 500 | PCI-DSS | OWASP LLM Top 10 | FFIEC CAT'),
     ('FS-57', 'ADVISORY: Output Encoding \u2014 Manual Review Required', 'N/A', 'Informational', 'NYDFS 500.06 | FFIEC CAT | OWASP LLM Top 10'),
-    ('FS-58', 'ADVISORY: Output Schema Validation \u2014 Manual Review Required', 'N/A', 'Informational', 'FFIEC CAT | OWASP LLM Top 10'),
-    ('FS-59', 'Topic Restrictions Configured on CLASSIC Tier', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT'),
+    ('FS-58', 'ADVISORY: Output Schema Validation \u2014 Manual Review Required', 'N/A', 'Informational', 'FFIEC CAT | OWASP LLM Top 10 | NYDFS 500.06'),
+    ('FS-59', 'Topic Restrictions Configured on CLASSIC Tier', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
     ('FS-60', 'ADVISORY: Contextual Grounding for Off-Topic Prevention', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT'),
     ('FS-61', 'No Automated KB Sync Schedules Detected', 'Failed', 'Medium', 'SR 11-7 | FFIEC CAT'),
     ('FS-62', 'ADVISORY: Data Currency Disclaimer \u2014 Manual Review Required', 'N/A', 'Informational', 'SR 11-7 | FFIEC CAT | MAS TRM 9.2'),
-    ('FS-63', 'Foundation Model Lifecycle Management', 'Passed', 'Medium', 'SR 11-7 | FFIEC CAT | ISO 27001 A.12'),
-    ('FS-65', 'KB Data Source Buckets Missing S3 Event Notifications', 'Failed', 'Medium', 'FFIEC CAT | DORA Art.6 | ISO 27001 A.12'),
-    ('FS-66', 'AgentCore End-User Identity Propagation Configured', 'Passed', 'High', 'NYDFS 500 | SR 11-7 | MAS TRM 9 | PCI-DSS'),
+    # Reviewed golden change: FS-63's verdict moved off the regional model catalogue
+    # (which lists LEGACY models in every account) and onto account-side AWS Config
+    # rules. The fixture stubs no Config rules, so 'no governance detected' is the
+    # correct row.
+    ('FS-63', 'No Foundation Model Lifecycle Governance Detected', 'Failed', 'Medium', 'SR 11-7 | FFIEC CAT | ISO 27001 A.12'),
+    ('FS-65', 'KB Data Source Buckets Missing S3 Event Notifications', 'Failed', 'Medium', 'FFIEC CAT | ISO 27001 A.12 | SR 11-7'),
+    # Reviewed golden change, same cause as the FS-08 row above: the fixture
+    # stubs an empty AgentCore runtime inventory, so not-applicable is correct.
+    ('FS-66', 'No AgentCore Runtimes Found', 'N/A', 'Informational', 'NYDFS 500 | SR 11-7 | MAS TRM 9'),
     ('FS-67', 'Agent Action-Group Lambdas May Lack Transaction Thresholds', 'Failed', 'High', 'SR 11-7 | FFIEC CAT | MAS TRM 9 | PCI-DSS'),
     ('FS-68', 'API Gateway Request Body Size Limits Configured', 'Passed', 'Medium', 'DORA Art.6 | FFIEC CAT | PCI-DSS | OWASP LLM Top 10'),
     ('FS-69', 'Prompt Input Validation Functions Present', 'Passed', 'Medium', 'NYDFS 500 | FFIEC CAT | OWASP LLM Top 10'),

@@ -56,7 +56,7 @@ Resources:
         BedrockSecurityAssessmentFunction: !GetAtt BedrockSecurityAssessmentFunction.Arn
         SagemakerSecurityAssessmentFunction: !GetAtt SagemakerSecurityAssessmentFunction.Arn
         AgentCoreSecurityAssessmentFunction: !GetAtt AgentCoreSecurityAssessmentFunction.Arn
-        FinServSecurityAssessmentFunction: !GetAtt FinServSecurityAssessmentFunction.Arn
+        ResponsibleAIGRCAssessmentFunction: !GetAtt ResponsibleAIGRCAssessmentFunction.Arn
         OWASPSecurityAssessmentFunction: !GetAtt OWASPSecurityAssessmentFunction.Arn
         GenerateConsolidatedReportFunction: !GetAtt GenerateConsolidatedReportFunction.Arn
         AIMLAssessmentBucketName: !Ref AIMLAssessmentBucket
@@ -75,7 +75,7 @@ Resources:
         - LambdaInvokePolicy:
             FunctionName: !Ref AgentCoreSecurityAssessmentFunction
         - LambdaInvokePolicy:
-            FunctionName: !Ref FinServSecurityAssessmentFunction
+            FunctionName: !Ref ResponsibleAIGRCAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref OWASPSecurityAssessmentFunction
         - LambdaInvokePolicy:
@@ -488,11 +488,21 @@ Resources:
               Resource: '*'
 
 
-  FinServSecurityAssessmentFunction:
+  ResponsibleAIGRCAssessmentFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'aiml-security-${AWS::StackName}-FinServAssessment'
-      CodeUri: functions/security/finserv_assessments/
+      # Suffix changed from "FinServAssessment" (17 chars) to "RAIGRCAssessment"
+      # (16 chars) as part of Phase 2 Stage 2b. The "aiml-security-" prefix is
+      # intentionally UNCHANGED even though it duplicates the stack name for
+      # member accounts (see rebrand-plan.md section 14): dropping it would
+      # break _self_lambda_name_prefix() in
+      # responsible_ai_grc_assessments/app.py, which derives the FS-67
+      # self-exclusion prefix by checking this exact literal against
+      # AWS_LAMBDA_FUNCTION_NAME at runtime. That check does not derive
+      # from the stack name, so it is a behavioral dependency on this prefix
+      # for every sibling assessment function, not just this one.
+      FunctionName: !Sub 'aiml-security-${AWS::StackName}-RAIGRCAssessment'
+      CodeUri: functions/security/responsible_ai_grc_assessments/
       Handler: app.lambda_handler
       Runtime: python3.12
       Architectures:
@@ -557,6 +567,7 @@ Resources:
               Effect: Allow
               Action:
                 - logs:DescribeAccountPolicies
+                - logs:GetDataProtectionPolicy # FS-43
                 - logs:DescribeLogGroups
               Resource: '*'
             - Sid: BedrockPermissions
@@ -580,6 +591,7 @@ Resources:
                 - bedrock:GetKnowledgeBase
                 - bedrock:ListDataSources
                 - bedrock:GetDataSource
+                - bedrock:ListIngestionJobs # FS-31
               Resource: '*'
             - Sid: BedrockAgentCorePermissions
               Effect: Allow
@@ -594,6 +606,7 @@ Resources:
                 - sagemaker:ListModelPackageGroups
                 - sagemaker:ListModelPackages
                 - sagemaker:ListFeatureGroups
+                - sagemaker:DescribeFeatureGroup # FS-20
                 - sagemaker:ListModels
                 - sagemaker:ListEndpoints
                 - sagemaker:ListModelCards
@@ -619,6 +632,11 @@ Resources:
                 - ecr:DescribeRepositories
                 - ecr:DescribeImageScanFindings
               Resource: '*'
+            - Sid: InspectorPermissions
+              Effect: Allow
+              Action:
+                - inspector2:BatchGetAccountStatus # FS-16
+              Resource: '*'
             - Sid: CloudTrailPermissions
               Effect: Allow
               Action:
@@ -631,11 +649,13 @@ Resources:
               Effect: Allow
               Action:
                 - aoss:ListSecurityPolicies
+                - aoss:ListCollections # FS-25
               Resource: '*'
             - Sid: MaciePermissions
               Effect: Allow
               Action:
                 - macie2:GetMacieSession
+                - macie2:GetAutomatedDiscoveryConfiguration # FS-44
               Resource: '*'
             - Sid: EventsConfigPermissions
               Effect: Allow

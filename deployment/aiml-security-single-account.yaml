@@ -9,6 +9,7 @@ Metadata:
         Parameters:
           - EmailAddress
           - TargetRegions
+          - EnableResponsibleAIGRCAssessment
           - EnableFinServAssessment
           - EnableOWASPAssessment
       - Label:
@@ -22,8 +23,10 @@ Metadata:
         default: Notification email address
       TargetRegions:
         default: AWS regions to scan
+      EnableResponsibleAIGRCAssessment:
+        default: Responsible AI GRC checks
       EnableFinServAssessment:
-        default: Financial Services GenAI risk checks
+        default: Responsible AI GRC checks (legacy parameter name; see option above)
       EnableOWASPAssessment:
         default: OWASP Top 10 for LLM checks
       CodeBuildTimeout:
@@ -79,14 +82,30 @@ Parameters:
     Default: 60
     ConstraintDescription: Must be between 5 and 480 minutes.
 
-  EnableFinServAssessment:
+  EnableResponsibleAIGRCAssessment:
     Description: >
-      Run the Financial Services GenAI risk checks (FS-01 through FS-69). Enable
-      this only when you need the additional industry risk assessment; the
-      findings add a dedicated report section.
+      Run the Responsible AI GRC checks (FS-01 through FS-69) — cross-industry
+      technical controls for AI governance, risk, and compliance, originally
+      developed for financial services and found applicable across
+      industries. Enable this only when you need the additional risk
+      assessment; the findings add a dedicated report section.
     Type: String
     AllowedValues: ["true", "false"]
     Default: "false"
+
+  EnableFinServAssessment:
+    Description: >
+      Legacy alias for EnableResponsibleAIGRCAssessment (same FS-01 through
+      FS-69 checks), retained as a compatibility contract for existing
+      stacks and automation. Leave as "__UNSET__" to defer to
+      EnableResponsibleAIGRCAssessment. Setting this explicitly to "true" or
+      "false" takes effect while EnableResponsibleAIGRCAssessment is left at
+      its "false" default; if EnableResponsibleAIGRCAssessment has been
+      explicitly set to "true" and this alias disagrees, the build fails
+      fast with an explicit error instead of silently picking one value.
+    Type: String
+    AllowedValues: ["true", "false", "__UNSET__"]
+    Default: "__UNSET__"
 
   EnableOWASPAssessment:
     Description: >
@@ -307,13 +326,13 @@ Resources:
                   - s3:HeadBucket
                 Resource: "*"
 
-              # FinServ GenAI Risk Assessment Permissions (FS-01 to FS-69)
-              # Read-only list/describe/get actions required by the 64 FinServ
-              # security checks. Resource: "*" is required for inventory-style
-              # checks where resource ARNs are not known in advance. Validated
-              # with cfn-lint (no unrecognized actions).
+              # Responsible AI GRC Assessment Permissions (FS-01 to FS-69)
+              # Read-only list/describe/get actions required by the 64
+              # Responsible AI GRC security checks. Resource: "*" is required
+              # for inventory-style checks where resource ARNs are not known
+              # in advance. Validated with cfn-lint (no unrecognized actions).
               - Effect: Allow
-                Sid: FinServGenAIRiskAssessmentPermissions
+                Sid: ResponsibleAIGRCAssessmentPermissions
                 Action:
                   # WAF / Shield (FS-01)
                   - wafv2:ListWebACLs
@@ -331,6 +350,7 @@ Resources:
                   - cloudwatch:DescribeAlarms
                   - logs:DescribeAccountPolicies
                   # Bedrock — guardrails, models, evaluation (FS-15, FS-27..50, FS-59..63)
+                  - logs:GetDataProtectionPolicy # FS-43
                   - bedrock:ListGuardrails
                   - bedrock:GetGuardrail
                   - bedrock:ListFoundationModels
@@ -344,6 +364,7 @@ Resources:
                   - bedrock:ListDataSources
                   - bedrock:GetDataSource
                   # Bedrock AgentCore (FS-08, FS-66)
+                  - bedrock:ListIngestionJobs # FS-31
                   - bedrock-agentcore:ListAgentRuntimes
                   - bedrock-agentcore:GetAgentRuntime
                   - bedrock-agentcore:ListGateways
@@ -373,8 +394,10 @@ Resources:
                   # OpenSearch Serverless — KB vector store (FS-25, FS-26)
                   - aoss:ListSecurityPolicies
                   # Macie — PII detection on training data (FS-44)
+                  - aoss:ListCollections # FS-25
                   - macie2:GetMacieSession
                   # EventBridge — KB integrity monitoring (FS-33, FS-65)
+                  - macie2:GetAutomatedDiscoveryConfiguration # FS-44
                   - events:ListRules
                   # EventBridge Scheduler (KB sync schedules - FS-61).
                   # AWS-recommended scheduling approach; classic EventBridge rules are legacy.
@@ -589,11 +612,14 @@ Resources:
           - Name: BUILD_TIMEOUT_MINUTES
             Value: !Ref CodeBuildTimeout
             Type: PLAINTEXT
-          - Name: ENABLE_FINSERV
-            Value: !Ref EnableFinServAssessment
+          - Name: ENABLE_RESPONSIBLE_AI_GRC
+            Value: !Ref EnableResponsibleAIGRCAssessment
             Type: PLAINTEXT
           - Name: ENABLE_OWASP
             Value: !Ref EnableOWASPAssessment
+            Type: PLAINTEXT
+          - Name: ENABLE_FINSERV
+            Value: !Ref EnableFinServAssessment
             Type: PLAINTEXT
       Description: Run AIML Security single-account assessment
       ServiceRole: !GetAtt CodeBuildRole.Arn

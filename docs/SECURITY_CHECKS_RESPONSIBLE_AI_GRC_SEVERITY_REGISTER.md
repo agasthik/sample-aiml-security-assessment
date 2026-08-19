@@ -1,9 +1,15 @@
-# FinServ Severity Register (authoritative)
+# Responsible AI GRC Severity Register (authoritative)
 
-This register is the **single source of truth** for the severity of every FinServ finding. It is
-derived by applying [`SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md`](./SECURITY_CHECKS_FINSERV_SEVERITY_METHODOLOGY.md) (Likelihood × Impact →
-ASFF label; §3.4 disposition rules; §3.5 family bands) to the **164 `create_finding` rows / 65
-check IDs** extracted from `finserv_assessments/app.py`.
+This register is the **single source of truth** for the severity of every Responsible AI GRC
+(`FS-`) finding. It is
+derived by applying [`SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md`](./SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md) (Likelihood × Impact →
+ASFF label; §3.4 disposition rules; §3.5 family bands) to the **183 `create_finding` rows / 65
+check IDs** extracted from `responsible_ai_grc_assessments/app.py`. 182 of those call sites carry a static
+finding-name; they reduce to **175 distinct names**, which are the 181 rows in the tables below
+(a few names, such as `No Knowledge Bases Found`, are shared by several check IDs and so appear
+once per check). The 183rd is the shared `_could_not_assess_row` helper, whose name is built at
+runtime from the calling check and is therefore validated by the disposition rule (§3.4) rather
+than by name.
 
 During implementation this becomes `SEVERITY_REGISTER` in `app.py` (keyed by finding-name) and the
 `test_severity_register.py` drift-guard asserts each emitted `severity=` equals the value here.
@@ -38,6 +44,18 @@ Medium (FS-02 was High); no `Critical` (capped at High).
 
 ## Register
 
+### FS-00 — not a control
+
+Emitted by `_no_regional_genai_resources_row` and persisted to the CSV, so it needs a
+severity, but FS-00 is deliberately absent from the check registry and from the
+compliance mapping (see the FS-00 section of
+[`SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md`](./SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md)). There is no I×L: the
+severity comes from the NOT_APPLICABLE disposition rule (§3.4).
+
+| Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
+| --- | --- | --- | --- | --- | --- | --- |
+| FS-00 | Responsible AI GRC — Regional Scope Not Applicable | NA-NotApplicable | – | – | **Informational** | Δ added: the row was emitted but unregistered, so drift on it was undetectable |
+
 ### Category 1 — Unbounded Consumption (cost / rate-limiting family → Medium; Shield → Low)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
@@ -68,10 +86,11 @@ Medium (FS-02 was High); no `Critical` (capped at High).
 | FS-07 | Agent Action Boundary Check | NA-NotApplicable | – | – | **Informational** | keep |
 | FS-07 | Bedrock Agent Overly Broad Action Permissions | FAIL | 3 | 2 | **High** | keep |
 | FS-07 | Agent Action Boundaries Look Appropriate | PASS | 3 | 2 | **High** | keep |
-| FS-08 | AgentCore Policy Engine — Access Check | NA-CouldNotAssess | – | – | **Low** | keep |
+| FS-08 | AgentCore Runtime Inbound Authorizer — Access Check | NA-CouldNotAssess | – | – | **Low** | keep |
 | FS-08 | No AgentCore Runtimes Found | NA-NotApplicable | – | – | **Informational** | keep |
-| FS-08 | AgentCore Runtimes Missing Policy Engine | FAIL | 3 | 2 | **High** | keep |
-| FS-08 | AgentCore Policy Engine Configured | PASS | 3 | 2 | **High** | keep |
+| FS-08 | AgentCore Runtimes Without Inbound Authorizer | FAIL | 3 | 2 | **High** | keep |
+| FS-08 | AgentCore Runtimes With Inbound Authorizer Configured | PASS | 3 | 2 | **High** | keep |
+| FS-08 | COULD NOT ASSESS: AgentCore Runtime Inbound Authorizer Check | NA-CouldNotAssess | – | – | **Low** | keep |
 | FS-09 | Agent Lambda Functions Without Concurrency Limits | FAIL | 2 | 2 | **Medium** | keep |
 | FS-09 | Agent Lambda Concurrency Limits Present | PASS (computed) | 2 | 2 | **Medium** | keep |
 | FS-10 | Human-in-the-Loop Check — No Agent Workflows Found | NA-NotApplicable | – | – | **Informational** | Δ Medium→Info |
@@ -96,6 +115,8 @@ Medium (FS-02 was High); no `Critical` (capped at High).
 | FS-16 | No ECR Repositories Found | NA-NotApplicable | – | – | **Informational** | keep |
 | FS-16 | ECR Repositories Without Image Scanning | FAIL | 3 | 2 | **High** | keep |
 | FS-16 | ECR Image Scanning Enabled | PASS | 3 | 2 | **High** | keep |
+| FS-16 | ECR Image Scanning Covered by Inspector Enhanced Scanning | PASS | 3 | 2 | **High** | Δ new row: Inspector enhanced ECR scanning is an equivalent control, so `scanOnPush=false` alone is no longer a FAIL |
+| FS-16 | COULD NOT ASSESS: ECR Image Scanning Check | NA-CouldNotAssess | – | – | **Low** | Δ new row: `inspector2:BatchGetAccountStatus` denied while repositories without scan-on-push exist — unknown Inspector coverage must not default to FAIL |
 
 † **Resolved in REQ-10a:** FS-15 now treats "no eval jobs" as **Failed** (real control); FS-30/35/40
 are converted to **advisory** (they cannot inspect dataset content). See the REQ-10 section below.
@@ -106,7 +127,8 @@ are converted to **advisory** (they cannot inspect dataset content). See the REQ
 | --- | --- | --- | --- | --- | --- | --- |
 | FS-20 | No SageMaker Feature Groups Found | NA-NotApplicable | – | – | **Informational** | keep |
 | FS-20 | Feature Groups Without Offline Store | FAIL | 2 | 2 | **Medium** | keep |
-| FS-20 | Feature Store Offline Store Active | PASS | 2 | 2 | **Medium** | keep |
+| FS-20 | Feature Groups With Offline Store Configured | PASS | 2 | 2 | **Medium** | Δ renamed from "Feature Store Offline Store Active": the verdict now keys off `OfflineStoreConfig` from DescribeFeatureGroup, because `OfflineStoreStatus` is never populated on either the list or describe response |
+| FS-20 | COULD NOT ASSESS: Feature Store Rollback Check | NA-CouldNotAssess | – | – | **Low** | Δ new row: `sagemaker:DescribeFeatureGroup` denied |
 | FS-21 | No Training Data Buckets Identified | NA-NotApplicable | – | – | **Informational** | keep |
 | FS-21 | Training Data Buckets Without Versioning | FAIL | 3 | 2 | **High** | keep (data-integrity/poisoning recovery) |
 | FS-21 | Training Data Buckets Have Versioning | PASS | 3 | 2 | **High** | keep |
@@ -118,10 +140,11 @@ are converted to **advisory** (they cannot inspect dataset content). See the REQ
 | FS-22 | Overly Permissive Knowledge Base IAM Roles | FAIL | 3 | 2 | **High** | keep |
 | FS-22 | Knowledge Base IAM Permissions Look Appropriate | PASS | 3 | 2 | **High** | keep |
 | FS-24 | No Knowledge Bases Found | NA-NotApplicable | – | – | **Informational** | keep |
-| FS-24 | Knowledge Base Metadata Filtering — Manual Review Required | NA-Advisory | – | – | **Informational** | Δ Medium/Passed→Info/N/A; add `ADVISORY:` prefix |
-| FS-25 | No OpenSearch Serverless Encryption Policies | NA-NotApplicable | – | – | **Informational** | keep |
-| FS-25 | OpenSearch Serverless Encryption Not Using Customer-Managed Keys | FAIL | 3 | 2 | **High** | keep |
-| FS-25 | OpenSearch Serverless Encryption Policies Present | PASS | 3 | 2 | **High** | keep |
+| FS-24 | ADVISORY: Knowledge Base Metadata Filtering — Manual Review Required | NA-Advisory | – | – | **Informational** | Δ Medium/Passed→Info/N/A; `ADVISORY:` prefix applied |
+| FS-25 | No OpenSearch Serverless Collections Found | NA-NotApplicable | – | – | **Informational** | Δ renamed: keyed off ListCollections, not encryption policies (orphaned policies protect no data) |
+| FS-25 | OpenSearch Serverless Collections Using AWS-Owned Encryption Keys | FAIL | 3 | 2 | **High** | Δ renamed; this branch was previously unreachable dead code |
+| FS-25 | OpenSearch Serverless Collections Using Customer-Managed Keys | PASS | 3 | 2 | **High** | Δ renamed; the old row was an always-true false PASS (ListSecurityPolicies returns no `policy` key) |
+| FS-25 | COULD NOT ASSESS: OpenSearch Serverless Encryption Check | NA-CouldNotAssess | – | – | **Low** | Δ new row: `aoss:ListCollections` denied |
 | FS-26 | No OpenSearch Serverless Network Policies | FAIL | 3 | 2 | **High** | keep |
 | FS-26 | OpenSearch Serverless Collections Not VPC-Restricted | FAIL | 3 | 2 | **High** | keep |
 | FS-26 | OpenSearch Serverless VPC Access Configured | PASS | 3 | 2 | **High** | keep |
@@ -136,15 +159,18 @@ are converted to **advisory** (they cannot inspect dataset content). See the REQ
 | FS-27 | Automated Reasoning Policies — Access Check | NA-CouldNotAssess | – | – | **Low** | keep |
 | FS-27 | No Automated Reasoning Policies Found | FAIL | 2 | 2 | **Medium** | keep |
 | FS-27 | Automated Reasoning Policies Found | PASS | 2 | 2 | **Medium** | keep |
-| FS-28 | No Guardrails — Denied Topics Not Applicable | NA-NotApplicable | – | – | **Informational** | Δ Medium→Info |
-| FS-28 | No Guardrails With Denied Financial Topics | FAIL | 3 | 2 | **High** | keep |
-| FS-28 | Denied Topics Configured on CLASSIC Tier | PASS | 3 | 2 | **High** | Δ Low→High; tier note → details ‡ |
+| FS-28 | No Guardrails — Topic Policy Not Applicable | NA-NotApplicable | – | – | **Informational** | Δ Medium→Info; renamed to the emitted name (the check reads `topicPolicy`) |
+| FS-28 | No Guardrails With Topic Policies | FAIL | 3 | 2 | **High** | Δ renamed from "No Guardrails With Denied Financial Topics": the check confirms a topic policy exists, never that the denied topics are financial |
+| FS-28 | Topic Policies Configured on CLASSIC Tier | PASS | 3 | 2 | **High** | Δ Low→High; tier note → details ‡; renamed to the emitted name |
 | FS-28 | Guardrails With Topic Policies Found | PASS | 3 | 2 | **High** | Δ Medium→High |
 | FS-29 | ADVISORY: Compliance Disclaimer — Manual Review Required | NA-Advisory | – | – | **Informational** | keep |
 | FS-30 | ADVISORY: Compliance Dataset Coverage — Manual Review Required | NA-Advisory | – | – | **Informational** | Δ to advisory (REQ-10a): can't verify dataset content; replaces N/A+PASS |
 | FS-31 | No Knowledge Bases Found | NA-NotApplicable | – | – | **Informational** | keep |
 | FS-31 | Knowledge Base Data Sources Past Review Threshold | FAIL | 2 | 2 | **Medium** | keep |
+| FS-31 | No Knowledge Base Data Sources Found | NA-NotApplicable | – | – | **Informational** | Δ new row: Knowledge Bases exist but none has a data source, so there is no ingestion to age (previously produced a vacuous PASS) |
+| FS-31 | Knowledge Base Data Sources Never Successfully Synced | FAIL | 2 | 2 | **Medium** | Δ new row: no COMPLETE ingestion job exists, a distinct failure from a stale sync |
 | FS-31 | Knowledge Base Data Sources Recently Synced | PASS | 2 | 2 | **Medium** | keep |
+| FS-31 | COULD NOT ASSESS: Knowledge Base Data Source Sync Check | NA-CouldNotAssess | – | – | **Low** | Δ new row: `bedrock:ListIngestionJobs` denied |
 | FS-32 | ADVISORY: Source Attribution — Manual Review Required | NA-Advisory | – | – | **Informational** | keep |
 | FS-33 | No Knowledge Bases Found | NA-NotApplicable | – | – | **Informational** | keep |
 | FS-33 | KB Data Source References a Deleted S3 Bucket | FAIL | 3 | 2 | **High** | keep (distinct risk: dangling/integrity) |
@@ -182,21 +208,30 @@ recommendation lives in the finding details.
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
 | --- | --- | --- | --- | --- | --- | --- |
 | FS-39 | No SageMaker Clarify Bias Monitoring | FAIL | 3 | 2 | **High** | keep |
-| FS-39 | SageMaker Clarify Bias Monitoring Active | PASS | 3 | 2 | **High** | keep |
+| FS-39 | SageMaker Clarify Bias Monitoring Schedules Not Running | FAIL | 3 | 2 | **High** | Δ row was absent from this register; the code emits it when a bias schedule exists but is not in the Scheduled state, which is a distinct failure from having no schedule |
+| FS-39 | SageMaker Clarify Bias Monitoring Schedules Found | PASS | 3 | 2 | **High** | Δ renamed from "SageMaker Clarify Bias Monitoring Active": the check observes schedule existence, and running state is reported by the row above |
 | FS-40 | ADVISORY: Bias Dataset Coverage — Manual Review Required | NA-Advisory | – | – | **Informational** | Δ to advisory (REQ-10a): can't verify dataset content; replaces N/A+PASS |
 | FS-41 | No SageMaker Clarify Explainability Monitoring | FAIL | 3 | 2 | **High** | keep |
-| FS-41 | SageMaker Clarify Explainability Active | PASS | 3 | 2 | **High** | keep |
-| FS-42 | No SageMaker Model Cards Found | FAIL | 2 | 2 | **Medium** | keep |
-| FS-42 | SageMaker Model Cards Present | PASS | 2 | 2 | **Medium** | keep |
+| FS-41 | SageMaker Clarify Explainability Schedules Not Running | FAIL | 3 | 2 | **High** | Δ row was absent from this register; the code emits it when an explainability schedule exists but is not in the Scheduled state |
+| FS-41 | SageMaker Clarify Explainability Monitoring Schedules Found | PASS | 3 | 2 | **High** | Δ renamed from "SageMaker Clarify Explainability Active": the check observes schedule existence, and running state is reported by the row above |
+| FS-42 | No SageMaker Model Cards Found | NA-NotApplicable | – | – | **Informational** | Δ Medium/FAIL→Informational/NA: a Bedrock-only estate legitimately has no SageMaker model cards, so absence is not a finding |
+| FS-42 | SageMaker Model Cards Not Approved | FAIL | 2 | 2 | **Medium** | Δ new row: `ModelCardStatus` is now assessed |
+| FS-42 | SageMaker Model Cards Approved | PASS | 2 | 2 | **Medium** | Δ renamed from "SageMaker Model Cards Present": card presence alone was not the control |
 
 ### Category 10 — Sensitive Information Disclosure (data exposure → High; classification → Medium)
 
 | Check | Finding name | Disposition | I | L | Sev (new) | Δ from current |
 | --- | --- | --- | --- | --- | --- | --- |
-| FS-43 | No CloudWatch Logs Data Protection Policies | FAIL | 3 | 2 | **High** | keep |
+| FS-43 | Bedrock Invocation Logging Not Enabled | NA-NotApplicable | – | – | **Informational** | Δ new row: there is no invocation log to mask |
+| FS-43 | Bedrock Invocation Logs Not Delivered to CloudWatch Logs | NA-NotApplicable | – | – | **Informational** | Δ new row: S3-only delivery makes CloudWatch data-protection policies irrelevant to this control |
+| FS-43 | No CloudWatch Logs Data Protection Policies | FAIL | 3 | 2 | **High** | Δ now reached only when logs actually go to CloudWatch |
 | FS-43 | CloudWatch Logs Data Protection Policies Present | PASS | 3 | 2 | **High** | keep |
+| FS-43 | COULD NOT ASSESS: CloudWatch Log PII Masking Check | NA-CouldNotAssess | – | – | **Low** | Δ new row: `logs:GetDataProtectionPolicy` denied |
 | FS-44 | Amazon Macie Not Enabled | FAIL | 3 | 2 | **High** | keep |
-| FS-44 | Amazon Macie Enabled | PASS | 3 | 2 | **High** | keep |
+| FS-44 | Amazon Macie Enabled but Automated Discovery Disabled | FAIL | 3 | 2 | **High** | Δ new row: an ENABLED session with automated discovery DISABLED scans nothing |
+| FS-44 | Amazon Macie Automated Discovery Enabled | PASS | 3 | 2 | **High** | Δ renamed from "Amazon Macie Enabled": session state alone was a false PASS |
+| FS-44 | COULD NOT ASSESS: Macie Automated Discovery Status | NA-CouldNotAssess | – | – | **Low** | Δ new row: `macie2:GetAutomatedDiscoveryConfiguration` denied |
+| FS-44 | COULD NOT ASSESS: Amazon Macie PII Scanning Check | NA-CouldNotAssess | – | – | **Low** | Δ new row: `macie2:GetMacieSession` denied for a reason other than Macie not being enabled |
 | FS-45 | No Guardrails — PII Filters Not Applicable | NA-NotApplicable | – | – | **Informational** | Δ High→Info |
 | FS-45 | No Guardrails With PII Filters | FAIL | 3 | 2 | **High** | keep |
 | FS-45 | Guardrail PII Filters Configured | PASS | 3 | 2 | **High** | keep |
@@ -264,8 +299,9 @@ recommendation lives in the finding details.
 | FS-61 | No Automated KB Sync Schedules Detected | FAIL | 2 | 2 | **Medium** | keep |
 | FS-61 | Automated KB Sync Schedules Present | PASS | 2 | 2 | **Medium** | keep |
 | FS-62 | ADVISORY: Data Currency Disclaimer — Manual Review Required | NA-Advisory | – | – | **Informational** | keep |
-| FS-63 | Legacy Models Without Lifecycle Management | FAIL | 2 | 2 | **Medium** | keep |
-| FS-63 | Foundation Model Lifecycle Management | PASS | 2 | 2 | **Medium** | keep |
+| FS-63 | No Foundation Model Lifecycle Governance Detected | FAIL | 2 | 2 | **Medium** | Δ renamed from "Legacy Models Without Lifecycle Management": the verdict now keys off account-side AWS Config rules instead of the regional model catalogue, which fired on virtually every account |
+| FS-63 | Foundation Model Lifecycle Governance Detected | PASS | 2 | 2 | **Medium** | Δ renamed from "Foundation Model Lifecycle Management"; the old PASS branch was effectively unreachable |
+| FS-63 | COULD NOT ASSESS: Foundation Model Lifecycle Policy Check | NA-CouldNotAssess | – | – | **Low** | Δ new row: `config:DescribeConfigRules` denied |
 
 ### Material Gap Checks (FS-65 to FS-69)
 
@@ -277,11 +313,12 @@ recommendation lives in the finding details.
 | FS-65 | KB Data Source S3 Event Notifications Configured | PASS | 2 | 2 | **Medium** | keep |
 | FS-66 | AgentCore Identity Propagation — Access Check | NA-CouldNotAssess | – | – | **Low** | keep |
 | FS-66 | No AgentCore Runtimes Found | NA-NotApplicable | – | – | **Informational** | keep |
-| FS-66 | AgentCore Runtimes Missing End-User Identity Propagation | FAIL | 3 | 2 | **High** | keep |
-| FS-66 | AgentCore End-User Identity Propagation Configured | PASS | 3 | 2 | **High** | Δ Low→High (match FAIL) |
+| FS-66 | AgentCore Runtimes Without JWT Authorizer | FAIL | 3 | 2 | **High** | Δ renamed from "AgentCore Runtimes Missing End-User Identity Propagation": the check reads `authorizerConfiguration`, which shows whether inbound JWT authorization is configured, not whether an end-user identity reaches downstream calls |
+| FS-66 | AgentCore Runtimes With JWT Authorizer Configured | PASS | 3 | 2 | **High** | Δ Low→High (match FAIL); renamed to the emitted name for the same reason as the FAIL row above |
+| FS-66 | COULD NOT ASSESS: AgentCore End-User Identity Propagation Check | NA-CouldNotAssess | – | – | **Low** | Δ row was absent from this register; emitted when the runtime detail cannot be read (distinct from the inbound-authorizer access check above) |
 | FS-67 | No Agent Action-Group Lambda Functions Found | NA-NotApplicable | – | – | **Informational** | Δ High→Info |
 | FS-67 | Agent Action-Group Lambdas May Lack Transaction Thresholds | FAIL | 3 | 2 | **High** | keep |
-| FS-67 | Agent Action-Group Lambdas Have Threshold Configuration | PASS | 3 | 2 | **High** | keep |
+| FS-67 | Agent Action-Group Lambdas Have Threshold-Named Variables | PASS | 3 | 2 | **High** | Δ renamed from "Agent Action-Group Lambdas Have Threshold Configuration": the check matches Lambda environment variable NAMES and cannot see whether a threshold value is set or enforced |
 | FS-68 | API Gateway Request Body Size Limits Not Enforced | FAIL | 2 | 2 | **Medium** | keep |
 | FS-68 | API Gateway Request Body Size Limits — Not Applicable | NA-NotApplicable | – | – | **Informational** | new branch (REQ-4) |
 | FS-68 | API Gateway Request Body Size Limits Configured | PASS | 2 | 2 | **Medium** | keep |

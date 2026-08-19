@@ -1,9 +1,9 @@
-# FinServ GenAI Check Severity Methodology
+# Responsible AI GRC Check Severity Methodology
 
 **Status:** Proposed (Round 3). This document is the authoritative reference for how every
-FinServ (`FS-`) check is assigned a severity. It answers reviewer Finding 6 ("How are the priorities of the findings determined?") with a concrete reproducible, industry- and AWS-aligned formula — not per-check intuition.
+Responsible AI GRC (`FS-`) check is assigned a severity. It answers reviewer Finding 6 ("How are the priorities of the findings determined?") with a concrete reproducible, industry- and AWS-aligned formula — not per-check intuition.
 
-> Scope note: today the FinServ checks and the upstream Bedrock/SageMaker/AgentCore checks all use ad-hoc severities with **no documented methodology** (verified by inspection — the upstream `app.py` files hardcode `severity="High"|"Medium"|...` with no rationale and no rubric doc). This methodology is introduced for the FinServ checks first and is written so it can later be adopted tool-wide.
+> Scope note: today the Responsible AI GRC checks and the upstream Bedrock/SageMaker/AgentCore checks all use ad-hoc severities with **no documented methodology** (verified by inspection — the upstream `app.py` files hardcode `severity="High"|"Medium"|...` with no rationale and no rubric doc). This methodology is introduced for the Responsible AI GRC checks first and is written so it can later be adopted tool-wide.
 
 ---
 
@@ -30,7 +30,7 @@ compatible with Security Hub's ASFF labels for customers who ingest it.
 We use the ASFF labels with AWS's exact semantics. The tool's `SeverityEnum` today is
 `High | Medium | Low | Informational` (no `Critical`) and is shared with the upstream services.
 
-| Label | ASFF meaning | ASFF normalized | Used by FinServ for |
+| Label | ASFF meaning | ASFF normalized | Used by Responsible AI GRC for |
 | --- | --- | --- | --- |
 | **Informational** | No issue / not action-bearing on its own | 0 | Advisory checks (no API to verify) and `N/A` (nothing to assess / could-not-assess) |
 | **Low** | Does not require action on its own | 1–39 | Residual-risk / observability controls, or controls with strong compensating alternatives |
@@ -123,7 +123,7 @@ a default band. Per-control I×L may refine within ±1 with a documented reason.
 | **Non-verifiable advisory** | app-layer; no API | **Informational** | FS-24, FS-29, FS-32, FS-37, FS-49, FS-54, FS-57, FS-58, FS-60, FS-62 |
 
 The authoritative per-finding assignments are in
-[`SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md`](./SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md).
+[`SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md`](./SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md).
 
 ---
 
@@ -145,10 +145,10 @@ The authoritative per-finding assignments are in
    *(FS-01 emits four finding-names under one Check_ID; the register is keyed by finding-name so Shield=Low and WAF=Medium can coexist under FS-01.)*
 2. **Code matches register.** Every `create_finding(... severity=...)` must equal the register's label for that finding. A unit test enforces this (prevents future drift) — a strong guard for a public tool.
 3. **Docs match register.** The per-check severity columns and the `Severity rubric` section in
-   `SECURITY_CHECKS_FINSERV.md` are regenerated/checked against
+   `SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md` are regenerated/checked against
    the register. The "Advisory" tier in the existing rubric is reconciled (Advisory = the Informational disposition for non-verifiable controls).
 4. **Methodology surfaced to users.** A condensed version of §2–§3 is added to the README and
-   linked from the FinServ report section so the methodology travels with the artifact (directly answering the reviewer).
+   linked from the Responsible AI GRC report section so the methodology travels with the artifact (directly answering the reviewer).
 5. **ASFF mapping documented.** README states the label↔ASFF-normalized mapping so customers who forward findings to Security Hub get correct severities.
 
 ---
@@ -160,10 +160,10 @@ The matrix has a Critical-eligible cell (I=High, L=High). Two paths:
 - **Path A — keep four levels (recommended for this PR).** Cap the I=3,L=3 cell at **High**.
   Pro: stays consistent with the upstream Bedrock/SageMaker/AgentCore checks (which have no
   Critical), no `SeverityEnum`/report/test changes, smaller reviewable PR. Con: a genuinely
-  critical FinServ risk is reported as High.
+  critical Responsible AI GRC risk is reported as High.
 - **Path B — adopt `Critical` tool-wide (separate follow-up PR).** Add `CRITICAL` to
   `SeverityEnum`, update the report template's severity filters/colors, and re-score the I=3,L=3
-  FinServ checks. Pro: full ASFF alignment. Con: cross-cutting change touching all four services,
+  Responsible AI GRC checks. Pro: full ASFF alignment. Con: cross-cutting change touching all four services,
   the schema, the report, and every service's tests — out of scope for a correctness-focused round.
 
 **Confirmed decision:** **Path A** for this round — keep `{High, Medium, Low, Informational}`. A follow-up issue will evaluate Path B tool-wide. The methodology already documents the `Critical` band (§2), so adopting it later is a labeling change, not a methodology change; until then the drift-guard test asserts no `Critical` is emitted.

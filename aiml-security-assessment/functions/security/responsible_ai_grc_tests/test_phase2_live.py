@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Phase 2 — Live AWS integration test for finserv_assessments.
+Phase 2 — Live AWS integration test for responsible_ai_grc_assessments.
 
 Invokes each check function individually against a real AWS account,
 captures results, and produces a triage report showing:
@@ -61,7 +61,7 @@ CHECK_FUNCTIONS = [
     ("check_aws_budgets_for_aiml", False, False),
     # Category 2: Excessive Agency
     ("check_bedrock_agent_action_boundaries", True, False),
-    ("check_agentcore_policy_engine", False, False),
+    ("check_agentcore_runtime_inbound_authorizer", False, False),
     ("check_agent_transaction_limits", False, True),
     ("check_human_in_the_loop_for_high_risk_actions", False, False),
     ("check_agent_rate_alarms", False, False),

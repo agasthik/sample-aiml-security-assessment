@@ -546,7 +546,7 @@ def _run_with_counting_mocks(event=None):
     ):
         mock_client.side_effect = side_effect
         mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
-        mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/finserv_security_report_at-most-once-test-001.csv"
+        mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/responsible_ai_grc_security_report_at-most-once-test-001.csv"
 
         result = app.lambda_handler(event, None)
 

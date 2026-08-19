@@ -1,6 +1,6 @@
 """
-Drift-guard for the FinServ severity methodology
-(REQ-6 / SECURITY_CHECKS_FINSERV_SEVERITY_REGISTER.md).
+Drift-guard for the Responsible AI GRC severity methodology
+(REQ-6 / SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md).
 
 Asserts that:
   1. The Likelihood x Impact matrix helper matches the documented table (methodology §3.3).
@@ -125,3 +125,30 @@ def test_advisory_rows_are_informational_na():
             st = status.split(".")[-1] if "." in status else status
             assert sev == "Informational", f"{finding} severity={sev}"
             assert st in ("NA", "N/A"), f"{finding} status={st}"
+
+
+# ---------------------------------------------------------------------------
+# 6. Rows emitted OUTSIDE the check registry
+# ---------------------------------------------------------------------------
+# _collect_emitted_rows() walks build_finserv_checks(), so it cannot see rows
+# emitted by helpers that no registered check calls. FS-00 is exactly that: it is
+# deliberately absent from the registry (see test_legacy_contracts.py) yet it is
+# emitted and persisted to the CSV. Without this test its SEVERITY_REGISTER entry
+# would be decorative — verified by flipping the register value to "High" and
+# watching the whole suite still pass.
+def test_fs00_regional_not_applicable_row_matches_register():
+    """The FS-00 row is emitted outside the registry, so assert it explicitly."""
+    row = app._no_regional_genai_resources_row("us-east-1")
+    finding = row["Finding"]
+    assert finding in app.SEVERITY_REGISTER, (
+        f"{finding!r} is emitted but absent from SEVERITY_REGISTER"
+    )
+    severity = str(row["Severity"])
+    sev = severity.split(".")[-1].title() if "." in severity else severity
+    assert app.SEVERITY_REGISTER[finding] == sev, (
+        f"FS-00 severity drift: emits {sev}, register says "
+        f"{app.SEVERITY_REGISTER[finding]}"
+    )
+    status = str(row["Status"])
+    assert (status.split(".")[-1] if "." in status else status) in ("NA", "N/A")
+    assert row["Check_ID"] == "FS-00"

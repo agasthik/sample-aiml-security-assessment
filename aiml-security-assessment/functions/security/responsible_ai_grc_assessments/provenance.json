@@ -1,0 +1,2382 @@
+{
+  "schema_version": "1.0",
+  "capability": "Responsible AI GRC",
+  "capability_scope_qualifier": "Cross-industry technical controls for AI governance, risk, and compliance",
+  "generated_by": "generate_provenance.py",
+  "generated_note": "Generated and checked in. Regenerate with `python generate_provenance.py`; CI fails if this file is stale. Null fields require human authorship and are listed per control in review_required rather than filled with generated prose.",
+  "not_the_responsible_ai_lens": "Responsible AI GRC is not the AWS Well-Architected Responsible AI Lens. The Lens (November 2025) is a separate architectural review framework with eight focus areas. These checks do not implement, validate, or measure conformance to it.",
+  "sources": [
+    {
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_shorthand": "the AWS GRC User Guide",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf"
+    },
+    {
+      "source_id": "aws-finserv-genai-risk-guide",
+      "source_title": "Generative AI risks and mitigations for financial services",
+      "source_version_or_date": "(c) 2026",
+      "source_url": "https://d1.awsstatic.com/onedam/marketing-channels/website/public/global-FinServ-ComplianceGuide-GenAIRisks-public.pdf"
+    }
+  ],
+  "control_count": 64,
+  "controls": [
+    {
+      "check_id": "FS-00",
+      "title": "Regional Scope Not Applicable",
+      "source_id": null,
+      "source_title": null,
+      "source_version_or_date": null,
+      "source_url": null,
+      "source_section": null,
+      "source_page": null,
+      "derivation_type": "project-extension",
+      "source_excerpt_summary": null,
+      "derivation_rationale": "Not a control. Emitted by _no_regional_genai_resources_row() as a visible N/A row when a target region has no GenAI resource footprint, so the report distinguishes 'not applicable here' from 'not assessed'.",
+      "inspected_aws_evidence": "Absence of regional Bedrock, AgentCore, and SageMaker resources.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "_no_regional_genai_resources_row"
+      ],
+      "regulatory_mapping_source": [],
+      "regulatory_mapping_shipped": [],
+      "regulatory_mapping_status": "not-applicable",
+      "not_a_control": true,
+      "review_required": [],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-01",
+      "title": "WAF and Shield Protection",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.11",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Protect your LLM APIs and Amazon Bedrock-hosted LLMs by using AWS WAF and AWS Shield Advanced.\" Also covers: \"To protect your API endpoints, set maximum length limits for input requests when you use large language models (LLMs) directly or through Amazon Bedrock.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `shield:DescribeSubscription` to check Shield Advanced is active. Calls `wafv2:ListWebACLs(Scope=REGIONAL)` in each region where GenAI API endpoints run to verify at least one regional Web ACL exists (covers API Gateway, ALB, AppSync). **Additionally** calls `wafv2:ListWebACLs(Scope=CLOUDFRONT)` in `us-east-1` to detect Web ACLs protecting CloudFront distributions fronting GenAI workloads — CLOUDFRONT-scope Web ACLs must be created and queried in `us-east-1` per the [WAF resources documentation](https://docs.aws.amazon.com/waf/latest/developerguide/how-aws-waf-works-resources.html). For ",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_waf_shield_on_bedrock_endpoints"
+      ],
+      "regulatory_mapping_source": [
+        "FFIEC CAT Cyber Risk Management",
+        "DORA Art.6 ICT Risk"
+      ],
+      "regulatory_mapping_shipped": [
+        "FFIEC CAT",
+        "DORA Art.6"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-02",
+      "title": "API Gateway Rate Limiting",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.11",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"protect your API endpoints by implementing rate limits and quotas for APIs that access large language models (LLMs)\".",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `apigateway:GetUsagePlans` and inspects each plan's `throttle.rateLimit` and `throttle.burstLimit`. Flags plans where either is zero or absent.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_api_gateway_rate_limiting"
+      ],
+      "regulatory_mapping_source": [
+        "FFIEC CAT",
+        "DORA Art.6",
+        "PCI-DSS 12.3.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "FFIEC CAT",
+        "DORA Art.6",
+        "PCI-DSS 12.3.2"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-03",
+      "title": "Bedrock Token Quota Review",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.11",
+      "source_page": null,
+      "derivation_type": "project-extension",
+      "source_excerpt_summary": "guide practical guidance notes \"Bedrock has default quota on model inference based on token usage\" and recommends optimising `max_tokens`. Quota review as an operational control is an extension aligned with this guidance.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `service-quotas:ListServiceQuotas(ServiceCode=bedrock)` for applied quotas and `ListAWSDefaultServiceQuotas` for defaults, then compares each adjustable quota's `Value` against the default `Value`. Flags accounts where every quota equals the service default (indicating no quota review or increase has been requested).",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_bedrock_token_quotas"
+      ],
+      "regulatory_mapping_source": [
+        "FFIEC CAT",
+        "SR 11-7"
+      ],
+      "regulatory_mapping_shipped": [
+        "FFIEC CAT",
+        "SR 11-7"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-04",
+      "title": "Cost Anomaly Detection",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.11",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Track, allocate, and manage your costs and usage for generative AI.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `ce:GetAnomalyMonitors` and inspects each monitor. AWS Cost Anomaly Detection supports exactly two `MonitorType` values per the [AnomalyMonitor API](https://docs.aws.amazon.com/aws-cost-management/latest/APIReference/API_AnomalyMonitor.html): `DIMENSIONAL` (AWS-managed, where `MonitorDimension` is one of `SERVICE`, `LINKED_ACCOUNT`, `TAG`, or `COST_CATEGORY`) and `CUSTOM` (customer-managed, scoped via `MonitorSpecification` to specific values). For `DIMENSIONAL` monitors, checks `MonitorDimension=SERVICE` (the AWS-managed \"AWS services\" monitor that automatically covers all services incl",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_cost_anomaly_detection"
+      ],
+      "regulatory_mapping_source": [
+        "FFIEC CAT",
+        "SR 11-7 Appendix A"
+      ],
+      "regulatory_mapping_shipped": [
+        "FFIEC CAT",
+        "SR 11-7"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-05",
+      "title": "CloudWatch Token Usage Alarms",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.11",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "guide practical guidance cites CloudWatch metrics for token usage; alarms operationalise that guidance.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Paginates `cloudwatch:DescribeAlarms(AlarmTypes=MetricAlarm)` and filters for alarms in the `AWS/Bedrock` namespace or with \"bedrock\" in the alarm name. Separately counts throttle-specific alarms.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_cloudwatch_token_alarms"
+      ],
+      "regulatory_mapping_source": [
+        "FFIEC CAT",
+        "DORA Art.6"
+      ],
+      "regulatory_mapping_shipped": [
+        "FFIEC CAT",
+        "DORA Art.6"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-06",
+      "title": "AWS Budgets AI/ML Spend",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.11",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Track, allocate, and manage your costs and usage for generative AI.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `budgets:DescribeBudgets` and inspects each budget's `FilterExpression` (the current field) and `CostFilters` (deprecated but may still be populated on older budgets) for references to \"bedrock\" or \"sagemaker\". Note: `CostFilters` is marked deprecated in the AWS Budgets API — new budgets use `FilterExpression` with an `Expression` object; the detection should check both fields to cover both old and new budgets.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_aws_budgets_for_aiml"
+      ],
+      "regulatory_mapping_source": [
+        "FFIEC CAT",
+        "SR 11-7"
+      ],
+      "regulatory_mapping_shipped": [
+        "FFIEC CAT",
+        "SR 11-7"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-07",
+      "title": "Agent Action Boundaries",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.9",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"grant only the minimum permissions required\"; \"Define and enforce explicit action boundaries in the agent configuration\".",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `ListAgents` and `GetAgent` (via the `bedrock-agent` boto3 client; IAM actions are `bedrock:ListAgents` and `bedrock:GetAgent`) to retrieve each agent's `agentResourceRoleArn`. Resolves the role name and inspects attached and inline policy documents from the permissions cache for wildcard Allow statements.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_bedrock_agent_action_boundaries"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT Cyber Risk Management"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-08",
+      "title": "AgentCore Runtime Inbound Authorizer",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.9",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Use Amazon Bedrock AgentCore to manage complex tasks and connect securely\". An inbound authorizer gates callers of the runtime endpoint. The section's action-boundary and audit-logging mitigations are **not** implemented by this check.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `ListAgentRuntimes` (paginated, via the `bedrock-agentcore-control` boto3 client; IAM action `bedrock-agentcore:ListAgentRuntimes`) for the runtime inventory, then `GetAgentRuntime` per runtime (IAM action `bedrock-agentcore:GetAgentRuntime`) to read `authorizerConfiguration` — the list operation does not return that field. Runtimes with an `authorizerConfiguration` are reported Passed; those without are reported Failed; a runtime that cannot be described is reported as COULD NOT ASSESS rather than counted either way.",
+      "unsupported_assertions": [
+        "that an AgentCore Policy Engine resource exists",
+        "that policies are associated with every relevant tool",
+        "that individual tool calls receive action-level authorization. An inbound authorizer gates *callers of the runtime endpoint*; it is not a tool-level authorization control. Policy semantics require manual review."
+      ],
+      "manual_review_requirements": [
+        "that an AgentCore Policy Engine resource exists",
+        "that policies are associated with every relevant tool",
+        "that individual tool calls receive action-level authorization. An inbound authorizer gates *callers of the runtime endpoint*; it is not a tool-level authorization control. Policy semantics require manual review."
+      ],
+      "implementing_functions": [
+        "check_agentcore_runtime_inbound_authorizer"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "MAS TRM 9.1"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "MAS TRM 9.1"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-09",
+      "title": "Agent Transaction Limits",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.9",
+      "source_page": null,
+      "derivation_type": "project-extension",
+      "source_excerpt_summary": "Lambda reserved concurrency is not named in the guide, but it directly implements the guide mitigation \"Monitor agent call rates and alarm upon exceeding defined thresholds\" by capping execution parallelism.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `lambda:ListFunctions` and filters for functions with agent-related naming patterns. For each, calls `lambda:GetFunctionConcurrency` and flags functions with no reserved concurrency set.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_agent_transaction_limits"
+      ],
+      "regulatory_mapping_source": [
+        "FFIEC CAT",
+        "SR 11-7"
+      ],
+      "regulatory_mapping_shipped": [
+        "FFIEC CAT",
+        "SR 11-7"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-10",
+      "title": "Human-in-the-Loop Approval",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.9, §1.2.1, §1.2.2, §1.2.3, §1.2.7, §1.2.10",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"For internal AI systems, validate outputs with human review before business use (human-in-the-loop).\" HITL is referenced in six separate guide risk sections.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `stepfunctions:ListStateMachines` and filters for agent/GenAI-related names. Retrieves each definition via `stepfunctions:DescribeStateMachine` and parses the ASL JSON for task states with `.waitForTaskToken` or callback patterns indicating human approval gates.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_human_in_the_loop_for_high_risk_actions"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-11",
+      "title": "Agent Rate Alarms",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.9",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Monitor agent call rates and alarm upon exceeding defined thresholds.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Paginates `cloudwatch:DescribeAlarms` and filters for alarms referencing \"agent\" in the alarm name or targeting `AWS/Bedrock/Agents` agent-related metrics (such as `InvocationCount` or `InvocationThrottles` with the `Operation, AgentAliasArn, ModelId` dimension combination).",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_agent_rate_alarms"
+      ],
+      "regulatory_mapping_source": [
+        "FFIEC CAT",
+        "DORA Art.6"
+      ],
+      "regulatory_mapping_shipped": [
+        "FFIEC CAT",
+        "DORA Art.6"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-12",
+      "title": "SCP Model Access Restrictions",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.12",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Implement an allow-list of models using a Service Control Policy (SCP) for your AWS organization.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `organizations:ListPolicies(Filter=SERVICE_CONTROL_POLICY)` and inspects each SCP document for Deny statements on `bedrock:InvokeModel*` with `StringNotEquals` conditions on `bedrock:ModelId`. Flags if no SCP restricts model access.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_scp_model_access_restrictions"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "ISO 27001 A.15.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "ISO 27001 A.15.2"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-13",
+      "title": "Model Inventory Tagging",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.12",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Maintain a model inventory that records the provenance, version, license terms, and risk assessment status of all models in use across the organization.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `bedrock:ListCustomModels` and `sagemaker:ListModels` to enumerate models the account owns, then `bedrock:ListTagsForResource` / `sagemaker:ListTags` per model and checks for the tag keys `model-source`, `model-version`, `approval-date`, `risk-tier`. Foundation models are deliberately excluded: they are not account-owned resources and cannot carry provenance tags. Tag presence is checked, not tag correctness — a `model-source` tag with a wrong value passes.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_model_inventory_tagging"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "ISO 27001 A.12.5",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "ISO 27001 A.12.5",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-14",
+      "title": "Model Onboarding Governance",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.12",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"To onboard a model, follow these steps: Review EULA, Complete procurement, Follow security and compliance procedures, Assess MRM requirements, Document findings, Get necessary approvals from stakeholders.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `config:DescribeConfigRules` and searches for rules targeting `AWS::Bedrock::*` resources or custom rules with \"model\" or \"onboarding\" in the name.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_model_onboarding_governance"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "ISO 27001 A.15.1"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "ISO 27001 A.15.1"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-15",
+      "title": "Adversarial Model Evaluation",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.12",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Amazon Bedrock Evaluations can help to evaluate models against specific types of attacks by automating your test cases, scoring, reporting and to enable comparison of different models.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `bedrock:ListEvaluationJobs` and inspects each job's configuration for evaluation datasets. Flags if no evaluation jobs exist or if none reference adversarial/red-team test data.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_bedrock_model_evaluation_adversarial"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.3"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.3"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-16",
+      "title": "ECR Image Scanning",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.12",
+      "source_page": null,
+      "derivation_type": "project-extension",
+      "source_excerpt_summary": "ECR image scanning is not named in the guide, but directly mitigates the guide's listed risk \"Third-party package vulnerabilities\" in LLM supply chains. Included for completeness of the supply-chain risk category.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `ecr:DescribeRepositories` and for each repository checks `imageScanningConfiguration.scanOnPush`. Also checks whether Amazon Inspector ECR scanning is enabled via `inspector2:BatchGetAccountStatus`. Flags repositories relying solely on basic scanning or with no scanning configured.",
+      "unsupported_assertions": [
+        "that any image has actually been scanned",
+        "that scan findings have been triaged or remediated",
+        "that a repository holds model containers at all (scope is every repository in the region, not only AI/ML ones)."
+      ],
+      "manual_review_requirements": [
+        "that any image has actually been scanned",
+        "that scan findings have been triaged or remediated",
+        "that a repository holds model containers at all (scope is every repository in the region, not only AI/ML ones)."
+      ],
+      "implementing_functions": [
+        "check_ecr_image_scanning"
+      ],
+      "regulatory_mapping_source": [
+        "ISO 27001 A.12.6",
+        "FFIEC CAT",
+        "DORA Art.6"
+      ],
+      "regulatory_mapping_shipped": [
+        "ISO 27001 A.12.6",
+        "FFIEC CAT",
+        "DORA Art.6"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-20",
+      "title": "Feature Store Rollback",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.14",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Create a rollback plan by using versioned training data and models. This ensures that you can revert to a stable, working model if failures occur.\" References \"Amazon SageMaker AI Feature Store\".",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `sagemaker:ListFeatureGroups` to enumerate all groups, then `sagemaker:DescribeFeatureGroup` for each to inspect `OfflineStoreConfig`. Flags feature groups where `OfflineStoreConfig` is absent (online-only groups with no offline store for rollback).",
+      "unsupported_assertions": [
+        "that offline-store data is retained, versioned, or complete",
+        "that a rollback has ever been tested",
+        "that the offline store bucket is protected against deletion. Offline-store presence is a precondition for rollback, not evidence of it."
+      ],
+      "manual_review_requirements": [
+        "that offline-store data is retained, versioned, or complete",
+        "that a rollback has ever been tested",
+        "that the offline store bucket is protected against deletion. Offline-store presence is a precondition for rollback, not evidence of it."
+      ],
+      "implementing_functions": [
+        "check_feature_store_rollback_capability"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-21",
+      "title": "Training Data S3 Versioning and Audit Trail",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.14",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Use trusted data sources for your training data. Implement audit controls that let you track and review changes, including who made them and when they occurred.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Identifies training-data S3 buckets by naming convention (`train`/`dataset`/`model`/`sagemaker`/`bedrock`). Calls `s3:GetBucketVersioning` to verify `Status=Enabled`. (CloudTrail data-event logging is recommended in remediation but is not asserted by this check — verifying it is covered by the upstream BR-06 CloudTrail control and the FS-23 extension.)",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_training_data_s3_versioning"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "ISO 27001 A.12.3",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "ISO 27001 A.12.3",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-22",
+      "title": "Knowledge Base IAM Least Privilege",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.15",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Apply the principle of least privilege to control access to your vector and embedding database. Only grant users and services the minimum permissions they need to perform their tasks.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Inspects the permissions cache for all IAM roles. Flags any role with an Allow statement granting `bedrock:*` without resource-level restrictions, or broad `bedrock:` actions covering KB operations without a specific knowledge-base ARN. Note: Bedrock agent and KB operations use the single IAM service prefix `bedrock:` (not `bedrock-agent:`) — the `bedrock-agent` token refers to the boto3 SDK client name, not the IAM action prefix.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_knowledge_base_iam_least_privilege"
+      ],
+      "regulatory_mapping_source": [
+        "NYDFS 500.06",
+        "FFIEC CAT",
+        "PCI-DSS 12.3.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "NYDFS 500",
+        "FFIEC CAT",
+        "PCI-DSS 12.3.2"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-24",
+      "title": "Knowledge Base Metadata Filtering",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.15",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Implement access controls at the document or record level within knowledge bases where different users or applications should only have access to specific subsets of data. Use Amazon Bedrock Knowledge Bases metadata filtering to enforce data segmentation.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Advisory. Uses the shared Knowledge Base inventory (`bedrock:ListKnowledgeBases`) only to report how many Knowledge Bases exist, then emits a single `ADVISORY:` row. It does NOT assert anything about metadata filtering. An earlier revision flagged KBs with no `metadataField` in the vector field mapping, but `metadataField` is a required member of that mapping, so its presence is vacuous and its absence is not reachable. Verified live: an `S3_VECTORS` KB carries no `fieldMapping` at all while an `OPENSEARCH_SERVERLESS` KB carries AWS defaults — neither says whether tenant isolation is enforced.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_knowledge_base_metadata_filtering"
+      ],
+      "regulatory_mapping_source": [
+        "NYDFS 500.06",
+        "FFIEC CAT",
+        "PCI-DSS 12.3.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "NYDFS 500",
+        "FFIEC CAT",
+        "PCI-DSS 12.3.2"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-25",
+      "title": "OpenSearch Serverless Encryption",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.15",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Enable encryption at rest and in transit for vector and embedding databases.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `opensearchserverless:ListCollections` (IAM action `aoss:ListCollections`) and reads `kmsKeyArn` per collection: the literal string `\"auto\"` means an AWS-owned key, a key ARN means customer-managed. Verified live against one collection of each kind. Encryption security policies are deliberately NOT parsed: `ListSecurityPolicies` summaries carry no `policy` member at all, so an earlier revision that ran `json.loads(p.get(\"policy\", \"{}\"))` always evaluated `{}` and reported every account as customer-managed — a false PASS whose failing branch was unreachable. `kmsKeyArn` also gives the *ef",
+      "unsupported_assertions": [
+        "that the CMK's key policy, rotation or grants are appropriate",
+        "that a collection is actually used by a Knowledge Base",
+        "anything about non-OpenSearch vector stores (S3 Vectors, Aurora Pinecone), whose encryption must be verified separately."
+      ],
+      "manual_review_requirements": [
+        "that the CMK's key policy, rotation or grants are appropriate",
+        "that a collection is actually used by a Knowledge Base",
+        "anything about non-OpenSearch vector stores (S3 Vectors, Aurora Pinecone), whose encryption must be verified separately."
+      ],
+      "implementing_functions": [
+        "check_opensearch_serverless_encryption"
+      ],
+      "regulatory_mapping_source": [
+        "NYDFS 500.06",
+        "PCI-DSS 3.5",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_shipped": [
+        "NYDFS 500",
+        "PCI-DSS 3.5",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-26",
+      "title": "Knowledge Base VPC Access",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.15",
+      "source_page": null,
+      "derivation_type": "project-extension",
+      "source_excerpt_summary": "network isolation is not verbatim in the guide but directly implements \"Apply the principle of least privilege to control access to your vector and embedding database\" at the network layer.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `opensearchserverless:ListSecurityPolicies(type=network)` (IAM action `aoss:ListSecurityPolicies` — the service prefix for OpenSearch Serverless is `aoss`, not `opensearchserverless`) and inspects each policy rule for `AllowFromPublic=true`. Flags collections accessible from the public internet. Note: a policy with `AllowFromPublic=false` may still grant private access to Bedrock via `SourceServices: [\"bedrock.amazonaws.com\"]` or to specific VPC endpoints via `SourceVPCEs` — these are the recommended private-access patterns and are not flagged.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_knowledge_base_vpc_access"
+      ],
+      "regulatory_mapping_source": [
+        "NYDFS 500.06",
+        "FFIEC CAT",
+        "PCI-DSS 1.3"
+      ],
+      "regulatory_mapping_shipped": [
+        "NYDFS 500",
+        "FFIEC CAT",
+        "PCI-DSS 1.3"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-27",
+      "title": "Automated Reasoning Checks",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.1, §1.2.7",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Automated Reasoning checks in Amazon Bedrock Guardrails uses automated reasoning to verify that natural language content complies with your defined policies. This mathematical verification helps ensure that your content strictly follows your guardrails.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `bedrock:ListGuardrails` and `bedrock:GetGuardrail` for each. Inspects the response fields `contextualGroundingPolicy` and `automatedReasoningPolicy`. Flags guardrails with neither enabled.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_guardrail_contextual_grounding"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-28",
+      "title": "Financial Denied Topics",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.1",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Configure content filters and guardrails to restrict model responses to approved topics\" with reference \"Amazon Bedrock User Guide – Guardrails – Denied topics\".",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `bedrock:GetGuardrail` and inspects `topicPolicy.topics` for entries with `type=DENY`. Flags guardrails with no denied topics or with no topics related to financial advice, investment recommendations, or tax guidance.",
+      "unsupported_assertions": [
+        "that the configured topics cover regulated financial advice",
+        "that topic definitions are complete or correctly scoped",
+        "that the policy applies to every relevant application",
+        "that each topic is enabled — ``inputEnabled`` and ``outputEnabled`` are not inspected, so a present topic may be inactive on either path. Topic coverage is a semantic question and stays a manual review."
+      ],
+      "manual_review_requirements": [
+        "that the configured topics cover regulated financial advice",
+        "that topic definitions are complete or correctly scoped",
+        "that the policy applies to every relevant application",
+        "that each topic is enabled — ``inputEnabled`` and ``outputEnabled`` are not inspected, so a present topic may be inactive on either path. Topic coverage is a semantic question and stays a manual review."
+      ],
+      "implementing_functions": [
+        "check_guardrail_denied_topics_financial"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "NYDFS 500",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "NYDFS 500",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-29",
+      "title": "Compliance Disclaimer",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.1",
+      "source_page": null,
+      "derivation_type": "project-extension",
+      "source_excerpt_summary": "disclaimers are not verbatim in §1.2.1 but the guide references \"Implement response disclaimers in customer-facing applications\" under §1.2.7 Hallucination, which is conceptually the same control applied here for non-compliant financial-advice output.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Advisory check — cannot be fully automated. Inspects application Lambda function environment variables or configuration for disclaimer-related settings (e.g., `DISCLAIMER_ENABLED`, `COMPLIANCE_FOOTER`).",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_compliance_disclaimer_in_outputs"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "NYDFS 500",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "NYDFS 500",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-30",
+      "title": "Compliance Evaluation Datasets",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.1",
+      "source_page": null,
+      "derivation_type": "project-extension",
+      "source_excerpt_summary": "the Guide §1.2.12 practical guidance mentions \"Amazon Bedrock Evaluations can help to evaluate models against specific types of attacks\"; this check extends that concept to compliance-specific evaluation for FS-regulated outputs.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Advisory, and makes no API calls. Emits a single `ADVISORY:` row prompting a manual review of compliance dataset coverage. Bedrock does not expose evaluation-dataset *content* through any API: verified live, an evaluation job's `dataset` member carries only `{name, datasetLocation.s3Uri}`, so whether the referenced data covers a given regulation cannot be determined programmatically. Whether any evaluation jobs exist at all is assessed by FS-15.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_bedrock_evaluation_compliance_datasets"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "NYDFS 500"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "NYDFS 500"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-31",
+      "title": "Knowledge Base Data Source Sync",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.3, §1.2.10",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Verify that your knowledge base data sources are up-to-date, accurate, reliable, and complete\"; \"Sync your data with your Amazon Bedrock knowledge base\".",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `ListDataSources` then `ListIngestionJobs` per data source (via the `bedrock-agent` boto3 client; IAM actions `bedrock:ListDataSources` and `bedrock:ListIngestionJobs`). Takes the most recent job whose status is `COMPLETE` and reads its `updatedAt` (falling back to `startedAt`). A data source with no `COMPLETE` job is reported separately as never successfully synced, which is a distinct failure from a stale sync. The data source's own `updatedAt` is deliberately NOT used: it is a configuration-modification timestamp, and verified live it understated freshness by five days on one source w",
+      "unsupported_assertions": [
+        "that a completed ingestion indexed the content you expected",
+        "that the source data itself is current",
+        "that the configured cadence matches your currency requirement."
+      ],
+      "manual_review_requirements": [
+        "that a completed ingestion indexed the content you expected",
+        "that the source data itself is current",
+        "that the configured cadence matches your currency requirement."
+      ],
+      "implementing_functions": [
+        "check_knowledge_base_data_source_sync"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-32",
+      "title": "Source Attribution",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.3, §1.2.10",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Use source attribution in RAG-based response for end users to verify provenance of information\" (§1.2.3); \"Use source attribution in RAG-based response for end users to verify currency of information\" (§1.2.10).",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Advisory, and makes no API calls. Emits a single `ADVISORY:` row prompting a manual review that citations are shown to end users. Application code is NOT inspected and Lambda environment variables are NOT read. Source attribution is a property of the application's own data-plane `RetrieveAndGenerate` request and of how it renders the returned `citations` member; the assessment never invokes that operation, and neither the request arguments nor the rendering is exposed by any AWS configuration API. A Lambda environment variable naming an attribution setting would be a naming convention, not evi",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_source_attribution_in_guardrails"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-33",
+      "title": "Knowledge Base Integrity Monitoring",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.3",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Use integrity monitoring on knowledge base data sources to detect unauthorized modifications. Track changes to documents used in knowledge bases.\" References \"For example on S3 data sources use Amazon S3 event notification to track changes to documents.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Identifies KB data-source S3 buckets from the shared inventory's `GetDataSource` detail (IAM action `bedrock:GetDataSource`), then calls `s3:GetBucketVersioning` per bucket. A `NoSuchBucket`/`404`/`NotFound` response is reported as a High finding: the data source references a bucket that no longer exists, so retrieval silently returns no results. Otherwise flags buckets whose versioning `Status` is not `Enabled`. S3 event notifications are NOT checked here — that is FS-65.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_knowledge_base_integrity_monitoring"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "ISO 27001 A.12.3",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "ISO 27001 A.12"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-34",
+      "title": "Third-Party Risk Management (TPRM) for Foundation Model Providers",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.12",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "*\"Update existing third-party risk management processes to continuously monitor model providers and third-party dependencies, including tracking vendor security advisories, model deprecation notices, and change to terms and conditions.\"* (Note: moved from the Misinformation section in the prior draft; the guide places TPRM under Supply Chain.)",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `bedrock:ListFoundationModels` and reads `modelLifecycle.status` from the list summaries, reporting how many models offered in the region are `LEGACY`. `bedrock:GetFoundationModel` is deliberately NOT called: verified live, it returns an identical `modelLifecycle` member, so the extra call per model adds nothing. Scope limit: this is the REGION CATALOGUE, not the models the account invokes — verified live, us-east-1 offers 119 models of which 19 are `LEGACY` in an account using none of them, so the row is Informational/N/A rather than a failure. Note: the API exposes only `ACTIVE` and `L",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_fm_version_currency"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-35",
+      "title": "FMEval Harmful Content",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.4",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Foundation Model Evaluations (FMEval) evaluates your model to detect inappropriate content, including sexual references, profanity, hate speech, aggression, insults, flirtation, identity-based attacks, and threats.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Advisory, and makes no API calls. Emits a single `ADVISORY:` row prompting a manual review of harmful-content test coverage. Automating this would require `bedrock:GetEvaluationJob` per job to read the configured metric names, which the assessment role is not granted; that is a possible future extension, not a current capability. For the manual review, the metric name depends on job type: automated model-evaluation jobs use `\"Builtin.Toxicity\"`; judge-based (LLM-as-judge) and knowledge-base (RAG) evaluation jobs use `\"Builtin.Harmfulness\"` and `\"Builtin.Stereotyping\"`. Whether any evaluation j",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_fmeval_harmful_content"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-36",
+      "title": "Guardrail Content Filters",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.4",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Use Amazon Bedrock's guardrails to detect and filter harmful content.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `bedrock:GetGuardrail` and inspects `contentPolicy.filters`. Flags guardrails missing filters for HATE, VIOLENCE, SEXUAL, INSULTS, or MISCONDUCT categories. Also checks that `inputStrength` and `outputStrength` are at least `MEDIUM`.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_guardrail_content_filters"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-37",
+      "title": "User Feedback Mechanism",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.4",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Implement a user reporting mechanism that allows end users to flag abusive or harmful outputs. Reported incidents [are] reviewed within a defined process to refine content filters.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Advisory check — inspects application configuration for feedback-related settings (e.g., `FEEDBACK_ENABLED`, `REPORT_ABUSE_ENDPOINT`). Checks for Lambda functions with \"feedback\" or \"report\" in the name.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_user_feedback_mechanism"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-38",
+      "title": "Guardrail Word Filters and Business Term Allowlists",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.4",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Create allowlists for business terms that include approved terminology for: brand names, product names, industry terms, and technical vocabulary. Also test filter settings to verify that your content filters allow necessary business communications and generate accurate alerts. Monitor and adjust regularly your filtering system to reduce false positives.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `bedrock:GetGuardrail` and inspects `wordPolicy`. Flags guardrails with no custom `words` array (blocked phrases). Also checks `managedWordLists` for the AWS-managed `PROFANITY` list. Note: a guardrail with only the profanity filter and no custom FinServ-specific blocked terms should still be flagged as incomplete for financial services use cases.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_guardrail_word_filters"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-39",
+      "title": "SageMaker Clarify Bias",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.5",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Use Amazon SageMaker Clarify to detect bias, increase transparency, and explain predictions for your fine-tuned and self-trained AI models.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `sagemaker:ListMonitoringSchedules` with the `MonitoringTypeEquals=ModelBias` filter parameter (the `MonitoringType` field on the `MonitoringScheduleSummary` response has one of four values: `DataQuality`, `ModelQuality`, `ModelBias`, `ModelExplainability`). Flags if no bias monitoring schedules exist. Cross-references with endpoints tagged `use-case=financial-decision` or similar. Clarify bias monitoring publishes metrics to the `aws/sagemaker/Endpoints/bias-metrics` namespace for real-time endpoints (and `aws/sagemaker/ModelMonitoring/bias-metrics` for batch transform jobs) with `Endpo",
+      "unsupported_assertions": [
+        "association with production financial-decision models",
+        "which protected attributes are evaluated",
+        "which bias metrics and thresholds are configured",
+        "that violations trigger alerting or remediation",
+        "ECOA or Fair Housing conformance. Note that MonitoringScheduleStatus has no \"Active\" value; the running state is \"Scheduled\". Findings therefore report the observed status verbatim."
+      ],
+      "manual_review_requirements": [
+        "association with production financial-decision models",
+        "which protected attributes are evaluated",
+        "which bias metrics and thresholds are configured",
+        "that violations trigger alerting or remediation",
+        "ECOA or Fair Housing conformance. Note that MonitoringScheduleStatus has no \"Active\" value; the running state is \"Scheduled\". Findings therefore report the observed status verbatim."
+      ],
+      "implementing_functions": [
+        "check_sagemaker_clarify_bias"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "ECOA",
+        "Fair Housing Act"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "ECOA/Fair Housing"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-40",
+      "title": "Bedrock Bias Evaluation Datasets",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.5",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Develop and maintain a bias testing dataset that includes representative test cases across demographic groups, geographic regions, and other sensitive attributes relevant to your use case. Run these test cases periodically and after model updates.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Advisory, and makes no API calls. Emits a single `ADVISORY:` row prompting a manual review of bias-dataset coverage. No cadence assessment is performed and no 90-day threshold is applied. Bedrock does not expose evaluation-dataset content through any API, and a recent evaluation job containing no fairness datasets would satisfy a cadence test while failing the control entirely, so cadence is not used as a proxy here. Whether any evaluation jobs exist at all is assessed by FS-15.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_bedrock_evaluation_bias_datasets"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "ECOA"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "ECOA"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-41",
+      "title": "SageMaker Clarify Explainability",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.5",
+      "source_page": null,
+      "derivation_type": "project-extension",
+      "source_excerpt_summary": "Guide §1.2.5 recommends \"Amazon SageMaker Clarify to detect bias, increase transparency, and explain predictions\". ECOA/Fair Housing adverse-action-notice use case is an FS-specific extension of Clarify explainability not named verbatim in the guide.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `sagemaker:ListMonitoringSchedules` with the `MonitoringTypeEquals=ModelExplainability` filter parameter. Flags if no explainability monitoring schedules exist for financial decision model endpoints. Clarify explainability monitoring publishes metrics to the `aws/sagemaker/Endpoints/explainability-metrics` namespace for real-time endpoints (and `aws/sagemaker/ModelMonitoring/explainability-metrics` for batch transform jobs) with `Endpoint`, `MonitoringSchedule`, `ExplainabilityMethod` (value: `KernelShap`), `Label`, and `ValueType` (values: `GlobalShapValues` or `ExpectedValue`) dimensio",
+      "unsupported_assertions": [
+        "that explanations support adverse-action notices",
+        "that SHAP features map to human-readable reason codes",
+        "that explanations are stored or delivered to applicants",
+        "ECOA conformance. Adverse-action reason generation is an application concern and stays a manual review. As with FS-39, MonitoringScheduleStatus has no \"Active\" value; the running state is \"Scheduled\"."
+      ],
+      "manual_review_requirements": [
+        "that explanations support adverse-action notices",
+        "that SHAP features map to human-readable reason codes",
+        "that explanations are stored or delivered to applicants",
+        "ECOA conformance. Adverse-action reason generation is an application concern and stays a manual review. As with FS-39, MonitoringScheduleStatus has no \"Active\" value; the running state is \"Scheduled\"."
+      ],
+      "implementing_functions": [
+        "check_sagemaker_clarify_explainability"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "ECOA Adverse Action"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "ECOA Adverse Action"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-42",
+      "title": "AI Service Cards",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.4, §1.2.5, §1.2.14",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Amazon provides AI Service Cards for models that are pre-trained for AWS services like Amazon Bedrock and Amazon Q. These cards help you understand how Amazon addresses toxicity in each model.\" Referenced in three separate guide risk sections.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `sagemaker:ListModelCards`, paginating on the `ModelCardSummaries` response member, and reads `ModelCardStatus` per card. Flags cards not in `Approved` status, since an unapproved card has not completed its documented review. `sagemaker:DescribeModelCard` is NOT called and card *content* is not inspected — whether `intended_uses`, `business_details` and `evaluation_details` are filled in meaningfully is a manual review. Absence of model cards is reported Informational/N/A, not as a failure: a Bedrock-only estate legitimately has none, as Model Cards are a SageMaker-specific artifact. Not",
+      "unsupported_assertions": [
+        "that a card's documented content is accurate, complete or current",
+        "that an Approved card was reviewed by a competent approver",
+        "that models without a card are undocumented elsewhere. Card *content* requires DescribeModelCard per card and is not inspected."
+      ],
+      "manual_review_requirements": [
+        "that a card's documented content is accurate, complete or current",
+        "that an Approved card was reviewed by a competent approver",
+        "that models without a card are undocumented elsewhere. Card *content* requires DescribeModelCard per card and is not inspected."
+      ],
+      "implementing_functions": [
+        "check_ai_service_cards_documentation"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.3"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.3"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-43",
+      "title": "CloudWatch Log PII Masking",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.6",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"If you implement model invocation logging for the LLM or custom logging logic in your application, make sure to mask sensitive information in your log data.\" References \"Amazon CloudWatch – Help protect sensitive log data with masking\".",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `bedrock:GetModelInvocationLoggingConfiguration` first and branches on the delivery destination. Logging disabled, or delivering only to S3 (no `cloudWatchConfig`), is reported N/A — CloudWatch Logs data protection cannot apply to a path that never reaches CloudWatch Logs, and verified live an S3-only account was previously raising a High finding about plaintext PII in CloudWatch where no Bedrock logs existed. When CloudWatch delivery IS in use, both `logs:DescribeAccountPolicies` (account-scoped) and `logs:GetDataProtectionPolicy` (attached directly to the destination log group) are che",
+      "unsupported_assertions": [
+        "that the configured data identifiers cover every PII type in the logs",
+        "that masking is working on log content already delivered",
+        "anything about PII in S3-delivered invocation logs, which CloudWatch Logs data protection does not touch."
+      ],
+      "manual_review_requirements": [
+        "that the configured data identifiers cover every PII type in the logs",
+        "that masking is working on log content already delivered",
+        "anything about PII in S3-delivered invocation logs, which CloudWatch Logs data protection does not touch."
+      ],
+      "implementing_functions": [
+        "check_cloudwatch_log_pii_masking"
+      ],
+      "regulatory_mapping_source": [
+        "NYDFS 500.06",
+        "GDPR Art.25",
+        "PCI-DSS 3.4"
+      ],
+      "regulatory_mapping_shipped": [
+        "NYDFS 500",
+        "PCI-DSS",
+        "GDPR Art.25"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-44",
+      "title": "Amazon Macie PII Scanning and Pre-Processing",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.6",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Monitor personally identifiable information (PII) in your data when you train models, fine-tune them, or use retrieval-augmented generation (RAG)\" and \"Remove, mask, or tokenize personally identifiable information (PII) or sensitive data before you use it for training, fine-tuning, or retrieval-augmented generation (RAG).\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `macie2:GetMacieSession` for the session status, then `macie2:GetAutomatedDiscoveryConfiguration`. Both must be `ENABLED` to pass: verified live, an account with an `ENABLED` session and `DISABLED` automated discovery was reported as \"Macie is enabled and scanning S3 buckets\" while Macie was scanning nothing, so an enabled session alone is now a Failed finding. An `AccessDenied` on `GetMacieSession` is disambiguated by its message — wording indicating Macie was never enabled for the account is a real finding, while any other denial is reported COULD NOT ASSESS rather than as a security f",
+      "unsupported_assertions": [
+        "that discovery covers the specific buckets holding training data or KB data sources",
+        "that any sensitive-data finding has been triaged or remediated",
+        "that a PII pre-processing step exists in training or ingestion pipelines."
+      ],
+      "manual_review_requirements": [
+        "that discovery covers the specific buckets holding training data or KB data sources",
+        "that any sensitive-data finding has been triaged or remediated",
+        "that a PII pre-processing step exists in training or ingestion pipelines."
+      ],
+      "implementing_functions": [
+        "check_macie_on_training_data_buckets"
+      ],
+      "regulatory_mapping_source": [
+        "NYDFS 500.06",
+        "GDPR Art.25",
+        "PCI-DSS 3.4",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_shipped": [
+        "NYDFS 500",
+        "FFIEC CAT",
+        "PCI-DSS",
+        "GDPR Art.25"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-45",
+      "title": "Guardrail PII Filters",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.6",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Use Amazon Bedrock Guardrails to detect and filter structured sensitive information in model inputs and outputs, such as personally identifiable information (PII), protected health information (PHI).\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `bedrock:GetGuardrail` and inspects `sensitiveInformationPolicy.piiEntities`. Flags guardrails missing filters for critical PII types: `US_SOCIAL_SECURITY_NUMBER`, `CREDIT_DEBIT_CARD_NUMBER`, `CREDIT_DEBIT_CARD_CVV`, `CREDIT_DEBIT_CARD_EXPIRY`, `US_BANK_ACCOUNT_NUMBER`, `US_BANK_ROUTING_NUMBER`, `PIN`, `SWIFT_CODE`, `INTERNATIONAL_BANK_ACCOUNT_NUMBER`, `US_INDIVIDUAL_TAX_IDENTIFICATION_NUMBER`, `EMAIL`, `PHONE`.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_guardrail_pii_filters"
+      ],
+      "regulatory_mapping_source": [
+        "NYDFS 500.06",
+        "GDPR Art.25",
+        "PCI-DSS 3.4"
+      ],
+      "regulatory_mapping_shipped": [
+        "NYDFS 500",
+        "PCI-DSS",
+        "GDPR Art.25"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-46",
+      "title": "Data Classification Tagging",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.6",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Implement data classification scanning and access controls on the data sources connected to your AI system to prevent disclosure of company-confidential or proprietary information.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Lists S3 buckets and filters for AI/ML-related names or tags. Calls `s3:GetBucketTagging` for each and checks for a `data-classification` tag with values like `public`, `internal`, `confidential`, `restricted`. Flags buckets missing the tag.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_data_classification_tagging"
+      ],
+      "regulatory_mapping_source": [
+        "NYDFS 500.06",
+        "FFIEC CAT",
+        "ISO 27001 A.8.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "NYDFS 500",
+        "FFIEC CAT",
+        "ISO 27001 A.12"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-47",
+      "title": "Guardrail Grounding Threshold",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.7",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"You can use Amazon Bedrock Guardrails to detect and filter hallucinations in model responses by performing contextual grounding checks when you provide a reference source and query.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `bedrock:GetGuardrail` and inspects `contextualGroundingPolicy.filters` for the `GROUNDING` filter type. Checks that the `threshold` value is ≥ 0.7. Flags guardrails with lower thresholds or no grounding filter.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_guardrail_grounding_threshold"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-48",
+      "title": "RAG Knowledge Base",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.1, §1.2.7, §1.2.10",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Use Retrieval-Augmented Generation (RAG) to enhance your model responses with information from trusted knowledge bases.\" Referenced in three separate guide risk sections.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `ListKnowledgeBases` (via the `bedrock-agent` boto3 client; IAM action `bedrock:ListKnowledgeBases`) and checks that at least one KB exists with `status=ACTIVE`. Flags accounts with no active KBs when Bedrock models are in use (indicating responses are ungrounded).",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_rag_knowledge_base_configured"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-49",
+      "title": "Hallucination Disclaimer",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.7",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Implement response disclaimers in customer-facing applications, to inform end users that AI-generated responses should be verified for critical decisions.\" References \"AWS Well-Architected Framework Generative AI Lens - Implement guardrails to mitigate harmful or incorrect model responses\".",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Advisory check — inspects application Lambda environment variables for disclaimer-related settings. Checks for post-processing Lambda functions that append disclaimers.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_hallucination_disclaimer_advisory"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-50",
+      "title": "Relevance Grounding Filters",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.2, §1.2.7",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Use Amazon Bedrock Guardrails to detect and filter hallucinations in model responses by performing contextual grounding checks.\" Contextual grounding covers both `GROUNDING` and `RELEVANCE` filter sub-types.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `bedrock:GetGuardrail` and inspects `contextualGroundingPolicy.filters` for the `RELEVANCE` filter type. Flags guardrails with no relevance filter configured.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_guardrail_relevance_grounding"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-51",
+      "title": "Prompt Attack Filters",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.8",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Use Amazon Bedrock Guardrails to detect and block user inputs that attempt to override system instructions through prompt attacks.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `bedrock:GetGuardrail` and inspects `contentPolicy.filters` for a filter with `type=PROMPT_ATTACK`. Flags guardrails where this filter is absent, has `inputStrength` set to `NONE` or `LOW` (note: PROMPT_ATTACK only applies to inputs — there is no `outputStrength` for this filter type), or where `contentPolicy.tier.tierName=CLASSIC` (the PROMPT_ATTACK filter in Classic tier detects jailbreaks and prompt injection; in Standard tier it additionally detects **prompt leakage** — attempts to extract system prompts or developer instructions).",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_prompt_injection_input_validation"
+      ],
+      "regulatory_mapping_source": [
+        "NYDFS 500.06",
+        "FFIEC CAT",
+        "OWASP LLM01"
+      ],
+      "regulatory_mapping_shipped": [
+        "NYDFS 500",
+        "FFIEC CAT",
+        "OWASP LLM Top 10"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-52",
+      "title": "Bedrock SDK Version Currency",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.8",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Stay Updated – Keep your Amazon Bedrock SDK, libraries, and dependencies current to receive the latest security patches and updates.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `lambda:ListFunctions` and filters for functions with Bedrock-related names or environment variables referencing Bedrock. Checks each function's `Runtime` against the list of deprecated Lambda runtimes.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_bedrock_sdk_version_currency"
+      ],
+      "regulatory_mapping_source": [
+        "NYDFS 500.06",
+        "FFIEC CAT",
+        "ISO 27001 A.12.6"
+      ],
+      "regulatory_mapping_shipped": [
+        "NYDFS 500",
+        "FFIEC CAT",
+        "ISO 27001 A.12"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-53",
+      "title": "WAF Injection Protection Rules",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.8",
+      "source_page": null,
+      "derivation_type": "project-extension",
+      "source_excerpt_summary": "WAF SQLi and known-bad-inputs rule groups are not named in the guide, but implement the guide mitigation \"Secure Coding Practices – use parameterized queries, avoid string concatenation for input, grant minimal access privileges\" at the network edge for web-facing GenAI endpoints.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `wafv2:ListWebACLs(Scope=REGIONAL)` and for each calls `wafv2:GetWebACL`. Inspects the rules list for `AWSManagedRulesSQLiRuleSet` and `AWSManagedRulesKnownBadInputsRuleSet`. Flags ACLs missing either rule group.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_waf_sql_injection_rules"
+      ],
+      "regulatory_mapping_source": [
+        "NYDFS 500.06",
+        "FFIEC CAT",
+        "PCI-DSS 6.4.1",
+        "OWASP LLM01"
+      ],
+      "regulatory_mapping_shipped": [
+        "NYDFS 500",
+        "PCI-DSS",
+        "FFIEC CAT",
+        "OWASP LLM Top 10"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-54",
+      "title": "Penetration Testing Evidence",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.8",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Security Testing – Test your applications regularly for prompt injection and other security vulnerabilities. Use penetration testing, static code analysis, and dynamic application security testing (DAST).\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Advisory check — inspects resource tags for `last-pentest-date` or checks for a documented penetration testing schedule. Cannot be fully automated.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_penetration_testing_evidence"
+      ],
+      "regulatory_mapping_source": [
+        "NYDFS 500.06",
+        "FFIEC CAT",
+        "PCI-DSS 11.4",
+        "DORA Art.26"
+      ],
+      "regulatory_mapping_shipped": [
+        "NYDFS 500",
+        "FFIEC CAT",
+        "DORA Art.26",
+        "PCI-DSS 11.4"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-55",
+      "title": "Output Validation Lambda",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.13",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Implement output validation rules specific to the expected response format. For example, if the AI system is expected to return structured data (JSON, SQL), validate the output against the expected schema before processing.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `lambda:ListFunctions` and searches for functions with naming patterns indicating output validation (e.g., \"output-valid\", \"sanitiz\", \"post-process\", \"response-filter\"). Flags if no such functions exist.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_output_validation_lambda"
+      ],
+      "regulatory_mapping_source": [
+        "NYDFS 500.06",
+        "FFIEC CAT",
+        "OWASP LLM05"
+      ],
+      "regulatory_mapping_shipped": [
+        "FFIEC CAT",
+        "OWASP LLM Top 10",
+        "NYDFS 500.06"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-56",
+      "title": "XSS Prevention WAF",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.13",
+      "source_page": null,
+      "derivation_type": "project-extension",
+      "source_excerpt_summary": "WAF XSS rule groups are not named in the guide, but implement the guide mitigation \"Apply context-specific output sanitization ... apply HTML encoding for web applications\" at the network edge.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `wafv2:GetWebACL` for each regional ACL and inspects rules for `AWSManagedRulesCommonRuleSet` (which includes the four `CrossSiteScripting_*` rules covering request body, query arguments, cookies, and URI path) or custom rules using `XssMatchStatement` on request components. Flags ACLs missing XSS protection.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_xss_prevention_waf"
+      ],
+      "regulatory_mapping_source": [
+        "NYDFS 500.06",
+        "FFIEC CAT",
+        "PCI-DSS 6.4.1",
+        "OWASP LLM05"
+      ],
+      "regulatory_mapping_shipped": [
+        "NYDFS 500",
+        "PCI-DSS",
+        "OWASP LLM Top 10",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-57",
+      "title": "Output Encoding",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.13",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Apply context-specific output sanitization based on the downstream consumer. For example, apply HTML encoding for web applications, SQL parameterization for database queries, and command escaping for system integrations.\" Practical guidance: \"Use Amazon Bedrock Agents to securely integrate with AWS native and third-party services and implement output encoding in the action group Lambda function u",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Advisory check — inspects application Lambda functions for encoding libraries or patterns (e.g., `html.escape`, `json.dumps`, `markupsafe`). Checks environment variables for encoding-related configuration.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_output_encoding_advisory"
+      ],
+      "regulatory_mapping_source": [
+        "NYDFS 500.06",
+        "FFIEC CAT",
+        "OWASP LLM05"
+      ],
+      "regulatory_mapping_shipped": [
+        "NYDFS 500.06",
+        "FFIEC CAT",
+        "OWASP LLM Top 10"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-58",
+      "title": "Output Schema Validation",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.13",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Implement output validation rules specific to the expected response format. For example, if the AI system is expected to return structured data (JSON, SQL), validate the output against the expected schema before processing.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Inspects Step Functions state machine definitions for states that perform schema validation (e.g., `Choice` states with JSON path conditions, Lambda states with \"schema\" or \"validate\" in the name). Does not rely on API Gateway response models as a validation signal because those are used for SDK generation, not runtime validation.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_output_schema_validation"
+      ],
+      "regulatory_mapping_source": [
+        "NYDFS 500.06",
+        "FFIEC CAT",
+        "OWASP LLM05"
+      ],
+      "regulatory_mapping_shipped": [
+        "FFIEC CAT",
+        "OWASP LLM Top 10",
+        "NYDFS 500.06"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-59",
+      "title": "Guardrail Topic Allowlist",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.2",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Configure content filters and guardrails to restrict model responses to approved topics.\" The check name uses \"allowlist\" loosely — implementation uses denied-topic lists to block out-of-scope content.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `bedrock:GetGuardrail` and inspects `topicPolicy.topics`. Checks that denied topics exist to block off-topic conversations (e.g., politics, entertainment, medical advice). Flags guardrails with no topic restrictions.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_guardrail_topic_allowlist"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-60",
+      "title": "Contextual Grounding for Off-Topic",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.2",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Use prompt engineering techniques to guide the model toward appropriate topics and prevent unwanted responses. Include an allowlist of approved topics aligned with the business purpose.\" Use of Bedrock Prompt Management for system prompt versioning is an implementation choice.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Advisory, and makes no API calls. Emits a single `ADVISORY:` row prompting a manual review that system prompts scope the assistant's role. Bedrock Prompt Management templates are NOT inspected: prompts are commonly held in application code, a prompt-flow definition, or an external store, so the absence of a Prompt Management template says nothing about whether a system prompt is scoped, and its presence says nothing about the content.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_contextual_grounding_for_offtopic"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-61",
+      "title": "Knowledge Base Sync Schedule",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.10",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Keep your knowledge bases up to date.\" Automated scheduling via EventBridge operationalises this mitigation.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `events:ListRules` and searches for rules with targets that invoke `StartIngestionJob` (IAM action `bedrock:StartIngestionJob`) or Lambda functions that trigger KB sync. Also checks AWS Scheduler (`scheduler:ListSchedules`) for schedules targeting KB sync. Flags if no scheduled sync mechanism exists.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_knowledge_base_sync_schedule"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-62",
+      "title": "Data Currency Disclaimer",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.10",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Include data currency disclaimers in AI system responses where appropriate. Use source attribution in RAG-based response for end users to verify currency of information.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Advisory check — inspects application configuration for data-currency disclaimer settings. Checks system prompts for instructions to include data freshness information.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_data_currency_disclaimer_advisory"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9.2"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-63",
+      "title": "Foundation Model Lifecycle Policy",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.10",
+      "source_page": null,
+      "derivation_type": "project-extension",
+      "source_excerpt_summary": "FM currency is conceptually related to \"out-of-date training data\" but the specific Bedrock lifecycle-status check is not named in the guide. The guide's \"1.1.6 Monitor and improve\" general guidance says \"Update your foundation models when new versions become available\" — this FS check operationalises that guidance. See also FS-34 (TPRM) which the guide places under §1.2.12.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `config:DescribeConfigRules` and matches rules whose name mentions \"lifecycle\" or \"model\"; the verdict keys off whether any such rule exists. Also calls `bedrock:ListFoundationModels` and reports how many models offered in the region are `LEGACY`, as context only. `bedrock:GetFoundationModel` is NOT called — verified live it returns an identical `modelLifecycle` member. The verdict deliberately does not key off legacy availability: verified live, us-east-1 offers 19 legacy models out of 119 regardless of what the account uses, so an earlier revision failed virtually every account in the ",
+      "unsupported_assertions": [
+        "that the account invokes any of the legacy models listed",
+        "that a matching Config rule actually enforces model currency",
+        "that a documented lifecycle process exists outside AWS Config. Name-matched Config rules are a heuristic for \"some governance exists\" not proof of an effective process."
+      ],
+      "manual_review_requirements": [
+        "that the account invokes any of the legacy models listed",
+        "that a matching Config rule actually enforces model currency",
+        "that a documented lifecycle process exists outside AWS Config. Name-matched Config rules are a heuristic for \"some governance exists\" not proof of an effective process."
+      ],
+      "implementing_functions": [
+        "check_foundation_model_lifecycle_policy"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "ISO 27001 A.12.5"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "ISO 27001 A.12"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-65",
+      "title": "KB Data Source S3 Event Notifications",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.3",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Use integrity monitoring on knowledge base data sources to detect unauthorized modifications... For example on S3 data sources use Amazon S3 event notification to track changes to documents.\" **Note:** This check overlaps with FS-33; FS-33 verifies notifications are *enabled* on the bucket, while FS-65 verifies that notifications are *routed to an alerting destination* (SNS/Lambda/EventBridge rul",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Identifies KB data-source S3 buckets via `ListDataSources` and `GetDataSource` (via the `bedrock-agent` boto3 client; IAM actions `bedrock:ListDataSources` and `bedrock:GetDataSource`). For each bucket, calls `s3:GetBucketNotificationConfiguration` and checks for the presence of `EventBridgeConfiguration`, `TopicConfigurations`, `QueueConfigurations`, or `LambdaFunctionConfigurations`. Flags buckets with no notifications configured.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_kb_datasource_s3_event_notifications"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "ISO 27001 A.12",
+        "FFIEC CAT"
+      ],
+      "regulatory_mapping_shipped": [
+        "FFIEC CAT",
+        "ISO 27001 A.12",
+        "SR 11-7"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-66",
+      "title": "AgentCore End-User Identity Propagation",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.6",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"1. Implement least privilege for identities associated with agents and tool services. 2. Where supported by the tool service ensure that communications to tool services or agents are authorized by the end user. 3. Customers building their own tool services should consider propagating end-user identities separately; ensuring these identities can be validated and are not revealed to unauthorized th",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `ListAgentRuntimes` (via the `bedrock-agentcore-control` boto3 client; IAM action `bedrock-agentcore:ListAgentRuntimes`) and inspects each runtime's `authorizerConfiguration.customJWTAuthorizer` for a `discoveryUrl` and allowed audiences/clients/scopes. Flags runtimes with no JWT authorizer (meaning inbound calls carry no verifiable end-user identity), and advises configuring outbound OAuth for downstream tool services.",
+      "unsupported_assertions": [
+        "that the end-user identity is actually forwarded to downstream tool services (an application behavior, not a runtime property)",
+        "that tool services validate a propagated identity",
+        "that tokens are not over-shared. Note also that ``authorizerConfiguration`` exposes only ``customJWTAuthorizer``; there is no ``iamAuthorizer`` member, so no IAM-authorizer claim is made."
+      ],
+      "manual_review_requirements": [
+        "that the end-user identity is actually forwarded to downstream tool services (an application behavior, not a runtime property)",
+        "that tool services validate a propagated identity",
+        "that tokens are not over-shared. Note also that ``authorizerConfiguration`` exposes only ``customJWTAuthorizer``; there is no ``iamAuthorizer`` member, so no IAM-authorizer claim is made."
+      ],
+      "implementing_functions": [
+        "check_agentcore_end_user_identity_propagation"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "NYDFS 500.06",
+        "MAS TRM 9.1"
+      ],
+      "regulatory_mapping_shipped": [
+        "NYDFS 500",
+        "SR 11-7",
+        "MAS TRM 9"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-67",
+      "title": "Agent Financial Transaction Value Thresholds",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.9",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Enforce transaction value thresholds and action boundaries on agent tool calls (for example to cap financial transaction amounts).\" This check reports a naming hint only; it does not observe enforcement.",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Reads the shared Lambda inventory (`ListFunctions`; IAM action `lambda:ListFunctions`) and selects functions whose name contains any of `agent`, `action`, `tool`, `bedrock`, `finserv` or `transaction`, excluding the assessment's own functions. For each match, inspects only the **names** of environment variables for `threshold`, `limit` or `max`. Variable values are never read, and no AgentCore Gateway or Policy Engine API is called.",
+      "unsupported_assertions": [
+        "that a matched function performs financial transactions",
+        "that any threshold is enforced anywhere in code",
+        "that a configured value is safe or appropriate",
+        "that an AgentCore policy rule caps transaction amounts. A threshold implemented in code or in a policy rule is invisible here, and conversely an unrelated variable such as MAX_RETRIES or LIMIT=0 satisfies the heuristic. Both directions are false signals."
+      ],
+      "manual_review_requirements": [
+        "that a matched function performs financial transactions",
+        "that any threshold is enforced anywhere in code",
+        "that a configured value is safe or appropriate",
+        "that an AgentCore policy rule caps transaction amounts. A threshold implemented in code or in a policy rule is invisible here, and conversely an unrelated variable such as MAX_RETRIES or LIMIT=0 satisfies the heuristic. Both directions are false signals."
+      ],
+      "implementing_functions": [
+        "check_agent_financial_transaction_thresholds"
+      ],
+      "regulatory_mapping_source": [
+        "SR 11-7",
+        "MAS TRM 9.1",
+        "FFIEC CAT",
+        "PCI-DSS"
+      ],
+      "regulatory_mapping_shipped": [
+        "SR 11-7",
+        "FFIEC CAT",
+        "MAS TRM 9",
+        "PCI-DSS"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-68",
+      "title": "API Gateway Request Body Size Limits",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.11",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"To protect your API endpoints, set maximum length limits for input requests when you use large language models (LLMs) directly or through Amazon Bedrock.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `apigateway:GetRestApis` and for each calls `apigateway:GetRequestValidators` to check for validators (validators enforce parameter-existence and request-body JSON schema conformance — not total body size). Calls `wafv2:GetWebACL` for associated ACLs and inspects rules for `SizeConstraintStatement` targeting the request body. Flags APIs with no WAF `SizeConstraintStatement` on body, since that is the only AWS-native mechanism that enforces a custom maximum body size in front of API Gateway.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_api_gateway_request_body_size_limits"
+      ],
+      "regulatory_mapping_source": [
+        "FFIEC CAT",
+        "DORA Art.6",
+        "PCI-DSS",
+        "OWASP LLM10"
+      ],
+      "regulatory_mapping_shipped": [
+        "DORA Art.6",
+        "FFIEC CAT",
+        "PCI-DSS",
+        "OWASP LLM Top 10"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    },
+    {
+      "check_id": "FS-69",
+      "title": "Prompt Input Validation Function",
+      "source_id": "aws-grc-user-guide",
+      "source_title": "AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption",
+      "source_version_or_date": "updated 2026-05-13",
+      "source_url": "https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf",
+      "source_section": "§1.2.8",
+      "source_page": null,
+      "derivation_type": "direct-derived",
+      "source_excerpt_summary": "\"Input Validation – Before you send user input to Amazon Bedrock or the tokenizer, validate and sanitize it by removing special characters or using escape sequences. Make sure the input matches your expected format.\"",
+      "derivation_rationale": null,
+      "inspected_aws_evidence": "Calls `lambda:ListFunctions` and searches for functions with input-validation naming patterns (e.g., \"sanitiz\", \"validat\", \"input-filter\", \"prompt-guard\", \"preprocess\"). Flags if no such functions exist.",
+      "unsupported_assertions": [],
+      "manual_review_requirements": [],
+      "implementing_functions": [
+        "check_prompt_input_validation_function"
+      ],
+      "regulatory_mapping_source": [
+        "OWASP LLM01",
+        "FFIEC CAT",
+        "NYDFS 500.06"
+      ],
+      "regulatory_mapping_shipped": [
+        "NYDFS 500",
+        "FFIEC CAT",
+        "OWASP LLM Top 10"
+      ],
+      "regulatory_mapping_status": "preliminary",
+      "review_required": [
+        "derivation_rationale",
+        "unsupported_assertions"
+      ],
+      "last_verified_date": "2026-08-07"
+    }
+  ]
+}
