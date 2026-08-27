@@ -5,8 +5,6 @@
 .codex/
 .mcp.json
 
-AGENTS.md
-CLAUDE.md
 
 # AWS SAM build artifacts
 aiml-security-assessment/.aws-sam/
