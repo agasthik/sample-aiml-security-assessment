@@ -80,6 +80,8 @@ boto3_config = Config(retries=dict(max_attempts=10, mode="adaptive"))
 logger = logging.getLogger()
 logger.setLevel(logging.WARNING)
 
+GLOBAL_REGION_LABEL = "Global"
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -7515,14 +7517,10 @@ def detect_finserv_regional_footprint(region: str) -> Optional[bool]:
     empty, even when another probe in the same loop was indeterminate — so an
     AccessDenied on, say, SageMaker while Bedrock Guardrails happened to be
     empty produced a confident "no resources" verdict from a partially unknown
-    picture. Downstream, that classifies the region as empty, which strips it
-    from `_stamp_regions` and instead emits an FS-00 "no regional resources
-    found" row — a false claim, and if it happens for every target region it
-    suppresses every FinServ finding across the whole assessment (which
-    `_apply_region_scope` reports as "no resources found" rather than as the
-    indeterminate/could-not-assess condition it actually is). `None` now takes
-    priority over any confirmed-empty probe result whenever at least one probe
-    could not be resolved, matching the contract stated above.
+    picture. Downstream, that would emit an FS-00 "no regional resources
+    found" row — a false claim. `None` therefore takes priority over any
+    confirmed-empty probe result whenever at least one probe could not be
+    resolved, matching the contract stated above.
     """
     bedrock = boto3.client("bedrock", config=boto3_config, region_name=region)
     bedrock_agent = boto3.client(
@@ -7597,23 +7595,23 @@ def _partition_regions_by_finserv_footprint(
     return assessable_regions, empty_regions
 
 
-def _stamp_regions(findings: List[Dict[str, Any]], regions: List[str]) -> None:
-    """Expand missing CSV Region values so each target region is filterable."""
-    regions = [region for region in regions if region]
-    if not regions:
-        return
-
+def _stamp_unscoped_findings_global(findings: List[Dict[str, Any]]) -> None:
+    """Label unscoped evidence as global instead of claiming regional provenance."""
     for finding in findings:
-        expanded_rows = []
         for row in finding.get("csv_data", []):
-            if row.get("Region"):
-                expanded_rows.append(row)
-                continue
-            for region in regions:
-                regional_row = dict(row)
-                regional_row["Region"] = region
-                expanded_rows.append(regional_row)
-        finding["csv_data"] = expanded_rows
+            if not row.get("Region"):
+                row["Region"] = GLOBAL_REGION_LABEL
+
+
+def _stamp_regions(findings: List[Dict[str, Any]], regions: List[str]) -> None:
+    """Compatibility wrapper that no longer clones evidence across regions.
+
+    The assessment executes its checks once using one inventory snapshot. A
+    missing Region therefore means the evidence has no target-region
+    provenance. Copying that row into every target region would misattribute
+    the evidence, so it is emitted once as Global instead.
+    """
+    _stamp_unscoped_findings_global(findings)
 
 
 def _append_no_resource_region_findings(
@@ -7635,18 +7633,12 @@ def _append_no_resource_region_findings(
 
 
 def _apply_region_scope(findings: List[Dict[str, Any]], regions: List[str]) -> None:
-    """Scope FinServ rows to target regions with resources and emit N/A rows for empty regions."""
+    """Preserve unscoped rows globally and emit N/A rows for empty regions."""
+    _stamp_unscoped_findings_global(findings)
     if not regions:
         return
 
-    assessable_regions, empty_regions = _partition_regions_by_finserv_footprint(regions)
-    if assessable_regions:
-        _stamp_regions(findings, assessable_regions)
-    else:
-        for finding in findings:
-            finding["csv_data"] = [
-                row for row in finding.get("csv_data", []) if row.get("Region")
-            ]
+    _, empty_regions = _partition_regions_by_finserv_footprint(regions)
     _append_no_resource_region_findings(findings, empty_regions)
 
 
@@ -7828,8 +7820,9 @@ def collect_resource_inventory() -> ResourceInventory:
     consumes all five (design DD-7).
 
     All clients use ``boto3.client(service, config=boto3_config)`` — no
-    ``region_name`` or ``endpoint_url`` — so the Lambda's default-Region
-    resolution is preserved (REQ-7, INV-4)."""
+    ``region_name`` or ``endpoint_url`` — so this inventory has no reliable
+    target-region provenance. Rows derived from it are therefore labeled
+    ``Global`` rather than copied into each target region."""
     return ResourceInventory(
         lambda_functions=_safe_collect_lambda_functions(),
         guardrails=_safe_collect_guardrails(),
@@ -8016,9 +8009,9 @@ def lambda_handler(event, context):
             )
         all_findings.append(result)
 
-    # Generate and upload report. Only duplicate regional FinServ rows into
-    # target regions where a GenAI footprint is present; empty regions receive a
-    # visible N/A row instead of false failed controls.
+    # Generate and upload report. Checks execute once against one inventory
+    # snapshot, so unscoped evidence is labeled Global rather than cloned into
+    # target regions. Confirmed-empty regions still receive a visible N/A row.
     _apply_region_scope(all_findings, region_scopes)
     csv_content = generate_csv_report(all_findings)
     bucket_name = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")

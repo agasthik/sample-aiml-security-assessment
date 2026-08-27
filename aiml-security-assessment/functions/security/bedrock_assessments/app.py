@@ -136,6 +136,13 @@ AGENTIC_BEDROCK_CHECK_MAPPINGS = {
         "agentic_context": "CloudWatch alarms help detect anomalous invocation errors, throttling, or volume caused by autonomous workflows.",
         "resolution": "Configure CloudWatch alarms for Bedrock invocation errors, throttles, latency, and token or request volume where metrics are available.",
     },
+    "BR-34": {
+        "check_id": "AG-30",
+        "finding": "Agentic AI Prompt Attack Protection",
+        "lens_domain": "Prompt & Input Protection",
+        "agentic_context": "Agents should prevent prompt attacks before untrusted input can redirect planning or tool use.",
+        "resolution": "Enable a preventive PROMPT_ATTACK input filter on each guardrail and use Standard tier where prompt-leakage protection is required.",
+    },
 }
 
 # Error codes returned when a region exists but is not enabled/usable for the
@@ -331,6 +338,31 @@ def _list_all_items(
             break
 
     return items
+
+
+def get_guardrail_detail_inventory(region: str = "") -> Dict[str, Any]:
+    """List guardrails once and isolate per-guardrail detail failures."""
+    inventory = {"items": [], "errors": [], "list_error": None}
+    try:
+        client = boto3.client("bedrock", config=boto3_config, region_name=region)
+        summaries = _list_all_items(client, "list_guardrails", "guardrails")
+        for summary in summaries:
+            guardrail_id = summary.get("id")
+            if not guardrail_id:
+                continue
+            try:
+                response = client.get_guardrail(guardrailIdentifier=guardrail_id)
+                inventory["items"].append(
+                    {
+                        "summary": summary,
+                        "detail": response.get("guardrail", response),
+                    }
+                )
+            except Exception as error:
+                inventory["errors"].append({"summary": summary, "error": error})
+    except Exception as error:
+        inventory["list_error"] = error
+    return inventory
 
 
 def detect_bedrock_regional_footprint(region: str = "") -> Optional[bool]:
@@ -2956,7 +2988,9 @@ def check_bedrock_agent_roles(permission_cache, region: str = "") -> Dict[str, A
         }
 
 
-def check_bedrock_cross_account_guardrails(region: str = "") -> Dict[str, Any]:
+def check_bedrock_cross_account_guardrails(
+    region: str = "", api_region: str = ""
+) -> Dict[str, Any]:
     """
     BR-15: Check if organization-level guardrails are configured using AWS Organizations Bedrock policies
     for centralized safety control enforcement (NEW - April 2026 feature)
@@ -2969,6 +3003,28 @@ def check_bedrock_cross_account_guardrails(region: str = "") -> Dict[str, Any]:
             "details": "",
             "csv_data": [],
         }
+        account_enforced_configs = []
+        account_enforcement_error = None
+        try:
+            bedrock_client = boto3.client(
+                "bedrock",
+                config=boto3_config,
+                region_name=api_region or os.environ.get("AWS_REGION", "us-east-1"),
+            )
+            next_token = None
+            while True:
+                request = {"nextToken": next_token} if next_token else {}
+                response = bedrock_client.list_enforced_guardrails_configuration(
+                    **request
+                )
+                if not isinstance(response, dict):
+                    break
+                account_enforced_configs.extend(response.get("guardrailsConfig", []))
+                next_token = response.get("nextToken")
+                if not next_token:
+                    break
+        except Exception as error:
+            account_enforcement_error = error
 
         try:
             orgs_client = boto3.client("organizations", config=boto3_config)
@@ -2982,17 +3038,30 @@ def check_bedrock_cross_account_guardrails(region: str = "") -> Dict[str, Any]:
             current_account = sts_client.get_caller_identity()["Account"]
 
             if current_account != master_account_id:
-                findings["details"] = (
-                    "Not running in management account, cannot check organizational policies"
+                account_enforcement_indeterminate = (
+                    account_enforcement_error is not None
+                    and not account_enforced_configs
                 )
                 findings["csv_data"].append(
                     create_finding(
                         check_id="BR-15",
                         finding_name="Cross-Account Guardrails Enforcement Check",
-                        finding_details="Check must run in AWS Organizations management account to evaluate organizational policies",
-                        resolution="Run assessment in management account to check cross-account guardrails enforcement",
+                        finding_details=(
+                            f"Found {len(account_enforced_configs)} account-level enforced guardrail configurations. Organization policy inheritance cannot be fully established from this member account."
+                            if account_enforced_configs
+                            else "Account-level enforced guardrail configurations could not be assessed, and organization policy inheritance cannot be fully established from this member account."
+                            if account_enforcement_indeterminate
+                            else "No account-level enforced guardrail configuration was observed, and organization policy inheritance cannot be fully established from this member account."
+                        ),
+                        resolution=(
+                            "Validate inherited Organizations policy coverage from the management or delegated administrator account."
+                            if account_enforced_configs
+                            else "Grant bedrock:ListEnforcedGuardrailsConfiguration and validate inherited Organizations policy coverage from the management or delegated administrator account."
+                            if account_enforcement_indeterminate
+                            else "Run the assessment from the management or delegated administrator account, or configure account-level enforced guardrails."
+                        ),
                         reference="https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_bedrock.html",
-                        severity="Medium",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -3011,29 +3080,78 @@ def check_bedrock_cross_account_guardrails(region: str = "") -> Dict[str, Any]:
             )
 
             if not bedrock_policy_enabled:
-                findings["status"] = "WARN"
-                findings["details"] = (
-                    "Bedrock Guardrails policy type is not enabled for the organization"
+                enforcement_indeterminate = (
+                    account_enforcement_error is not None
+                    and not account_enforced_configs
                 )
                 findings["csv_data"].append(
                     create_finding(
                         check_id="BR-15",
                         finding_name="Cross-Account Guardrails Enforcement Check",
-                        finding_details="Bedrock Guardrails policy type is not enabled at the organization level. Cross-account guardrails cannot be enforced without enabling this policy type.",
-                        resolution="Enable Bedrock Guardrails policy type in AWS Organizations to enforce consistent safety controls across all accounts. Use AWS Organizations console or CLI to enable the policy type.",
+                        finding_details=(
+                            f"The Organizations Bedrock policy type is not enabled, but {len(account_enforced_configs)} account-level enforced guardrail configurations were found."
+                            if account_enforced_configs
+                            else "The Organizations Bedrock policy type is not enabled, and account-level enforcement could not be assessed."
+                            if enforcement_indeterminate
+                            else "The Organizations Bedrock policy type is not enabled and no account-level enforced guardrail configuration was observed."
+                        ),
+                        resolution=(
+                            "No action required for this account. Enable the Organizations policy type if centralized multi-account enforcement is required."
+                            if account_enforced_configs
+                            else "Grant bedrock:ListEnforcedGuardrailsConfiguration and retry before concluding that no enforcement exists."
+                            if enforcement_indeterminate
+                            else "Enable Bedrock policies in AWS Organizations or configure account-level enforced guardrails."
+                        ),
                         reference="https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_bedrock.html",
-                        severity="High",
-                        status="Failed",
+                        severity=(
+                            "Medium"
+                            if account_enforced_configs
+                            else "Informational"
+                            if enforcement_indeterminate
+                            else "High"
+                        ),
+                        status=(
+                            "Passed"
+                            if account_enforced_configs
+                            else "N/A"
+                            if enforcement_indeterminate
+                            else "Failed"
+                        ),
                         region=region,
                     )
                 )
                 return findings
 
-            # Check for Bedrock policies attached to organization roots/OUs/accounts
+            # Check for Bedrock policies actually attached to roots/OUs/accounts.
             policies_attached = False
             try:
-                policies = orgs_client.list_policies(Filter="BEDROCK_POLICY")
-                policies_attached = len(policies.get("Policies", [])) > 0
+                policies = []
+                next_token = None
+                while True:
+                    request = {"Filter": "BEDROCK_POLICY"}
+                    if next_token:
+                        request["NextToken"] = next_token
+                    response = orgs_client.list_policies(**request)
+                    policies.extend(response.get("Policies", []))
+                    next_token = response.get("NextToken")
+                    if not next_token:
+                        break
+                for policy in policies:
+                    policy_id = policy.get("Id")
+                    target_token = None
+                    while policy_id:
+                        request = {"PolicyId": policy_id}
+                        if target_token:
+                            request["NextToken"] = target_token
+                        target_response = orgs_client.list_targets_for_policy(**request)
+                        if target_response.get("Targets"):
+                            policies_attached = True
+                            break
+                        target_token = target_response.get("NextToken")
+                        if not target_token:
+                            break
+                    if policies_attached:
+                        break
             except Exception as e:
                 if "UnknownOperation" in str(e) or "Unknown operation" in str(e):
                     logger.info(
@@ -3057,17 +3175,34 @@ def check_bedrock_cross_account_guardrails(region: str = "") -> Dict[str, Any]:
                     return findings
                 raise
 
-            if not policies_attached:
+            if (
+                not policies_attached
+                and not account_enforced_configs
+                and account_enforcement_error is not None
+            ):
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-15",
+                        finding_name="Cross-Account Guardrails Enforcement Check",
+                        finding_details="No attached Organizations Bedrock policy was found, and account-level enforced guardrails could not be assessed.",
+                        resolution="Grant bedrock:ListEnforcedGuardrailsConfiguration and retry before concluding that no effective enforcement exists.",
+                        reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-enforcements.html",
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+            elif not policies_attached and not account_enforced_configs:
                 findings["status"] = "WARN"
                 findings["details"] = (
-                    "No Bedrock Guardrails policies found at organization level"
+                    "No effective Bedrock Guardrails enforcement found"
                 )
                 findings["csv_data"].append(
                     create_finding(
                         check_id="BR-15",
                         finding_name="Cross-Account Guardrails Enforcement Check",
-                        finding_details="Bedrock Guardrails policy type is enabled but no policies are attached. Cross-account guardrails are not being enforced across the organization.",
-                        resolution="Create and attach Bedrock Guardrails policies to the organization root, OUs, or specific accounts to enforce consistent safety controls across all foundation model interactions.",
+                        finding_details="Bedrock Guardrails policy type is enabled, but no policy has an attached target and no account-level enforced guardrail configuration was observed.",
+                        resolution="Attach a Bedrock policy to the organization root, an OU, or an account, or configure account-level enforced guardrails.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-enforcements.html",
                         severity="High",
                         status="Failed",
@@ -3082,7 +3217,12 @@ def check_bedrock_cross_account_guardrails(region: str = "") -> Dict[str, Any]:
                     create_finding(
                         check_id="BR-15",
                         finding_name="Cross-Account Guardrails Enforcement Check",
-                        finding_details="Bedrock Guardrails policies are configured at organization level, enabling centralized enforcement of safety controls",
+                        finding_details=f"Effective guardrail enforcement is configured through {'an attached Organizations policy' if policies_attached else 'account-level enforced guardrails'}."
+                        + (
+                            f" {len(account_enforced_configs)} account-level configurations were observed."
+                            if account_enforced_configs
+                            else ""
+                        ),
                         resolution="No action required. Continue monitoring guardrail policy coverage and effectiveness.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-enforcements.html",
                         severity="Medium",
@@ -3097,15 +3237,33 @@ def check_bedrock_cross_account_guardrails(region: str = "") -> Dict[str, Any]:
                 findings["details"] = (
                     "AWS Organizations is not enabled for this account"
                 )
+                account_enforcement_indeterminate = (
+                    account_enforcement_error is not None
+                    and not account_enforced_configs
+                )
                 findings["csv_data"].append(
                     create_finding(
                         check_id="BR-15",
                         finding_name="Cross-Account Guardrails Enforcement Check",
-                        finding_details="AWS Organizations is not in use. Cross-account guardrails can only be configured in Organizations-enabled accounts.",
-                        resolution="Enable AWS Organizations and configure Bedrock Guardrails policies for centralized multi-account enforcement, or accept single-account guardrail management.",
+                        finding_details=(
+                            f"AWS Organizations is not in use, but {len(account_enforced_configs)} account-level enforced guardrail configurations were found."
+                            if account_enforced_configs
+                            else "AWS Organizations is not in use, and account-level enforced guardrail configurations could not be assessed."
+                            if account_enforcement_indeterminate
+                            else "AWS Organizations is not in use and no account-level enforced guardrail configuration was observed."
+                        ),
+                        resolution=(
+                            "No action required for single-account enforcement."
+                            if account_enforced_configs
+                            else "Grant bedrock:ListEnforcedGuardrailsConfiguration and retry before concluding that no account-level enforcement exists."
+                            if account_enforcement_indeterminate
+                            else "Configure account-level enforced guardrails, or enable AWS Organizations for centralized multi-account enforcement."
+                        ),
                         reference="https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_bedrock.html",
-                        severity="Medium",
-                        status="N/A",
+                        severity="Medium"
+                        if account_enforced_configs
+                        else "Informational",
+                        status="Passed" if account_enforced_configs else "N/A",
                         region=region,
                     )
                 )
@@ -3129,6 +3287,22 @@ def check_bedrock_cross_account_guardrails(region: str = "") -> Dict[str, Any]:
                 )
             else:
                 raise
+
+        if account_enforcement_error and not findings["csv_data"]:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="BR-15",
+                    finding_name="Cross-Account Guardrails Enforcement Check",
+                    finding_details=build_could_not_assess_detail(
+                        account_enforcement_error, api_region or region
+                    ),
+                    resolution="Grant bedrock:ListEnforcedGuardrailsConfiguration and retry.",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-enforcements.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
 
         return findings
 
@@ -4732,10 +4906,307 @@ def check_bedrock_service_quotas_throttling(region: str = "") -> Dict[str, Any]:
         }
 
 
-def check_bedrock_guardrail_content_filters(region: str = "") -> Dict[str, Any]:
+def _guardrail_inventory_na_finding(
+    check_id: str,
+    finding_name: str,
+    reference: str,
+    region: str,
+    error: Exception,
+) -> Dict[str, Any]:
+    return {
+        "csv_data": [
+            create_finding(
+                check_id=check_id,
+                finding_name=finding_name,
+                finding_details=build_could_not_assess_detail(error, region),
+                resolution=COULD_NOT_ASSESS_RESOLUTION,
+                reference=reference,
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        ]
+    }
+
+
+def _check_guardrail_content_filters_from_inventory(
+    inventory: Dict[str, Any], region: str
+) -> Dict[str, Any]:
+    findings = {"csv_data": []}
+    if inventory.get("list_error"):
+        return _guardrail_inventory_na_finding(
+            "BR-23",
+            "Guardrail Content Filter Coverage Check",
+            "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-content-filters.html",
+            region,
+            inventory["list_error"],
+        )
+    if not inventory.get("items") and not inventory.get("errors"):
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-23",
+                finding_name="Guardrail Content Filter Coverage Check",
+                finding_details="No Bedrock guardrails configured in this region",
+                resolution="Create guardrails with all harmful-content filters enabled.",
+                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-content-filters.html",
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+        return findings
+
+    complete = 0
+    for item in inventory.get("items", []):
+        summary = item["summary"]
+        content_policy = item["detail"].get("contentPolicy") or {}
+        filters = content_policy.get("filters", [])
+        required = {"HATE", "INSULTS", "SEXUAL", "VIOLENCE"}
+        configured = {
+            filter_item.get("type")
+            for filter_item in filters
+            if filter_item.get("type") in required
+            and (
+                filter_item.get("inputStrength", "NONE") != "NONE"
+                or filter_item.get("outputStrength", "NONE") != "NONE"
+            )
+        }
+        missing = sorted(required - configured)
+        if missing:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="BR-23",
+                    finding_name="Guardrail Content Filter Coverage Check",
+                    finding_details=f"Guardrail '{summary.get('name', 'unknown')}' (ID: {summary.get('id', 'unknown')}) is missing content filters: {', '.join(missing)}.",
+                    resolution="Enable HATE, INSULTS, SEXUAL, and VIOLENCE filters with appropriate input/output strengths.",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-content-filters.html",
+                    severity="High",
+                    status="Failed",
+                    region=region,
+                )
+            )
+        else:
+            complete += 1
+
+    if complete:
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-23",
+                finding_name="Guardrail Content Filter Coverage Check",
+                finding_details=f"{complete} guardrails have complete harmful-content filter coverage.",
+                resolution="No action required",
+                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-content-filters.html",
+                severity="Low",
+                status="Passed",
+                region=region,
+            )
+        )
+
+    for item in inventory.get("errors", []):
+        summary = item["summary"]
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-23",
+                finding_name="Guardrail Content Filter Coverage Check",
+                finding_details=f"Guardrail '{summary.get('name', summary.get('id', 'unknown'))}' could not be assessed: {get_assessment_error_label(item['error'])}.",
+                resolution="Grant bedrock:GetGuardrail and retry the assessment.",
+                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security_iam_id-based-policy-examples.html",
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+    return findings
+
+
+def check_bedrock_guardrail_prompt_attack_filter(
+    region: str = "", guardrail_inventory: Dict[str, Any] = None
+) -> Dict[str, Any]:
+    """BR-34: Require a preventive PROMPT_ATTACK input filter."""
+    inventory = guardrail_inventory or get_guardrail_detail_inventory(region)
+    if inventory.get("list_error"):
+        return _guardrail_inventory_na_finding(
+            "BR-34",
+            "Guardrail Prompt Attack Filter",
+            "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-prompt-attack.html",
+            region,
+            inventory["list_error"],
+        )
+    findings = {"csv_data": []}
+    if not inventory.get("items") and not inventory.get("errors"):
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-34",
+                finding_name="Guardrail Prompt Attack Filter",
+                finding_details="No Bedrock guardrails configured in this region",
+                resolution="Create guardrails with a preventive PROMPT_ATTACK filter.",
+                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-prompt-attack.html",
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+        return findings
+
+    for item in inventory.get("items", []):
+        summary = item["summary"]
+        detail = item["detail"]
+        prompt_filters = [
+            filter_item
+            for filter_item in (detail.get("contentPolicy") or {}).get("filters", [])
+            if filter_item.get("type") == "PROMPT_ATTACK"
+        ]
+        preventive = any(
+            filter_item.get("inputEnabled") is True
+            and filter_item.get("inputAction") == "BLOCK"
+            and filter_item.get("inputStrength", "NONE") != "NONE"
+            for filter_item in prompt_filters
+        )
+        tier = (
+            (detail.get("contentPolicy") or {})
+            .get("tier", {})
+            .get("tierName", "unspecified")
+        )
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-34",
+                finding_name="Guardrail Prompt Attack Filter",
+                finding_details=(
+                    f"Guardrail '{summary.get('name', 'unknown')}' has a preventive PROMPT_ATTACK input filter (tier: {tier})."
+                    if preventive
+                    else f"Guardrail '{summary.get('name', 'unknown')}' does not have a preventive PROMPT_ATTACK input filter."
+                ),
+                resolution=(
+                    "No action required. Use Standard tier where prompt-leakage detection is required."
+                    if preventive
+                    else "Configure PROMPT_ATTACK with inputEnabled=true, inputAction=BLOCK, and a non-NONE inputStrength."
+                ),
+                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-prompt-attack.html",
+                severity="High",
+                status="Passed" if preventive else "Failed",
+                region=region,
+            )
+        )
+    for item in inventory.get("errors", []):
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-34",
+                finding_name="Guardrail Prompt Attack Filter",
+                finding_details=f"Guardrail '{item['summary'].get('name', 'unknown')}' could not be assessed: {get_assessment_error_label(item['error'])}.",
+                resolution="Grant bedrock:GetGuardrail and retry.",
+                reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-prompt-attack.html",
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+    return findings
+
+
+def check_bedrock_guardrail_image_content_filters(
+    region: str = "", guardrail_inventory: Dict[str, Any] = None
+) -> Dict[str, Any]:
+    """BR-35: Advisory report for harmful-content image modality coverage.
+
+    HATE, INSULTS, SEXUAL, and VIOLENCE are the cross-region baseline.
+    MISCONDUCT image filtering is region-dependent, so assess its modalities
+    when configured without treating its absence as a configuration gap.
+    """
+    reference = (
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-mmfilter.html"
+    )
+    inventory = guardrail_inventory or get_guardrail_detail_inventory(region)
+    if inventory.get("list_error"):
+        return _guardrail_inventory_na_finding(
+            "BR-35",
+            "Guardrail Image Content Filter Coverage",
+            reference,
+            region,
+            inventory["list_error"],
+        )
+    findings = {"csv_data": []}
+    if not inventory.get("items") and not inventory.get("errors"):
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-35",
+                finding_name="Guardrail Image Content Filter Coverage",
+                finding_details="No Bedrock guardrails configured in this region",
+                resolution="No action required",
+                reference=reference,
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+        return findings
+
+    baseline_filter_types = {"HATE", "INSULTS", "SEXUAL", "VIOLENCE"}
+    region_dependent_filter_types = {"MISCONDUCT"}
+    assessed_filter_types = baseline_filter_types | region_dependent_filter_types
+    for item in inventory.get("items", []):
+        summary = item["summary"]
+        filters = (item["detail"].get("contentPolicy") or {}).get("filters", [])
+        configured_types = {
+            filter_item.get("type")
+            for filter_item in filters
+            if filter_item.get("type") in assessed_filter_types
+        }
+        missing_baseline_types = baseline_filter_types - configured_types
+        modality_gaps = set()
+        for filter_item in filters:
+            if filter_item.get("type") not in assessed_filter_types:
+                continue
+            input_modalities = set(filter_item.get("inputModalities") or [])
+            output_modalities = set(filter_item.get("outputModalities") or [])
+            if "IMAGE" not in input_modalities or "IMAGE" not in output_modalities:
+                modality_gaps.add(filter_item.get("type"))
+        gaps = missing_baseline_types | modality_gaps
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-35",
+                finding_name="Guardrail Image Content Filter Coverage",
+                finding_details=(
+                    f"Guardrail '{summary.get('name', 'unknown')}' reports IMAGE input/output coverage for its harmful-content filters."
+                    if not gaps
+                    else f"Guardrail '{summary.get('name', 'unknown')}' has image-modality gaps for: {', '.join(sorted(gaps))}. This is advisory because application modality is not observable from guardrail configuration."
+                ),
+                resolution=(
+                    "No action required"
+                    if not gaps
+                    else "If the protected workload accepts or returns images, add IMAGE input/output modalities to the listed filters."
+                ),
+                reference=reference,
+                severity="Informational",
+                status="Passed" if not gaps else "N/A",
+                region=region,
+            )
+        )
+    for item in inventory.get("errors", []):
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-35",
+                finding_name="Guardrail Image Content Filter Coverage",
+                finding_details=f"Guardrail '{item['summary'].get('name', 'unknown')}' could not be assessed: {get_assessment_error_label(item['error'])}.",
+                resolution="Grant bedrock:GetGuardrail and retry.",
+                reference=reference,
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+    return findings
+
+
+def check_bedrock_guardrail_content_filters(
+    region: str = "", guardrail_inventory: Dict[str, Any] = None
+) -> Dict[str, Any]:
     """
     BR-23: Verify guardrails have ALL content filters enabled (extends BR-05)
     """
+    if guardrail_inventory is not None:
+        return _check_guardrail_content_filters_from_inventory(
+            guardrail_inventory, region
+        )
     logger.debug("Starting check for Bedrock guardrail content filter coverage")
     try:
         findings = {
@@ -6804,6 +7275,478 @@ def check_inspector_lambda_code_scanning(region: str = "") -> Dict[str, Any]:
         }
 
 
+def check_bedrock_inference_profile_governance(
+    region: str = "",
+) -> Dict[str, Any]:
+    """BR-36: Report untagged application inference profiles."""
+    findings = {"csv_data": []}
+    reference = (
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/"
+        "inference-profiles-create.html"
+    )
+    try:
+        client = boto3.client("bedrock", config=boto3_config, region_name=region)
+        profiles = _list_all_items(
+            client,
+            "list_inference_profiles",
+            "inferenceProfileSummaries",
+            typeEquals="APPLICATION",
+        )
+        if not profiles:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="BR-36",
+                    finding_name="Application Inference Profile Governance",
+                    finding_details="No application inference profiles found",
+                    resolution="No action required",
+                    reference=reference,
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+            return findings
+
+        for profile in profiles:
+            profile_arn = profile.get("inferenceProfileArn")
+            profile_name = profile.get(
+                "inferenceProfileName", profile.get("inferenceProfileId", "unknown")
+            )
+            try:
+                tags = client.list_tags_for_resource(resourceARN=profile_arn).get(
+                    "tags", []
+                )
+                tagged = bool(tags)
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-36",
+                        finding_name="Application Inference Profile Governance",
+                        finding_details=(
+                            f"Application inference profile '{profile_name}' has {len(tags)} tags."
+                            if tagged
+                            else f"Application inference profile '{profile_name}' is untagged."
+                        ),
+                        resolution=(
+                            "No action required"
+                            if tagged
+                            else "Add organization-defined ownership, application, environment, and cost-allocation tags."
+                        ),
+                        reference=reference,
+                        severity="Low",
+                        status="Passed" if tagged else "Failed",
+                        region=region,
+                    )
+                )
+            except Exception as error:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-36",
+                        finding_name="Application Inference Profile Governance",
+                        finding_details=f"Application inference profile '{profile_name}' tags could not be assessed: {get_assessment_error_label(error)}.",
+                        resolution="Grant bedrock:ListTagsForResource and retry.",
+                        reference=reference,
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+    except Exception as error:
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-36",
+                finding_name="Application Inference Profile Governance",
+                finding_details=build_could_not_assess_detail(error, region),
+                resolution=COULD_NOT_ASSESS_RESOLUTION,
+                reference=reference,
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+    return findings
+
+
+def check_bedrock_account_data_retention(region: str = "") -> Dict[str, Any]:
+    """BR-37: Assess the regional Bedrock account data-retention mode."""
+    findings = {"csv_data": []}
+    reference = (
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/data-retention.html"
+    )
+    require_zdr = os.environ.get("REQUIRE_BEDROCK_ZERO_DATA_RETENTION", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    try:
+        client = boto3.client("bedrock", config=boto3_config, region_name=region)
+        mode = client.get_account_data_retention().get("mode")
+        if mode == "provider_data_share":
+            status = "Failed"
+            severity = "High"
+            detail = (
+                "Bedrock account data retention is provider_data_share; supported "
+                "model providers may retain prompts and completions."
+            )
+            resolution = "Set the account data-retention mode to none."
+        elif mode == "none":
+            status = "Passed"
+            severity = "High"
+            detail = "Bedrock account data retention is configured as none."
+            resolution = "No action required"
+        elif mode in {"default", "inherit"}:
+            status = "Failed" if require_zdr else "N/A"
+            severity = "High" if require_zdr else "Informational"
+            detail = (
+                f"Bedrock account data retention is {mode}; this does not establish "
+                "an explicit account-level zero-data-retention setting."
+            )
+            resolution = (
+                "Set the account data-retention mode to none."
+                if require_zdr
+                else "Review the inherited/default retention behavior against organizational policy."
+            )
+        else:
+            status = "N/A"
+            severity = "Informational"
+            detail = f"Bedrock returned an unknown data-retention mode: {mode!r}."
+            resolution = "Review the current Bedrock data-retention documentation and rerun with an updated scanner."
+
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-37",
+                finding_name="Bedrock Account Data Retention",
+                finding_details=detail,
+                resolution=resolution,
+                reference=reference,
+                severity=severity,
+                status=status,
+                region=region,
+            )
+        )
+    except Exception as error:
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-37",
+                finding_name="Bedrock Account Data Retention",
+                finding_details=build_could_not_assess_detail(error, region),
+                resolution=COULD_NOT_ASSESS_RESOLUTION,
+                reference=reference,
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+    return findings
+
+
+def check_bedrock_automated_reasoning_policy_encryption(
+    region: str = "",
+) -> Dict[str, Any]:
+    """BR-38: Require customer-managed KMS keys on Automated Reasoning policies."""
+    findings = {"csv_data": []}
+    reference = (
+        "https://docs.aws.amazon.com/bedrock/latest/userguide/"
+        "create-automated-reasoning-policy.html"
+    )
+    try:
+        client = boto3.client("bedrock", config=boto3_config, region_name=region)
+        summaries = _list_all_items(
+            client,
+            "list_automated_reasoning_policies",
+            "automatedReasoningPolicySummaries",
+        )
+        distinct = {}
+        for summary in summaries:
+            key = summary.get("policyId") or summary.get("policyArn")
+            if key and key not in distinct:
+                distinct[key] = summary
+        if not distinct:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="BR-38",
+                    finding_name="Automated Reasoning Policy CMK Encryption",
+                    finding_details="No Automated Reasoning policies found",
+                    resolution="No action required",
+                    reference=reference,
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+            return findings
+
+        for summary in distinct.values():
+            policy_arn = summary.get("policyArn")
+            policy_name = summary.get("name", summary.get("policyId", "unknown"))
+            try:
+                detail = client.get_automated_reasoning_policy(policyArn=policy_arn)
+                kms_key = detail.get("kmsKeyArn")
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-38",
+                        finding_name="Automated Reasoning Policy CMK Encryption",
+                        finding_details=(
+                            f"Automated Reasoning policy '{policy_name}' uses customer-managed KMS key {kms_key}."
+                            if kms_key
+                            else f"Automated Reasoning policy '{policy_name}' does not use a customer-managed KMS key."
+                        ),
+                        resolution=(
+                            "No action required"
+                            if kms_key
+                            else "Recreate or update the policy to use a customer-managed KMS key."
+                        ),
+                        reference=reference,
+                        severity="Medium",
+                        status="Passed" if kms_key else "Failed",
+                        region=region,
+                    )
+                )
+            except Exception as error:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="BR-38",
+                        finding_name="Automated Reasoning Policy CMK Encryption",
+                        finding_details=f"Automated Reasoning policy '{policy_name}' could not be assessed: {get_assessment_error_label(error)}.",
+                        resolution="Grant bedrock:GetAutomatedReasoningPolicy and retry.",
+                        reference=reference,
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+    except Exception as error:
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-38",
+                finding_name="Automated Reasoning Policy CMK Encryption",
+                finding_details=build_could_not_assess_detail(error, region),
+                resolution=COULD_NOT_ASSESS_RESOLUTION,
+                reference=reference,
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+    return findings
+
+
+def get_marketplace_endpoint_inventory(region: str = "") -> Dict[str, Any]:
+    """List Bedrock Marketplace endpoints once and isolate detail failures."""
+    inventory = {"items": [], "errors": [], "list_error": None}
+    try:
+        client = boto3.client("bedrock", config=boto3_config, region_name=region)
+        summaries = _list_all_items(
+            client,
+            "list_marketplace_model_endpoints",
+            "marketplaceModelEndpoints",
+        )
+        for summary in summaries:
+            endpoint_arn = summary.get("endpointArn")
+            if not endpoint_arn:
+                continue
+            try:
+                response = client.get_marketplace_model_endpoint(
+                    endpointArn=endpoint_arn
+                )
+                inventory["items"].append(
+                    {
+                        "summary": summary,
+                        "detail": response.get("marketplaceModelEndpoint") or {},
+                    }
+                )
+            except Exception as error:
+                inventory["errors"].append({"summary": summary, "error": error})
+    except Exception as error:
+        inventory["list_error"] = error
+    return inventory
+
+
+def check_bedrock_marketplace_endpoint_vpc(
+    region: str = "", endpoint_inventory: Dict[str, Any] = None
+) -> Dict[str, Any]:
+    """BR-39: Require VPC subnets and security groups on Marketplace endpoints."""
+    findings = {"csv_data": []}
+    reference = (
+        "https://docs.aws.amazon.com/bedrock/latest/APIReference/"
+        "API_GetMarketplaceModelEndpoint.html"
+    )
+    inventory = endpoint_inventory or get_marketplace_endpoint_inventory(region)
+    if inventory.get("list_error"):
+        return _guardrail_inventory_na_finding(
+            "BR-39",
+            "Marketplace Model Endpoint VPC Configuration",
+            reference,
+            region,
+            inventory["list_error"],
+        )
+    if not inventory.get("items") and not inventory.get("errors"):
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-39",
+                finding_name="Marketplace Model Endpoint VPC Configuration",
+                finding_details="No Bedrock Marketplace model endpoints found",
+                resolution="No action required",
+                reference=reference,
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+        return findings
+
+    for item in inventory.get("items", []):
+        endpoint_arn = item["summary"].get("endpointArn", "unknown")
+        endpoint_config = item["detail"].get("endpointConfig") or {}
+        sagemaker_config = endpoint_config.get("sageMaker")
+        if not isinstance(sagemaker_config, dict):
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="BR-39",
+                    finding_name="Marketplace Model Endpoint VPC Configuration",
+                    finding_details=f"Marketplace endpoint '{endpoint_arn}' uses an unsupported endpoint configuration variant.",
+                    resolution="Review the endpoint configuration manually and update the scanner when AWS documents the variant.",
+                    reference=reference,
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+            continue
+        vpc = sagemaker_config.get("vpc") or {}
+        compliant = bool(vpc.get("subnetIds")) and bool(vpc.get("securityGroupIds"))
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-39",
+                finding_name="Marketplace Model Endpoint VPC Configuration",
+                finding_details=(
+                    f"Marketplace endpoint '{endpoint_arn}' has VPC subnets and security groups."
+                    if compliant
+                    else f"Marketplace endpoint '{endpoint_arn}' does not have complete VPC configuration."
+                ),
+                resolution=(
+                    "No action required"
+                    if compliant
+                    else "Register the endpoint with non-empty VPC subnetIds and securityGroupIds."
+                ),
+                reference=reference,
+                severity="High",
+                status="Passed" if compliant else "Failed",
+                region=region,
+            )
+        )
+    for item in inventory.get("errors", []):
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-39",
+                finding_name="Marketplace Model Endpoint VPC Configuration",
+                finding_details=f"Marketplace endpoint '{item['summary'].get('endpointArn', 'unknown')}' could not be assessed: {get_assessment_error_label(item['error'])}.",
+                resolution="Grant bedrock:GetMarketplaceModelEndpoint and retry.",
+                reference=reference,
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+    return findings
+
+
+def check_bedrock_marketplace_endpoint_cmk(
+    region: str = "", endpoint_inventory: Dict[str, Any] = None
+) -> Dict[str, Any]:
+    """BR-40: Assess Marketplace endpoint customer-managed KMS encryption."""
+    findings = {"csv_data": []}
+    reference = (
+        "https://docs.aws.amazon.com/bedrock/latest/APIReference/"
+        "API_RegisterMarketplaceModelEndpoint.html"
+    )
+    required = os.environ.get("REQUIRE_MARKETPLACE_ENDPOINT_CMK", "true").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    inventory = endpoint_inventory or get_marketplace_endpoint_inventory(region)
+    if inventory.get("list_error"):
+        return _guardrail_inventory_na_finding(
+            "BR-40",
+            "Marketplace Model Endpoint CMK Encryption",
+            reference,
+            region,
+            inventory["list_error"],
+        )
+    if not inventory.get("items") and not inventory.get("errors"):
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-40",
+                finding_name="Marketplace Model Endpoint CMK Encryption",
+                finding_details="No Bedrock Marketplace model endpoints found",
+                resolution="No action required",
+                reference=reference,
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+        return findings
+
+    for item in inventory.get("items", []):
+        endpoint_arn = item["summary"].get("endpointArn", "unknown")
+        sagemaker_config = (item["detail"].get("endpointConfig") or {}).get("sageMaker")
+        if not isinstance(sagemaker_config, dict):
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="BR-40",
+                    finding_name="Marketplace Model Endpoint CMK Encryption",
+                    finding_details=f"Marketplace endpoint '{endpoint_arn}' uses an unsupported endpoint configuration variant.",
+                    resolution="Review the endpoint encryption manually.",
+                    reference=reference,
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+            continue
+        kms_key = sagemaker_config.get("kmsEncryptionKey")
+        status = "Passed" if kms_key else ("Failed" if required else "N/A")
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-40",
+                finding_name="Marketplace Model Endpoint CMK Encryption",
+                finding_details=(
+                    f"Marketplace endpoint '{endpoint_arn}' uses customer-managed KMS key {kms_key}."
+                    if kms_key
+                    else f"Marketplace endpoint '{endpoint_arn}' does not specify a customer-managed KMS key."
+                ),
+                resolution=(
+                    "No action required"
+                    if kms_key
+                    else (
+                        "Register the endpoint with kmsEncryptionKey."
+                        if required
+                        else "No action required under the current baseline. Set REQUIRE_MARKETPLACE_ENDPOINT_CMK=true to enforce customer-managed encryption."
+                    )
+                ),
+                reference=reference,
+                severity="Medium" if required else "Informational",
+                status=status,
+                region=region,
+            )
+        )
+    for item in inventory.get("errors", []):
+        findings["csv_data"].append(
+            create_finding(
+                check_id="BR-40",
+                finding_name="Marketplace Model Endpoint CMK Encryption",
+                finding_details=f"Marketplace endpoint '{item['summary'].get('endpointArn', 'unknown')}' could not be assessed: {get_assessment_error_label(item['error'])}.",
+                resolution="Grant bedrock:GetMarketplaceModelEndpoint and retry.",
+                reference=reference,
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+    return findings
+
+
 def generate_csv_report(findings: List[Dict[str, Any]]) -> str:
     """
     Generate CSV report from all security check findings
@@ -7080,7 +8023,7 @@ def lambda_handler(event, context):
         if is_primary_region:
             logger.info("Running cross-account guardrails enforcement check (BR-15)")
             cross_account_guardrails_findings = check_bedrock_cross_account_guardrails(
-                region=GLOBAL_REGION_LABEL
+                region=GLOBAL_REGION_LABEL, api_region=region
             )
             all_findings.append(cross_account_guardrails_findings)
 
@@ -7121,8 +8064,11 @@ def lambda_handler(event, context):
         service_quotas_findings = check_bedrock_service_quotas_throttling(region=region)
         all_findings.append(service_quotas_findings)
 
+        guardrail_inventory = get_guardrail_detail_inventory(region)
         logger.info("Running guardrail content filter coverage check (BR-23)")
-        content_filter_findings = check_bedrock_guardrail_content_filters(region=region)
+        content_filter_findings = check_bedrock_guardrail_content_filters(
+            region=region, guardrail_inventory=guardrail_inventory
+        )
         all_findings.append(content_filter_findings)
 
         logger.info("Running automated reasoning policy implementation check (BR-24)")
@@ -7174,6 +8120,46 @@ def lambda_handler(event, context):
         logger.info("Running Amazon Inspector Lambda code scanning check (BR-33)")
         inspector_lambda_findings = check_inspector_lambda_code_scanning(region=region)
         all_findings.append(inspector_lambda_findings)
+
+        logger.info("Running guardrail prompt attack filter check (BR-34)")
+        all_findings.append(
+            check_bedrock_guardrail_prompt_attack_filter(
+                region=region, guardrail_inventory=guardrail_inventory
+            )
+        )
+
+        logger.info("Running guardrail image content filter advisory (BR-35)")
+        all_findings.append(
+            check_bedrock_guardrail_image_content_filters(
+                region=region, guardrail_inventory=guardrail_inventory
+            )
+        )
+
+        logger.info("Running application inference profile governance check (BR-36)")
+        all_findings.append(check_bedrock_inference_profile_governance(region=region))
+
+        logger.info("Running account data retention check (BR-37)")
+        all_findings.append(check_bedrock_account_data_retention(region=region))
+
+        logger.info("Running Automated Reasoning policy encryption check (BR-38)")
+        all_findings.append(
+            check_bedrock_automated_reasoning_policy_encryption(region=region)
+        )
+
+        marketplace_endpoint_inventory = get_marketplace_endpoint_inventory(region)
+        logger.info("Running Marketplace endpoint VPC check (BR-39)")
+        all_findings.append(
+            check_bedrock_marketplace_endpoint_vpc(
+                region=region, endpoint_inventory=marketplace_endpoint_inventory
+            )
+        )
+
+        logger.info("Running Marketplace endpoint CMK check (BR-40)")
+        all_findings.append(
+            check_bedrock_marketplace_endpoint_cmk(
+                region=region, endpoint_inventory=marketplace_endpoint_inventory
+            )
+        )
 
         logger.info("Building Agentic AI Security findings from Bedrock results")
         all_findings.append(build_agentic_bedrock_security_findings(all_findings))

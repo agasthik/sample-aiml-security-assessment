@@ -304,7 +304,7 @@ class TestAC05Encryption:
 # AC-06: check_browser_tool_recording
 # ===================================================================
 class TestAC06BrowserToolRecording:
-    """AC-06: Check browser tool recording storage."""
+    """AC-06: Check custom browser session recording."""
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac06_client_unavailable_returns_na(self):
@@ -314,19 +314,25 @@ class TestAC06BrowserToolRecording:
         assert findings[0]["Check_ID"] == "AC-06"
 
     @patch("agentcore_app.agentcore_client")
-    def test_ac06_no_runtimes_returns_na(self, mock_ac):
-        mock_ac.list_agent_runtimes.return_value = {"agentRuntimes": []}
+    def test_ac06_no_custom_browsers_returns_na(self, mock_ac):
+        mock_ac.list_browsers.return_value = {"browserSummaries": []}
+
         result = agentcore_app.check_browser_tool_recording()
         findings = extract_csv_data(result)
-        assert len(findings) >= 1
+
+        assert len(findings) == 1
+        assert findings[0]["Check_ID"] == "AC-06"
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Finding_Details"] == "No custom AgentCore browsers found"
+        mock_ac.list_browsers.assert_called_once_with(type="CUSTOM")
 
     @patch("agentcore_app.agentcore_client")
     def test_ac06_exception_returns_error_finding(self, mock_ac):
-        mock_ac.list_agent_runtimes.side_effect = Exception("Browser tool error")
+        mock_ac.list_browsers.side_effect = Exception("Browser tool error")
         result = agentcore_app.check_browser_tool_recording()
         findings = extract_csv_data(result)
         assert len(findings) >= 1
-        assert findings[0]["Status"] == "Failed"
+        assert findings[0]["Status"] == "N/A"
 
     @patch("agentcore_app.agentcore_client", None)
     def test_ac06_schema_valid(self):
@@ -819,6 +825,24 @@ class TestAgenticGatewaySecurity:
             },
             "webAclArn": "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/test/abc",
         }
+        mock_ac.list_policies.return_value = {
+            "policies": [
+                {
+                    "policyId": "p-1",
+                    "status": "ACTIVE",
+                    "enforcementMode": "ACTIVE",
+                }
+            ]
+        }
+        mock_ac.list_policies.return_value = {
+            "policies": [
+                {
+                    "policyId": "p-1",
+                    "status": "ACTIVE",
+                    "enforcementMode": "ACTIVE",
+                }
+            ]
+        }
 
         findings = agentcore_app.check_agentcore_gateway_agentic_security()
         ag24 = [f for f in findings if f["Check_ID"] == "AG-24"]
@@ -843,6 +867,15 @@ class TestAgenticGatewaySecurity:
                 "mode": "LOG_ONLY",
             },
             "webAclArn": "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/test/abc",
+        }
+        mock_ac.list_policies.return_value = {
+            "policies": [
+                {
+                    "policyId": "p-1",
+                    "status": "ACTIVE",
+                    "enforcementMode": "ACTIVE",
+                }
+            ]
         }
 
         findings = agentcore_app.check_agentcore_gateway_agentic_security()
@@ -908,6 +941,15 @@ class TestAgenticGatewaySecurity:
             },
             "webAclArn": "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/test/abc",
         }
+        mock_ac.list_policies.return_value = {
+            "policies": [
+                {
+                    "policyId": "p-1",
+                    "status": "ACTIVE",
+                    "enforcementMode": "ACTIVE",
+                }
+            ]
+        }
 
         findings = agentcore_app.check_agentcore_gateway_agentic_security()
         statuses = {f["Check_ID"]: f["Status"] for f in findings}
@@ -931,6 +973,10 @@ class TestAgenticAgentCoreMapping:
         "AC-10": "AG-21",
         "AC-11": "AG-22",
         "AC-12": "AG-23",
+        "AC-14": "AG-28",
+        "AC-15": "AG-29",
+        "AC-16": "AG-31",
+        "AC-17": "AG-32",
     }
 
     def test_all_agentcore_agentic_mappings_emit_expected_rows(self):
@@ -970,6 +1016,259 @@ class TestAgenticAgentCoreMapping:
         assert set(actual_by_source) == set(self.EXPECTED_AGENTIC_MAPPINGS)
         for source_check_id, expected_ag_id in self.EXPECTED_AGENTIC_MAPPINGS.items():
             assert actual_by_source[source_check_id]["Check_ID"] == expected_ag_id
+
+
+class TestProposedAgentCoreChecks:
+    """AC-14 through AC-17 and the AC-06 correction."""
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_customer_managed_token_vault_passes(self, mock_ac):
+        mock_ac.get_token_vault.return_value = {
+            "tokenVaultId": "default",
+            "kmsConfiguration": {
+                "keyType": "CustomerManagedKey",
+                "kmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/key-1",
+            },
+        }
+        finding = agentcore_app.check_agentcore_token_vault_encryption()[0]
+        assert finding["Check_ID"] == "AC-14"
+        assert finding["Status"] == "Passed"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac14_service_managed_token_vault_fails(self, mock_ac):
+        mock_ac.get_token_vault.return_value = {
+            "tokenVaultId": "default",
+            "kmsConfiguration": {"keyType": "ServiceManagedKey"},
+        }
+        finding = agentcore_app.check_agentcore_token_vault_encryption()[0]
+        assert finding["Status"] == "Failed"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_custom_interpreter_vpc_passes(self, mock_ac):
+        mock_ac.list_code_interpreters.return_value = {
+            "codeInterpreterSummaries": [
+                {"codeInterpreterId": "ci-1", "name": "interpreter-1"}
+            ]
+        }
+        mock_ac.get_code_interpreter.return_value = {
+            "networkConfiguration": {
+                "networkMode": "VPC",
+                "vpcConfig": {
+                    "subnets": ["subnet-1"],
+                    "securityGroups": ["sg-1"],
+                },
+            }
+        }
+        finding = agentcore_app.check_agentcore_code_interpreter_isolation()[0]
+        assert finding["Check_ID"] == "AC-15"
+        assert finding["Status"] == "Passed"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac15_public_interpreter_fails(self, mock_ac):
+        mock_ac.list_code_interpreters.return_value = {
+            "codeInterpreterSummaries": [
+                {"codeInterpreterId": "ci-1", "name": "interpreter-1"}
+            ]
+        }
+        mock_ac.get_code_interpreter.return_value = {
+            "networkConfiguration": {"networkMode": "PUBLIC"}
+        }
+        finding = agentcore_app.check_agentcore_code_interpreter_isolation()[0]
+        assert finding["Status"] == "Failed"
+
+    def test_ac06_and_ac16_share_browser_inventory(self):
+        inventory = {
+            "items": [
+                {
+                    "summary": {"browserId": "br-1", "name": "browser-1"},
+                    "detail": {
+                        "networkConfiguration": {
+                            "networkMode": "VPC",
+                            "vpcConfig": {
+                                "subnets": ["subnet-1"],
+                                "securityGroups": ["sg-1"],
+                            },
+                        },
+                        "recording": {
+                            "enabled": True,
+                            "s3Location": {"bucket": "recordings"},
+                        },
+                    },
+                }
+            ],
+            "errors": [],
+            "list_error": None,
+        }
+        with patch("agentcore_app.agentcore_client", MagicMock()):
+            ac06 = agentcore_app.check_browser_tool_recording(inventory)[0]
+            ac16 = agentcore_app.check_agentcore_browser_network_isolation(inventory)[0]
+        assert ac06["Status"] == "Passed"
+        assert ac16["Status"] == "Passed"
+
+    def test_ac16_public_browser_fails(self):
+        inventory = {
+            "items": [
+                {
+                    "summary": {"browserId": "br-1", "name": "browser-1"},
+                    "detail": {
+                        "networkConfiguration": {"networkMode": "PUBLIC"},
+                    },
+                }
+            ],
+            "errors": [],
+            "list_error": None,
+        }
+        with patch("agentcore_app.agentcore_client", MagicMock()):
+            finding = agentcore_app.check_agentcore_browser_network_isolation(
+                inventory
+            )[0]
+        assert finding["Status"] == "Failed"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ac17_operational_evaluation_passes_advisory(self, mock_ac):
+        mock_ac.list_online_evaluation_configs.return_value = {
+            "onlineEvaluationConfigs": [
+                {
+                    "onlineEvaluationConfigId": "eval-1",
+                    "onlineEvaluationConfigName": "evaluation-1",
+                }
+            ]
+        }
+        mock_ac.get_online_evaluation_config.return_value = {
+            "status": "ACTIVE",
+            "executionStatus": "ENABLED",
+            "rule": {"samplingConfig": {"samplingPercentage": 10}},
+            "evaluators": [{"evaluatorId": "evaluator-1"}],
+            "dataSourceConfig": {
+                "cloudWatchLogs": {"logGroupNames": ["/aws/agentcore/input"]}
+            },
+            "outputConfig": {
+                "cloudWatchConfig": {"logGroupName": "/aws/agentcore/output"}
+            },
+        }
+        finding = agentcore_app.check_agentcore_online_evaluation_coverage()[0]
+        assert finding["Check_ID"] == "AC-17"
+        assert finding["Status"] == "Passed"
+        assert finding["Severity"] == "Informational"
+
+    @patch.dict(
+        os.environ,
+        {"REQUIRE_AGENTCORE_ONLINE_EVALUATION": "false"},
+        clear=False,
+    )
+    @patch("agentcore_app.agentcore_client")
+    def test_ac17_incomplete_advisory_evaluation_returns_na(self, mock_ac):
+        mock_ac.list_online_evaluation_configs.return_value = {
+            "onlineEvaluationConfigs": [
+                {
+                    "onlineEvaluationConfigId": "eval-1",
+                    "onlineEvaluationConfigName": "evaluation-1",
+                }
+            ]
+        }
+        mock_ac.get_online_evaluation_config.return_value = {
+            "status": "ACTIVE",
+            "executionStatus": "DISABLED",
+        }
+
+        finding = agentcore_app.check_agentcore_online_evaluation_coverage()[0]
+
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+        assert finding["Resolution"].startswith("Set the evaluation ACTIVE")
+
+    @patch.dict(
+        os.environ,
+        {"REQUIRE_AGENTCORE_ONLINE_EVALUATION": "true"},
+        clear=False,
+    )
+    @patch("agentcore_app.agentcore_client")
+    def test_ac17_incomplete_required_evaluation_fails(self, mock_ac):
+        mock_ac.list_online_evaluation_configs.return_value = {
+            "onlineEvaluationConfigs": [
+                {
+                    "onlineEvaluationConfigId": "eval-1",
+                    "onlineEvaluationConfigName": "evaluation-1",
+                }
+            ]
+        }
+        mock_ac.get_online_evaluation_config.return_value = {
+            "status": "ACTIVE",
+            "executionStatus": "DISABLED",
+        }
+        finding = agentcore_app.check_agentcore_online_evaluation_coverage()[0]
+        assert finding["Status"] == "Failed"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_new_agentcore_checks_access_denied_return_na(self, mock_ac):
+        error = _make_client_error("AccessDeniedException", "Denied")
+
+        mock_ac.get_token_vault.side_effect = error
+        ac14 = agentcore_app.check_agentcore_token_vault_encryption()[0]
+
+        mock_ac.reset_mock()
+        mock_ac.list_code_interpreters.side_effect = error
+        ac15 = agentcore_app.check_agentcore_code_interpreter_isolation()[0]
+
+        mock_ac.reset_mock()
+        ac16 = agentcore_app.check_agentcore_browser_network_isolation(
+            {"items": [], "errors": [], "list_error": error}
+        )[0]
+
+        mock_ac.reset_mock()
+        mock_ac.list_online_evaluation_configs.side_effect = error
+        ac17 = agentcore_app.check_agentcore_online_evaluation_coverage()[0]
+
+        for finding in (ac14, ac15, ac16, ac17):
+            assert finding["Status"] == "N/A"
+            assert finding["Severity"] == "Informational"
+
+    @patch("agentcore_app.agentcore_client")
+    def test_ag25_fails_when_engine_has_only_log_only_policy(self, mock_ac):
+        mock_ac.list_gateways.return_value = {
+            "items": [{"gatewayId": "gw-1", "name": "gateway-1"}]
+        }
+        mock_ac.get_gateway.return_value = {
+            "gatewayId": "gw-1",
+            "name": "gateway-1",
+            "authorizerType": "AWS_IAM",
+            "policyEngineConfiguration": {
+                "arn": "arn:aws:bedrock-agentcore:us-east-1:123456789012:policy-engine/pe-1",
+                "mode": "ENFORCE",
+            },
+        }
+        mock_ac.list_policies.return_value = {
+            "policies": [
+                {
+                    "policyId": "p-1",
+                    "status": "ACTIVE",
+                    "enforcementMode": "LOG_ONLY",
+                }
+            ]
+        }
+        findings = agentcore_app.check_agentcore_gateway_agentic_security()
+        ag25 = [finding for finding in findings if finding["Check_ID"] == "AG-25"]
+        assert ag25[0]["Status"] == "Failed"
+
+    def test_new_agentcore_operation_contracts_exist(self):
+        client = agentcore_app.boto3.client(
+            "bedrock-agentcore-control",
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",  # pragma: allowlist secret - synthetic test credential
+        )
+        model = client.meta.service_model
+        for operation in [
+            "GetTokenVault",
+            "ListCodeInterpreters",
+            "GetCodeInterpreter",
+            "ListBrowsers",
+            "GetBrowser",
+            "ListOnlineEvaluationConfigs",
+            "GetOnlineEvaluationConfig",
+            "ListPolicies",
+        ]:
+            assert model.operation_model(operation)
 
 
 # ===================================================================
@@ -1084,7 +1383,13 @@ class TestAgentCoreHandlerMultiRegion:
         assert "AC-02" not in check_ids
         assert "AC-03" not in check_ids
         assert "AC-09" not in check_ids
-        assert check_ids == {"AC-00"} | {f"AG-{i:02d}" for i in range(15, 28)}
+        expected_agentic_ids = {f"AG-{i:02d}" for i in range(15, 28)} | {
+            "AG-28",
+            "AG-29",
+            "AG-31",
+            "AG-32",
+        }
+        assert check_ids == {"AC-00"} | expected_agentic_ids
 
     def test_optin_region_error_treated_as_unavailable(self):
         # A region-not-enabled ClientError code makes agentcore_client None, so

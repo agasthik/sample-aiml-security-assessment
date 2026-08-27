@@ -4,12 +4,13 @@ import os
 import logging
 from datetime import datetime, timedelta, timezone
 import time
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Iterator
 from io import StringIO
 from botocore.config import Config
 from botocore.exceptions import ClientError, EndpointConnectionError
 import random
 import json
+import re
 
 # TO DO PYDANTIC SUPPORT
 from schema import create_finding
@@ -54,6 +55,8 @@ COULD_NOT_ASSESS_RESOLUTION = (
     "prerequisite or permission issue and rerun the assessment."
 )
 
+MAX_LINEAGE_FINDINGS = 5
+
 
 def get_assessment_error_label(error: Exception) -> str:
     """Return a report-safe error label without leaking raw exception text."""
@@ -73,6 +76,98 @@ def build_could_not_assess_detail(error: Exception, region: str = "") -> str:
         f"Could not assess this check{location}. Assessment error: "
         f"{get_assessment_error_label(error)}."
     )
+
+
+def iter_model_packages(sagemaker_client, group_name: str) -> Iterator[Dict[str, Any]]:
+    """Yield every model package in a SageMaker model package group."""
+    paginator = sagemaker_client.get_paginator("list_model_packages")
+    for page in paginator.paginate(ModelPackageGroupName=group_name):
+        yield from page.get("ModelPackageSummaryList", [])
+
+
+def list_all_model_packages(sagemaker_client, group_name: str) -> List[Dict[str, Any]]:
+    """Return every model package in a SageMaker model package group."""
+    return list(iter_model_packages(sagemaker_client, group_name))
+
+
+def get_model_package_lineage_artifact_arn(
+    sagemaker_client, model_package_arn: str
+) -> Optional[str]:
+    """Resolve a model package ARN to its SageMaker lineage artifact ARN."""
+    response = sagemaker_client.list_artifacts(
+        SourceUri=model_package_arn, MaxResults=1
+    )
+    artifacts = response.get("ArtifactSummaries", [])
+    if not artifacts:
+        return None
+    return artifacts[0].get("ArtifactArn")
+
+
+def has_lineage_associations(sagemaker_client, artifact_arn: str) -> bool:
+    """Return whether a lineage artifact participates in any association."""
+    source_response = sagemaker_client.list_associations(
+        SourceArn=artifact_arn, MaxResults=1
+    )
+    if source_response.get("AssociationSummaries"):
+        return True
+
+    destination_response = sagemaker_client.list_associations(
+        DestinationArn=artifact_arn, MaxResults=1
+    )
+    return bool(destination_response.get("AssociationSummaries"))
+
+
+def get_guardduty_detector_inventory(region: str = "") -> Dict[str, Any]:
+    """Retrieve the regional GuardDuty detector and detail once."""
+    inventory = {"detector_id": None, "detail": None, "error": None}
+    try:
+        client = boto3.client("guardduty", config=boto3_config, region_name=region)
+        detector_ids = client.list_detectors().get("DetectorIds", [])
+        if not detector_ids:
+            return inventory
+        inventory["detector_id"] = detector_ids[0]
+        inventory["detail"] = client.get_detector(DetectorId=detector_ids[0])
+    except Exception as error:
+        inventory["error"] = error
+    return inventory
+
+
+def get_hyperpod_cluster_inventory(region: str = "") -> Dict[str, Any]:
+    """List HyperPod clusters once and isolate per-cluster detail failures."""
+    inventory = {"items": [], "errors": [], "list_error": None}
+    try:
+        client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        paginator = client.get_paginator("list_clusters")
+        summaries = []
+        for page in paginator.paginate():
+            summaries.extend(page.get("ClusterSummaries", []))
+        for summary in summaries:
+            cluster_name = summary.get("ClusterName")
+            if not cluster_name:
+                continue
+            try:
+                inventory["items"].append(
+                    {
+                        "summary": summary,
+                        "detail": client.describe_cluster(ClusterName=cluster_name),
+                    }
+                )
+            except Exception as error:
+                inventory["errors"].append({"summary": summary, "error": error})
+    except Exception as error:
+        inventory["list_error"] = error
+    return inventory
+
+
+def list_model_package_group_summaries(
+    sagemaker_client,
+) -> List[Dict[str, Any]]:
+    """Return every SageMaker model package group summary."""
+    groups = []
+    paginator = sagemaker_client.get_paginator("list_model_package_groups")
+    for page in paginator.paginate():
+        groups.extend(page.get("ModelPackageGroupSummaryList", []))
+    return groups
 
 
 def get_permissions_cache(execution_id: str) -> Optional[Dict[str, Any]]:
@@ -288,7 +383,9 @@ def check_sagemaker_internet_access(region: str = "") -> Dict[str, Any]:
         }
 
 
-def check_guardduty_enabled(region: str = "") -> Dict[str, Any]:
+def check_guardduty_enabled(
+    region: str = "", detector_inventory: Dict[str, Any] = None
+) -> Dict[str, Any]:
     """
     Check if GuardDuty is enabled in the account to monitor SageMaker security issues
 
@@ -303,14 +400,11 @@ def check_guardduty_enabled(region: str = "") -> Dict[str, Any]:
     }
 
     try:
-        guardduty_client = boto3.client(
-            "guardduty", config=boto3_config, region_name=region
-        )
+        inventory = detector_inventory or get_guardduty_detector_inventory(region)
+        if inventory.get("error"):
+            raise inventory["error"]
 
-        # Get list of detectors in the current region
-        detectors = guardduty_client.list_detectors()
-
-        if not detectors.get("DetectorIds"):
+        if not inventory.get("detector_id"):
             findings["csv_data"].append(
                 create_finding(
                     check_id="SM-04",
@@ -323,7 +417,7 @@ def check_guardduty_enabled(region: str = "") -> Dict[str, Any]:
                     region=region,
                 )
             )
-        else:
+        elif (inventory.get("detail") or {}).get("Status") == "ENABLED":
             findings["csv_data"].append(
                 create_finding(
                     check_id="SM-04",
@@ -333,6 +427,19 @@ def check_guardduty_enabled(region: str = "") -> Dict[str, Any]:
                     reference="https://docs.aws.amazon.com/guardduty/latest/ug/ai-protection.html",
                     severity="Medium",
                     status="Passed",
+                    region=region,
+                )
+            )
+        else:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-04",
+                    finding_name="GuardDuty Detector Disabled",
+                    finding_details="A GuardDuty detector exists but is not enabled.",
+                    resolution="Enable the GuardDuty detector in this region.",
+                    reference="https://docs.aws.amazon.com/guardduty/latest/ug/guardduty_settingup.html",
+                    severity="High",
+                    status="Failed",
                     region=region,
                 )
             )
@@ -363,6 +470,72 @@ def check_guardduty_enabled(region: str = "") -> Dict[str, Any]:
             )
         )
 
+    return findings
+
+
+def check_guardduty_ai_protection(
+    region: str = "", detector_inventory: Dict[str, Any] = None
+) -> Dict[str, Any]:
+    """SM-26: Verify GuardDuty AI Protection is enabled."""
+    findings = {"csv_data": []}
+    try:
+        inventory = detector_inventory or get_guardduty_detector_inventory(region)
+        if inventory.get("error"):
+            raise inventory["error"]
+        if not inventory.get("detector_id"):
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-26",
+                    finding_name="GuardDuty AI Protection",
+                    finding_details="No GuardDuty detector found; AI Protection cannot be assessed separately.",
+                    resolution="Enable GuardDuty first, then enable the AI Protection feature.",
+                    reference="https://docs.aws.amazon.com/guardduty/latest/ug/ai-protection.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+            return findings
+
+        features = (inventory.get("detail") or {}).get("Features", [])
+        enabled = any(
+            feature.get("Name") == "AI_PROTECTION"
+            and feature.get("Status") == "ENABLED"
+            for feature in features
+        )
+        findings["csv_data"].append(
+            create_finding(
+                check_id="SM-26",
+                finding_name="GuardDuty AI Protection",
+                finding_details=(
+                    "GuardDuty AI Protection is enabled for this detector."
+                    if enabled
+                    else "GuardDuty is enabled, but the AI Protection detector feature is not enabled."
+                ),
+                resolution=(
+                    "No action required"
+                    if enabled
+                    else "Enable the GuardDuty AI_PROTECTION detector feature for this region."
+                ),
+                reference="https://docs.aws.amazon.com/guardduty/latest/ug/ai-protection.html",
+                severity="High",
+                status="Passed" if enabled else "Failed",
+                region=region,
+            )
+        )
+    except Exception as error:
+        findings["csv_data"].append(
+            create_finding(
+                check_id="SM-26",
+                finding_name="GuardDuty AI Protection",
+                finding_details=build_could_not_assess_detail(error, region),
+                resolution=COULD_NOT_ASSESS_RESOLUTION,
+                reference="https://docs.aws.amazon.com/guardduty/latest/ug/ai-protection.html",
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
     return findings
 
 
@@ -926,10 +1099,8 @@ def check_sagemaker_mlops_utilization(
                 for group in model_packages:
                     group_name = group.get("ModelPackageGroupName")
                     if group_name:
-                        response = sagemaker_client.list_model_packages(
-                            ModelPackageGroupName=group_name
-                        )
-                        if len(response.get("ModelPackageSummaryList", [])) <= 1:
+                        packages = list_all_model_packages(sagemaker_client, group_name)
+                        if len(packages) <= 1:
                             issues_found.append(
                                 {
                                     "component": "Model Registry",
@@ -3039,23 +3210,9 @@ def check_model_approval_workflow(region: str = "") -> Dict[str, Any]:
 
                     if group_name:
                         try:
-                            # Paginate — list_model_packages returns newest-first
-                            # and caps at 100 per page. A single MaxResults=100
-                            # call truncates active MLOps groups and silently
-                            # skews approval-status ratios (recently-approved
-                            # top page hides older Pending/Rejected packages),
-                            # which can flip the SM-22 "Auto-Approval Suspected"
-                            # and "Stale Pending Models" signals.
-                            mp_paginator = sagemaker_client.get_paginator(
-                                "list_model_packages"
+                            model_packages = list_all_model_packages(
+                                sagemaker_client, group_name
                             )
-                            model_packages = []
-                            for mp_page in mp_paginator.paginate(
-                                ModelPackageGroupName=group_name
-                            ):
-                                model_packages.extend(
-                                    mp_page.get("ModelPackageSummaryList", [])
-                                )
 
                             if not model_packages:
                                 continue
@@ -3562,6 +3719,7 @@ def check_ml_lineage_tracking(region: str = "") -> Dict[str, Any]:
         experiments_found = False
         trials_found = False
         lineage_issues = []
+        lineage_assessment_error = None
 
         try:
             # Check for Experiments
@@ -3594,23 +3752,33 @@ def check_ml_lineage_tracking(region: str = "") -> Dict[str, Any]:
                 model_packages_paginator = sagemaker_client.get_paginator(
                     "list_model_package_groups"
                 )
+                stop_lineage_scan = False
                 for page in model_packages_paginator.paginate(MaxResults=10):
                     for group in page.get("ModelPackageGroupSummaryList", []):
+                        if stop_lineage_scan:
+                            break
                         group_name = group.get("ModelPackageGroupName")
                         try:
-                            models_response = sagemaker_client.list_model_packages(
-                                ModelPackageGroupName=group_name, MaxResults=5
-                            )
-                            for model_pkg in models_response.get(
-                                "ModelPackageSummaryList", []
+                            for model_pkg in iter_model_packages(
+                                sagemaker_client, group_name
                             ):
+                                if len(lineage_issues) >= MAX_LINEAGE_FINDINGS:
+                                    stop_lineage_scan = True
+                                    break
+
                                 model_arn = model_pkg.get("ModelPackageArn")
+                                if not model_arn:
+                                    continue
+
                                 try:
-                                    # Check if model has lineage associations
-                                    associations = sagemaker_client.list_associations(
-                                        SourceArn=model_arn, MaxResults=5
+                                    artifact_arn = (
+                                        get_model_package_lineage_artifact_arn(
+                                            sagemaker_client, model_arn
+                                        )
                                     )
-                                    if not associations.get("AssociationSummaries"):
+                                    if not artifact_arn or not has_lineage_associations(
+                                        sagemaker_client, artifact_arn
+                                    ):
                                         lineage_issues.append(
                                             {
                                                 "type": "Missing Lineage",
@@ -3620,17 +3788,35 @@ def check_ml_lineage_tracking(region: str = "") -> Dict[str, Any]:
                                                 "details": "Model package has no lineage associations. Training data and experiment lineage not tracked.",
                                             }
                                         )
-                                except Exception:
-                                    # list_associations might not be available or might fail
-                                    pass
+                                        if len(lineage_issues) >= MAX_LINEAGE_FINDINGS:
+                                            stop_lineage_scan = True
+                                            break
+                                except Exception as e:
+                                    logger.warning(
+                                        "Error checking lineage for model package "
+                                        f"{model_arn}: {str(e)}"
+                                    )
+                                    if lineage_assessment_error is None:
+                                        lineage_assessment_error = e
+                                    if (
+                                        isinstance(e, ClientError)
+                                        and e.response.get("Error", {}).get("Code")
+                                        in ACCESS_DENIED_ERROR_CODES
+                                    ):
+                                        stop_lineage_scan = True
+                                        break
                         except Exception as e:
                             logger.warning(
                                 f"Error checking model packages in group {group_name}: {str(e)}"
                             )
-                    break  # Only check first page
-
+                            if lineage_assessment_error is None:
+                                lineage_assessment_error = e
+                    if stop_lineage_scan:
+                        break
             except Exception as e:
                 logger.warning(f"Error checking model package lineage: {str(e)}")
+                if lineage_assessment_error is None:
+                    lineage_assessment_error = e
 
         except Exception as e:
             logger.error(f"Error in lineage tracking check: {str(e)}")
@@ -3677,13 +3863,29 @@ def check_ml_lineage_tracking(region: str = "") -> Dict[str, Any]:
             )
 
         # Add lineage issues if found
-        for issue in lineage_issues[:5]:
+        for issue in lineage_issues:
             findings["csv_data"].append(
                 create_finding(
                     check_id="SM-25",
                     finding_name=f"ML Lineage Tracking - {issue['type']}",
                     finding_details=issue["details"],
                     resolution="Configure lineage associations for model packages to track the full ML pipeline from data to deployed model.",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/lineage-tracking.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+
+        if lineage_assessment_error is not None:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-25",
+                    finding_name="ML Lineage Tracking - Model Package Assessment",
+                    finding_details=build_could_not_assess_detail(
+                        lineage_assessment_error, region
+                    ),
+                    resolution=COULD_NOT_ASSESS_RESOLUTION,
                     reference="https://docs.aws.amazon.com/sagemaker/latest/dg/lineage-tracking.html",
                     severity="Informational",
                     status="N/A",
@@ -3711,7 +3913,11 @@ def check_ml_lineage_tracking(region: str = "") -> Dict[str, Any]:
         }
 
 
-def check_model_registry_usage(permission_cache, region: str = "") -> Dict[str, Any]:
+def check_model_registry_usage(
+    permission_cache,
+    region: str = "",
+    model_package_groups: List[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """
     Check if Amazon Model Registry is being used effectively for model management
     """
@@ -3725,59 +3931,58 @@ def check_model_registry_usage(permission_cache, region: str = "") -> Dict[str, 
         issues_found = []
 
         try:
-            # Check Model Package Groups
-            paginator = sagemaker_client.get_paginator("list_model_package_groups")
             registry_used = False
+            groups = (
+                model_package_groups
+                if model_package_groups is not None
+                else list_model_package_group_summaries(sagemaker_client)
+            )
 
-            for page in paginator.paginate():
-                for group in page["ModelPackageGroupSummaryList"]:
-                    registry_used = True
-                    group_name = group["ModelPackageGroupName"]
+            for group in groups:
+                registry_used = True
+                group_name = group["ModelPackageGroupName"]
 
-                    # Check model versions in the group
-                    try:
-                        models = sagemaker_client.list_model_packages(
-                            ModelPackageGroupName=group_name
+                # Check model versions in the group
+                try:
+                    models = list_all_model_packages(sagemaker_client, group_name)
+
+                    if not models:
+                        issues_found.append(
+                            {
+                                "issue_type": "Empty Model Group",
+                                "details": f"Model group {group_name} has no registered models",
+                                "severity": "Low",
+                                "status": "Failed",
+                            }
                         )
-
-                        if not models.get("ModelPackageSummaryList"):
+                    else:
+                        approved_models = [
+                            m
+                            for m in models
+                            if m.get("ModelApprovalStatus") == "Approved"
+                        ]
+                        if not approved_models:
                             issues_found.append(
                                 {
-                                    "issue_type": "Empty Model Group",
-                                    "details": f"Model group {group_name} has no registered models",
+                                    "issue_type": "No Approved Models",
+                                    "details": f"Model group {group_name} has no approved models",
                                     "severity": "Low",
                                     "status": "Failed",
                                 }
                             )
-                        else:
-                            # Check model approval status
-                            approved_models = [
-                                m
-                                for m in models["ModelPackageSummaryList"]
-                                if m.get("ModelApprovalStatus") == "Approved"
-                            ]
-                            if not approved_models:
-                                issues_found.append(
-                                    {
-                                        "issue_type": "No Approved Models",
-                                        "details": f"Model group {group_name} has no approved models",
-                                        "severity": "Low",
-                                        "status": "Failed",
-                                    }
-                                )
 
-                    except Exception as e:
-                        logger.error(
-                            f"Error checking models in group {group_name}: {str(e)}"
-                        )
-                        issues_found.append(
-                            {
-                                "issue_type": "Model Check Error",
-                                "details": f"Error checking models in group {group_name}",
-                                "severity": "Medium",
-                                "status": "Failed",
-                            }
-                        )
+                except Exception as e:
+                    logger.error(
+                        f"Error checking models in group {group_name}: {str(e)}"
+                    )
+                    issues_found.append(
+                        {
+                            "issue_type": "Model Check Error",
+                            "details": f"Error checking models in group {group_name}",
+                            "severity": "Medium",
+                            "status": "Failed",
+                        }
+                    )
 
             if not registry_used:
                 issues_found.append(
@@ -3838,6 +4043,530 @@ def check_model_registry_usage(permission_cache, region: str = "") -> Dict[str, 
             "details": f"Error during check: {str(e)}",
             "csv_data": [],
         }
+
+
+def check_hyperpod_ebs_cmk_encryption(
+    region: str = "", cluster_inventory: Dict[str, Any] = None
+) -> Dict[str, Any]:
+    """SM-27: Require CMK encryption for HyperPod root and secondary EBS volumes."""
+    findings = {"csv_data": []}
+    inventory = cluster_inventory or get_hyperpod_cluster_inventory(region)
+    if inventory.get("list_error"):
+        error = inventory["list_error"]
+        findings["csv_data"].append(
+            create_finding(
+                check_id="SM-27",
+                finding_name="HyperPod EBS CMK Encryption",
+                finding_details=build_could_not_assess_detail(error, region),
+                resolution=COULD_NOT_ASSESS_RESOLUTION,
+                reference="https://aws.amazon.com/about-aws/whats-new/2025/08/sagemaker-hyperpod-customer-managed-kms-ebs-volumes/",
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+        return findings
+
+    if not inventory.get("items") and not inventory.get("errors"):
+        findings["csv_data"].append(
+            create_finding(
+                check_id="SM-27",
+                finding_name="HyperPod EBS CMK Encryption",
+                finding_details="No SageMaker HyperPod clusters found",
+                resolution="No action required",
+                reference="https://aws.amazon.com/about-aws/whats-new/2025/08/sagemaker-hyperpod-customer-managed-kms-ebs-volumes/",
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+        return findings
+
+    for item in inventory.get("items", []):
+        detail = item["detail"]
+        cluster_name = detail.get(
+            "ClusterName", item["summary"].get("ClusterName", "unknown")
+        )
+        for group in detail.get("InstanceGroups", []):
+            group_name = group.get("InstanceGroupName", "unknown")
+            ebs_configs = [
+                config.get("EbsVolumeConfig") or {}
+                for config in group.get("InstanceStorageConfigs", [])
+                if config.get("EbsVolumeConfig") is not None
+            ]
+            root_configs = [
+                config for config in ebs_configs if config.get("RootVolume") is True
+            ]
+            unencrypted = {
+                "root volume"
+                for config in root_configs
+                if not config.get("VolumeKmsKeyId")
+            }
+            if not root_configs:
+                unencrypted.add("root volume")
+            unencrypted.update(
+                "secondary volume"
+                for config in ebs_configs
+                if config.get("RootVolume") is not True
+                and not config.get("VolumeKmsKeyId")
+            )
+            compliant = not unencrypted
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-27",
+                    finding_name="HyperPod EBS CMK Encryption",
+                    finding_details=(
+                        f"HyperPod cluster '{cluster_name}' instance group '{group_name}' uses customer-managed KMS keys for all configured EBS volumes."
+                        if compliant
+                        else f"HyperPod cluster '{cluster_name}' instance group '{group_name}' lacks customer-managed KMS encryption for: {', '.join(sorted(unencrypted))}."
+                    ),
+                    resolution=(
+                        "No action required"
+                        if compliant
+                        else "Configure VolumeKmsKeyId for the root volume and every secondary EBS volume in the instance group."
+                    ),
+                    reference="https://aws.amazon.com/about-aws/whats-new/2025/08/sagemaker-hyperpod-customer-managed-kms-ebs-volumes/",
+                    severity="Medium",
+                    status="Passed" if compliant else "Failed",
+                    region=region,
+                )
+            )
+
+    for item in inventory.get("errors", []):
+        findings["csv_data"].append(
+            create_finding(
+                check_id="SM-27",
+                finding_name="HyperPod EBS CMK Encryption",
+                finding_details=f"HyperPod cluster '{item['summary'].get('ClusterName', 'unknown')}' could not be assessed: {type(item['error']).__name__}.",
+                resolution="Grant sagemaker:DescribeCluster and retry.",
+                reference="https://aws.amazon.com/about-aws/whats-new/2025/08/sagemaker-hyperpod-customer-managed-kms-ebs-volumes/",
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+    return findings
+
+
+def check_hyperpod_vpc_configuration(
+    region: str = "", cluster_inventory: Dict[str, Any] = None
+) -> Dict[str, Any]:
+    """SM-28: Verify each HyperPod instance group has effective VPC config."""
+    findings = {"csv_data": []}
+    inventory = cluster_inventory or get_hyperpod_cluster_inventory(region)
+    if inventory.get("list_error"):
+        findings["csv_data"].append(
+            create_finding(
+                check_id="SM-28",
+                finding_name="HyperPod VPC Configuration",
+                finding_details=build_could_not_assess_detail(
+                    inventory["list_error"], region
+                ),
+                resolution=COULD_NOT_ASSESS_RESOLUTION,
+                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-security.html",
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+        return findings
+
+    if not inventory.get("items") and not inventory.get("errors"):
+        findings["csv_data"].append(
+            create_finding(
+                check_id="SM-28",
+                finding_name="HyperPod VPC Configuration",
+                finding_details="No SageMaker HyperPod clusters found",
+                resolution="No action required",
+                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-security.html",
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+        return findings
+
+    for item in inventory.get("items", []):
+        detail = item["detail"]
+        cluster_name = detail.get(
+            "ClusterName", item["summary"].get("ClusterName", "unknown")
+        )
+        cluster_vpc = detail.get("VpcConfig") or {}
+        for group in detail.get("InstanceGroups", []):
+            group_name = group.get("InstanceGroupName", "unknown")
+            effective_vpc = group.get("OverrideVpcConfig") or cluster_vpc
+            compliant = bool(effective_vpc.get("Subnets")) and bool(
+                effective_vpc.get("SecurityGroupIds")
+            )
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-28",
+                    finding_name="HyperPod VPC Configuration",
+                    finding_details=(
+                        f"HyperPod cluster '{cluster_name}' instance group '{group_name}' has effective VPC subnets and security groups."
+                        if compliant
+                        else f"HyperPod cluster '{cluster_name}' instance group '{group_name}' does not have complete effective VPC configuration."
+                    ),
+                    resolution=(
+                        "No action required"
+                        if compliant
+                        else "Configure non-empty subnets and security groups at the cluster level or in OverrideVpcConfig."
+                    ),
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-security.html",
+                    severity="Medium",
+                    status="Passed" if compliant else "Failed",
+                    region=region,
+                )
+            )
+
+    for item in inventory.get("errors", []):
+        findings["csv_data"].append(
+            create_finding(
+                check_id="SM-28",
+                finding_name="HyperPod VPC Configuration",
+                finding_details=f"HyperPod cluster '{item['summary'].get('ClusterName', 'unknown')}' could not be assessed: {type(item['error']).__name__}.",
+                resolution="Grant sagemaker:DescribeCluster and retry.",
+                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-security.html",
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+    return findings
+
+
+def _policy_values(value: Any) -> List[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    if isinstance(value, dict):
+        values = []
+        for nested in value.values():
+            values.extend(_policy_values(nested))
+        return values
+    return []
+
+
+def _policy_condition_boundaries(statement: Dict[str, Any]) -> Dict[str, set]:
+    boundaries = {"accounts": set(), "organizations": set()}
+    condition = statement.get("Condition") or {}
+    null_conditions = condition.get("Null")
+    required_condition_keys = set()
+    if isinstance(null_conditions, dict):
+        for key, value in null_conditions.items():
+            if any(item.lower() == "false" for item in _policy_values(value)):
+                required_condition_keys.add(key.lower())
+
+    single_value_string_operators = {"StringEquals", "StringLike"}
+    principal_arn_operators = {
+        "ArnEquals",
+        "ArnLike",
+        "StringEquals",
+        "StringLike",
+    }
+    org_path_operators = {
+        "ForAnyValue:StringEquals",
+        "ForAnyValue:StringLike",
+    }
+    guarded_org_path_operators = {
+        "ForAllValues:StringEquals",
+        "ForAllValues:StringLike",
+    }
+    for operator, operator_values in condition.items():
+        if not isinstance(operator_values, dict):
+            continue
+        for key, value in operator_values.items():
+            normalized = key.lower()
+            values = set(_policy_values(value))
+            if (
+                normalized == "aws:principalaccount"
+                and operator in single_value_string_operators
+            ):
+                boundaries["accounts"].update(
+                    item for item in values if re.fullmatch(r"\d{12}", item)
+                )
+            elif (
+                normalized == "aws:principalorgid"
+                and operator in single_value_string_operators
+            ):
+                boundaries["organizations"].update(
+                    item for item in values if re.fullmatch(r"o-[a-z0-9]{10,32}", item)
+                )
+            elif (
+                normalized == "aws:principalarn" and operator in principal_arn_operators
+            ):
+                for item in values:
+                    match = re.fullmatch(r"arn:[^:]+:[^:]*:[^:]*:(\d{12}):.+", item)
+                    if match:
+                        boundaries["accounts"].add(match.group(1))
+            elif normalized == "aws:principalorgpaths":
+                operator_is_safe = operator in org_path_operators or (
+                    operator in guarded_org_path_operators
+                    and normalized in required_condition_keys
+                )
+                if not operator_is_safe:
+                    continue
+                for item in values:
+                    match = re.match(r"^(o-[a-z0-9]{10,32})/", item)
+                    if match:
+                        boundaries["organizations"].add(match.group(1))
+    return boundaries
+
+
+def check_model_package_group_policy_exposure(
+    region: str = "", model_package_groups: List[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """SM-30: Heuristically detect public or unapproved registry policies."""
+    findings = {"csv_data": []}
+    try:
+        client = boto3.client("sagemaker", config=boto3_config, region_name=region)
+        groups = (
+            model_package_groups
+            if model_package_groups is not None
+            else list_model_package_group_summaries(client)
+        )
+        if not groups:
+            findings["csv_data"].append(
+                create_finding(
+                    check_id="SM-30",
+                    finding_name="Model Package Group Resource Policy Exposure",
+                    finding_details="No SageMaker model package groups found",
+                    resolution="No action required",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_GetModelPackageGroupPolicy.html",
+                    severity="Informational",
+                    status="N/A",
+                    region=region,
+                )
+            )
+            return findings
+
+        approved_accounts = {
+            item.strip()
+            for item in os.environ.get("AIML_APPROVED_EXTERNAL_ACCOUNT_IDS", "").split(
+                ","
+            )
+            if item.strip()
+        }
+        approved_orgs = {
+            item.strip()
+            for item in os.environ.get("AIML_APPROVED_ORG_IDS", "").split(",")
+            if item.strip()
+        }
+        trust_boundary_configured = bool(approved_accounts or approved_orgs)
+        current_account_error = None
+        try:
+            current_account = boto3.client(
+                "sts", config=boto3_config
+            ).get_caller_identity()["Account"]
+            if not re.fullmatch(r"\d{12}", current_account):
+                raise ValueError("STS returned an invalid account ID")
+        except Exception as error:
+            current_account = None
+            current_account_error = error
+
+        for group in groups:
+            group_name = group.get("ModelPackageGroupName", "unknown")
+            try:
+                response = client.get_model_package_group_policy(
+                    ModelPackageGroupName=group_name
+                )
+            except Exception as error:
+                code = (
+                    error.response.get("Error", {}).get("Code", "")
+                    if isinstance(error, ClientError)
+                    else ""
+                )
+                if code in {
+                    "ResourceNotFound",
+                    "ResourceNotFoundException",
+                    "ValidationException",
+                }:
+                    findings["csv_data"].append(
+                        create_finding(
+                            check_id="SM-30",
+                            finding_name="Model Package Group Resource Policy Exposure",
+                            finding_details=f"Model package group '{group_name}' has no resource policy.",
+                            resolution="No action required",
+                            reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_GetModelPackageGroupPolicy.html",
+                            severity="High",
+                            status="Passed",
+                            region=region,
+                        )
+                    )
+                    continue
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-30",
+                        finding_name="Model Package Group Resource Policy Exposure",
+                        finding_details=(
+                            f"Model package group '{group_name}' could not be assessed. "
+                            f"Assessment error: {get_assessment_error_label(error)}."
+                        ),
+                        resolution=COULD_NOT_ASSESS_RESOLUTION,
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_GetModelPackageGroupPolicy.html",
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                continue
+
+            try:
+                policy = json.loads(response.get("ResourcePolicy") or "{}")
+            except json.JSONDecodeError:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-30",
+                        finding_name="Model Package Group Resource Policy Exposure",
+                        finding_details=f"Model package group '{group_name}' has a malformed resource policy that could not be evaluated.",
+                        resolution="Replace the malformed policy and rerun the assessment.",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_GetModelPackageGroupPolicy.html",
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+                continue
+
+            statements = policy.get("Statement", [])
+            if isinstance(statements, dict):
+                statements = [statements]
+            public_statements = []
+            external_statements = []
+            unsupported_statements = []
+            indeterminate_account_statements = []
+            for index, statement in enumerate(statements):
+                if (
+                    not isinstance(statement, dict)
+                    or statement.get("Effect") != "Allow"
+                ):
+                    continue
+                if "NotPrincipal" in statement:
+                    unsupported_statements.append(index)
+                    continue
+                principals = _policy_values(statement.get("Principal"))
+                boundaries = _policy_condition_boundaries(statement)
+                constrained_wildcard = bool(
+                    boundaries["accounts"] or boundaries["organizations"]
+                )
+                if "*" in principals and not constrained_wildcard:
+                    public_statements.append(index)
+                    continue
+
+                accounts = set()
+                for principal in principals:
+                    accounts.update(re.findall(r"(?<!\d)\d{12}(?!\d)", principal))
+                accounts.update(boundaries["accounts"])
+                accounts_requiring_classification = accounts - approved_accounts
+                if current_account:
+                    unapproved_accounts = accounts_requiring_classification - {
+                        current_account
+                    }
+                else:
+                    unapproved_accounts = set()
+                    if accounts_requiring_classification:
+                        indeterminate_account_statements.append(
+                            {
+                                "index": index,
+                                "accounts": sorted(accounts_requiring_classification),
+                            }
+                        )
+                unapproved_orgs = boundaries["organizations"] - approved_orgs
+                if unapproved_accounts or unapproved_orgs:
+                    external_statements.append(
+                        {
+                            "index": index,
+                            "accounts": sorted(unapproved_accounts),
+                            "organizations": sorted(unapproved_orgs),
+                        }
+                    )
+
+            if public_statements:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-30",
+                        finding_name="Public Model Package Group Resource Policy",
+                        finding_details=f"Model package group '{group_name}' has public Allow statements at indexes {public_statements}.",
+                        resolution="Remove wildcard principals or constrain them to explicitly approved accounts or AWS Organizations.",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_GetModelPackageGroupPolicy.html",
+                        severity="High",
+                        status="Failed",
+                        region=region,
+                    )
+                )
+            elif external_statements:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-30",
+                        finding_name="External Model Package Group Resource Policy",
+                        finding_details=f"Model package group '{group_name}' grants access outside the current account: {external_statements}. This heuristic does not perform full IAM policy evaluation.",
+                        resolution=(
+                            "Restrict access to the configured approved account and organization boundary."
+                            if trust_boundary_configured
+                            else "Review the external principals. Configure AIML_APPROVED_EXTERNAL_ACCOUNT_IDS or AIML_APPROVED_ORG_IDS to enforce an explicit trust boundary."
+                        ),
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_GetModelPackageGroupPolicy.html",
+                        severity="High"
+                        if trust_boundary_configured
+                        else "Informational",
+                        status="Failed" if trust_boundary_configured else "Passed",
+                        region=region,
+                    )
+                )
+            elif unsupported_statements:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-30",
+                        finding_name="Unsupported Model Package Group Resource Policy",
+                        finding_details=f"Model package group '{group_name}' has Allow statements using unsupported NotPrincipal syntax at indexes {unsupported_statements}; their effective access could not be evaluated.",
+                        resolution="Replace each Allow with NotPrincipal statement with a supported Principal-based Allow statement, or use NotPrincipal only with an explicit Deny.",
+                        reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_notprincipal.html",
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+            elif indeterminate_account_statements:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-30",
+                        finding_name="Model Package Group Policy Account Context Unavailable",
+                        finding_details=f"Could not determine the assessment account with sts:GetCallerIdentity, so account principals in statements {indeterminate_account_statements} could not be classified as same-account or external: {type(current_account_error).__name__}.",
+                        resolution="Retry the assessment with valid AWS credentials and working STS connectivity.",
+                        reference="https://docs.aws.amazon.com/STS/latest/APIReference/API_GetCallerIdentity.html",
+                        severity="Informational",
+                        status="N/A",
+                        region=region,
+                    )
+                )
+            else:
+                findings["csv_data"].append(
+                    create_finding(
+                        check_id="SM-30",
+                        finding_name="Model Package Group Resource Policy Exposure",
+                        finding_details=f"Model package group '{group_name}' has no public or unapproved external Allow principals.",
+                        resolution="No action required",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_GetModelPackageGroupPolicy.html",
+                        severity="High",
+                        status="Passed",
+                        region=region,
+                    )
+                )
+    except Exception as error:
+        findings["csv_data"].append(
+            create_finding(
+                check_id="SM-30",
+                finding_name="Model Package Group Resource Policy Exposure",
+                finding_details=build_could_not_assess_detail(error, region),
+                resolution=COULD_NOT_ASSESS_RESOLUTION,
+                reference="https://docs.aws.amazon.com/sagemaker/latest/APIReference/API_GetModelPackageGroupPolicy.html",
+                severity="Informational",
+                status="N/A",
+                region=region,
+            )
+        )
+    return findings
 
 
 def get_role_usage(role_name: str) -> str:
@@ -4095,9 +4824,19 @@ def lambda_handler(event, context):
         )
         all_findings.append(sagemaker_data_protection_findings)
 
+        guardduty_inventory = get_guardduty_detector_inventory(region)
         logger.info("Running GuardDuty SageMaker monitoring check")
-        guardduty_findings = check_guardduty_enabled(region=region)
+        guardduty_findings = check_guardduty_enabled(
+            region=region, detector_inventory=guardduty_inventory
+        )
         all_findings.append(guardduty_findings)
+
+        logger.info("Running GuardDuty AI Protection check (SM-26)")
+        all_findings.append(
+            check_guardduty_ai_protection(
+                region=region, detector_inventory=guardduty_inventory
+            )
+        )
 
         logger.info("Running SageMaker MLOps features utilization check")
         mlops_findings = check_sagemaker_mlops_utilization(
@@ -4117,8 +4856,20 @@ def lambda_handler(event, context):
         )
         all_findings.append(monitor_findings)
 
+        try:
+            registry_client = boto3.client(
+                "sagemaker", config=boto3_config, region_name=region
+            )
+            model_package_groups = list_model_package_group_summaries(registry_client)
+        except Exception:
+            model_package_groups = None
+
         logger.info("Running Model Registry usage check")
-        registry_findings = check_model_registry_usage(permission_cache, region=region)
+        registry_findings = check_model_registry_usage(
+            permission_cache,
+            region=region,
+            model_package_groups=model_package_groups,
+        )
         all_findings.append(registry_findings)
 
         logger.info("Running SageMaker notebook root access check")
@@ -4216,6 +4967,28 @@ def lambda_handler(event, context):
         logger.info("Running ML lineage tracking check")
         ml_lineage_tracking_findings = check_ml_lineage_tracking(region=region)
         all_findings.append(ml_lineage_tracking_findings)
+
+        hyperpod_inventory = get_hyperpod_cluster_inventory(region)
+        logger.info("Running HyperPod EBS CMK encryption check (SM-27)")
+        all_findings.append(
+            check_hyperpod_ebs_cmk_encryption(
+                region=region, cluster_inventory=hyperpod_inventory
+            )
+        )
+
+        logger.info("Running HyperPod VPC configuration check (SM-28)")
+        all_findings.append(
+            check_hyperpod_vpc_configuration(
+                region=region, cluster_inventory=hyperpod_inventory
+            )
+        )
+
+        logger.info("Running model package group policy exposure check (SM-30)")
+        all_findings.append(
+            check_model_package_group_policy_exposure(
+                region=region, model_package_groups=model_package_groups
+            )
+        )
 
         # Generate and upload report
         logger.info("Generating reports")

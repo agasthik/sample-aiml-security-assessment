@@ -13,6 +13,15 @@ Metadata:
         Parameters:
           - TargetRegions
           - MaxRegionConcurrency
+      - Label:
+          default: Optional Security Policy Baselines
+        Parameters:
+          - RequireBedrockZeroDataRetention
+          - RequireMarketplaceEndpointCMK
+          - RequireAgentCoreOnlineEvaluation
+          - AgentCoreTokenVaultId
+          - ApprovedExternalAccountIds
+          - ApprovedOrganizationIds
     ParameterLabels:
       TargetRegions:
         default: AWS regions to scan
@@ -43,6 +52,35 @@ Parameters:
       values reduce concurrent Lambda usage; higher values speed up large
       multi-region scans. Set to 1 for fully sequential scanning.
     ConstraintDescription: Must be between 1 and 40.
+  RequireBedrockZeroDataRetention:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Fail BR-37 when the Bedrock retention mode is default or inherit.
+  RequireMarketplaceEndpointCMK:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Fail BR-40 when a Marketplace endpoint does not specify a customer-managed KMS key.
+  RequireAgentCoreOnlineEvaluation:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Fail AC-17 when no complete active online evaluation configuration is found.
+  AgentCoreTokenVaultId:
+    Type: String
+    Default: default
+    Description: Regional AgentCore Identity token vault ID assessed by AC-14.
+  ApprovedExternalAccountIds:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^[0-9]{12}(,[0-9]{12})*$"
+    Description: Comma-separated AWS account IDs approved for SageMaker Model Registry sharing.
+  ApprovedOrganizationIds:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^o-[a-z0-9]{10,32}(,o-[a-z0-9]{10,32})*$"
+    Description: Comma-separated AWS Organizations IDs approved for SageMaker Model Registry sharing.
 
 Resources:
   AIMLAssessmentStateMachine:
@@ -184,6 +222,8 @@ Resources:
         Variables:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
           TARGET_REGIONS: !Ref TargetRegions
+          REQUIRE_BEDROCK_ZERO_DATA_RETENTION: !Ref RequireBedrockZeroDataRetention
+          REQUIRE_MARKETPLACE_ENDPOINT_CMK: !Ref RequireMarketplaceEndpointCMK
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref AIMLAssessmentBucket
@@ -228,6 +268,14 @@ Resources:
                 - bedrock:ListModelInvocationJobs # BR-31
                 - bedrock:ListAgentActionGroups
                 - bedrock:GetAgentActionGroup
+                - bedrock:ListInferenceProfiles
+                - bedrock:ListTagsForResource
+                - bedrock:GetAccountDataRetention
+                - bedrock:ListAutomatedReasoningPolicies
+                - bedrock:GetAutomatedReasoningPolicy
+                - bedrock:ListMarketplaceModelEndpoints
+                - bedrock:GetMarketplaceModelEndpoint
+                - bedrock:ListEnforcedGuardrailsConfiguration
               Resource: '*'
             - Sid: ServiceQuotasPermissions
               Effect: Allow
@@ -247,6 +295,7 @@ Resources:
                 - organizations:DescribeOrganization # BR-15
                 - organizations:ListRoots # BR-15
                 - organizations:ListPolicies # BR-15
+                - organizations:ListTargetsForPolicy # BR-15
               Resource: '*'
             - Sid: S3BucketEncryptionPermissions
               Effect: Allow
@@ -301,6 +350,8 @@ Resources:
         Variables:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
           TARGET_REGIONS: !Ref TargetRegions
+          AIML_APPROVED_EXTERNAL_ACCOUNT_IDS: !Ref ApprovedExternalAccountIds
+          AIML_APPROVED_ORG_IDS: !Ref ApprovedOrganizationIds
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref AIMLAssessmentBucket
@@ -368,7 +419,11 @@ Resources:
                 - sagemaker:DescribeExperiment
                 - sagemaker:ListTrials
                 - sagemaker:DescribeTrial
+                - sagemaker:ListArtifacts
                 - sagemaker:ListAssociations
+                - sagemaker:ListClusters
+                - sagemaker:DescribeCluster
+                - sagemaker:GetModelPackageGroupPolicy
               Resource: '*'
         - Statement:
             - Sid: GuardDutyPermissions
@@ -409,6 +464,8 @@ Resources:
         Variables:
           AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
           TARGET_REGIONS: !Ref TargetRegions
+          AGENTCORE_TOKEN_VAULT_ID: !Ref AgentCoreTokenVaultId
+          REQUIRE_AGENTCORE_ONLINE_EVALUATION: !Ref RequireAgentCoreOnlineEvaluation
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref AIMLAssessmentBucket
@@ -442,6 +499,14 @@ Resources:
                 - bedrock-agentcore:ListPolicyEngines
                 - bedrock-agentcore:GetPolicyEngine
                 - bedrock-agentcore:GetResourcePolicy
+                - bedrock-agentcore:GetTokenVault
+                - bedrock-agentcore:ListCodeInterpreters
+                - bedrock-agentcore:GetCodeInterpreter
+                - bedrock-agentcore:ListBrowsers
+                - bedrock-agentcore:GetBrowser
+                - bedrock-agentcore:ListOnlineEvaluationConfigs
+                - bedrock-agentcore:GetOnlineEvaluationConfig
+                - bedrock-agentcore:ListPolicies
               Resource: '*'
             - Sid: IAMRolePermissions
               Effect: Allow

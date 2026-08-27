@@ -22,6 +22,15 @@ Metadata:
           - MemberRoleName
           - GitHubRepoUrl
           - GitHubBranch
+      - Label:
+          default: Optional Security Policy Baselines
+        Parameters:
+          - RequireBedrockZeroDataRetention
+          - RequireMarketplaceEndpointCMK
+          - RequireAgentCoreOnlineEvaluation
+          - AgentCoreTokenVaultId
+          - ApprovedExternalAccountIds
+          - ApprovedOrganizationIds
     ParameterLabels:
       MultiAccountScan:
         default: Scan all AWS Organizations accounts
@@ -47,6 +56,18 @@ Metadata:
         default: GitHub repository URL
       GitHubBranch:
         default: GitHub branch
+      RequireBedrockZeroDataRetention:
+        default: Require Bedrock zero data retention
+      RequireMarketplaceEndpointCMK:
+        default: Require Marketplace endpoint customer-managed keys
+      RequireAgentCoreOnlineEvaluation:
+        default: Require AgentCore online evaluation
+      AgentCoreTokenVaultId:
+        default: AgentCore token vault ID
+      ApprovedExternalAccountIds:
+        default: Approved Model Registry account IDs
+      ApprovedOrganizationIds:
+        default: Approved Model Registry organization IDs
 
 Parameters:
   GitHubRepoUrl:
@@ -171,6 +192,41 @@ Parameters:
     AllowedValues: ["true", "false"]
     Default: "false"
 
+  RequireBedrockZeroDataRetention:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Fail BR-37 when the Bedrock retention mode is default or inherit.
+
+  RequireMarketplaceEndpointCMK:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: Fail BR-40 when a Marketplace endpoint does not specify a customer-managed KMS key.
+
+  RequireAgentCoreOnlineEvaluation:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Fail AC-17 when no complete active online evaluation configuration is found.
+
+  AgentCoreTokenVaultId:
+    Type: String
+    Default: default
+    Description: Regional AgentCore Identity token vault ID assessed by AC-14.
+
+  ApprovedExternalAccountIds:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^[0-9]{12}(,[0-9]{12})*$"
+    Description: Comma-separated AWS account IDs approved for SageMaker Model Registry sharing.
+
+  ApprovedOrganizationIds:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^o-[a-z0-9]{10,32}(,o-[a-z0-9]{10,32})*$"
+    Description: Comma-separated AWS Organizations IDs approved for SageMaker Model Registry sharing.
+
 Conditions:
   CreateMemberRole: !Equals
     - !Ref MultiAccountScan
@@ -252,6 +308,12 @@ Resources:
                   - bedrock:GetImportedModel
                   # Batch inference jobs (BR-31)
                   - bedrock:ListModelInvocationJobs
+                  - bedrock:ListInferenceProfiles
+                  - bedrock:GetAccountDataRetention
+                  - bedrock:GetAutomatedReasoningPolicy
+                  - bedrock:ListMarketplaceModelEndpoints
+                  - bedrock:GetMarketplaceModelEndpoint
+                  - bedrock:ListEnforcedGuardrailsConfiguration
                   # Agent action groups (BR-21)
                   - bedrock:ListAgentActionGroups
                   - bedrock:GetAgentActionGroup
@@ -260,6 +322,7 @@ Resources:
                   - organizations:DescribeOrganization
                   - organizations:ListRoots
                   - organizations:ListPolicies
+                  - organizations:ListTargetsForPolicy
                   - servicequotas:ListServiceQuotas
                   - servicequotas:GetServiceQuota
                   - servicequotas:GetAWSDefaultServiceQuota
@@ -276,6 +339,9 @@ Resources:
                   - sagemaker:ListModelPackageGroups
                   - sagemaker:ListModelPackages
                   - sagemaker:DescribeModelPackage
+                  - sagemaker:GetModelPackageGroupPolicy
+                  - sagemaker:ListClusters
+                  - sagemaker:DescribeCluster
                   - sagemaker:ListFeatureGroups
                   - sagemaker:DescribeFeatureGroup
                   - sagemaker:ListPipelines
@@ -304,6 +370,7 @@ Resources:
                   - sagemaker:DescribeExperiment
                   - sagemaker:ListTrials
                   - sagemaker:DescribeTrial
+                  - sagemaker:ListArtifacts
                   - sagemaker:ListAssociations
                   # CloudTrail Permissions
                   - cloudtrail:ListTrails
@@ -342,6 +409,14 @@ Resources:
                   - bedrock-agentcore:ListPolicyEngines
                   - bedrock-agentcore:GetPolicyEngine
                   - bedrock-agentcore:GetResourcePolicy
+                  - bedrock-agentcore:GetTokenVault
+                  - bedrock-agentcore:ListCodeInterpreters
+                  - bedrock-agentcore:GetCodeInterpreter
+                  - bedrock-agentcore:ListBrowsers
+                  - bedrock-agentcore:GetBrowser
+                  - bedrock-agentcore:ListOnlineEvaluationConfigs
+                  - bedrock-agentcore:GetOnlineEvaluationConfig
+                  - bedrock-agentcore:ListPolicies
                   # ECR Permissions for AgentCore encryption checks
                   - ecr:DescribeRepositories
                   - ecr:GetRepositoryPolicy
@@ -695,6 +770,24 @@ Resources:
             Type: PLAINTEXT
           - Name: ENABLE_FINSERV
             Value: !Ref EnableFinServAssessment
+            Type: PLAINTEXT
+          - Name: REQUIRE_BEDROCK_ZERO_DATA_RETENTION
+            Value: !Ref RequireBedrockZeroDataRetention
+            Type: PLAINTEXT
+          - Name: REQUIRE_MARKETPLACE_ENDPOINT_CMK
+            Value: !Ref RequireMarketplaceEndpointCMK
+            Type: PLAINTEXT
+          - Name: REQUIRE_AGENTCORE_ONLINE_EVALUATION
+            Value: !Ref RequireAgentCoreOnlineEvaluation
+            Type: PLAINTEXT
+          - Name: AGENTCORE_TOKEN_VAULT_ID
+            Value: !Ref AgentCoreTokenVaultId
+            Type: PLAINTEXT
+          - Name: APPROVED_EXTERNAL_ACCOUNT_IDS
+            Value: !Ref ApprovedExternalAccountIds
+            Type: PLAINTEXT
+          - Name: APPROVED_ORGANIZATION_IDS
+            Value: !Ref ApprovedOrganizationIds
             Type: PLAINTEXT
       Description: Run AIML Security multi-account assessment
       ServiceRole: !GetAtt MultiAccountCodeBuildRole.Arn
