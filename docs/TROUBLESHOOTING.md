@@ -412,7 +412,7 @@ A: Minimal ongoing costs:
 
 **Q: Can I customize which security checks are included?**
 
-A: Currently, all 71 core checks and 27 Agentic AI Security checks run by
+A: Currently, all 86 core checks and 32 Agentic AI Security checks run by
 default to provide comprehensive coverage. If `EnableResponsibleAIGRCAssessment`
 is enabled, the 64 optional Responsible AI GRC checks also run. If
 `EnableOWASPAssessment` is enabled, the 12 optional OWASP Top 10 for LLM checks

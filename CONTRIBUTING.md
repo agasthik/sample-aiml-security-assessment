@@ -33,17 +33,52 @@ To send us a pull request, please:
 2. Modify the source; please focus on the specific change you are contributing. If you also reformat all the code, it will be hard for us to focus on your change.
 3. Make sure local tests pass.
 4. Run linting, formatting, and tests locally before pushing:
+
    ```bash
-   # Install test dependencies (first time only)
-   pip install ruff pytest boto3 pydantic
+   # Create a Python 3.12 virtual environment once, then use it for all tooling.
+   python3.12 -m venv .venv
+   PYTHON="$PWD/.venv/bin/python"
+   RUFF="$PWD/.venv/bin/ruff"
 
-   # Run lint and format checks
-   ruff check <changed-files>
-   ruff format --check <changed-files>
+   $PYTHON -m pip install --upgrade pip
+   $PYTHON -m pip install ruff \
+     -r tests/requirements.txt \
+     -r aiml-security-assessment/functions/security/agentcore_assessments/requirements.txt \
+     -r aiml-security-assessment/functions/security/bedrock_assessments/requirements.txt \
+     -r aiml-security-assessment/functions/security/cleanup_bucket/requirements.txt \
+     -r aiml-security-assessment/functions/security/generate_consolidated_report/requirements.txt \
+     -r aiml-security-assessment/functions/security/iam_permission_caching/requirements.txt \
+     -r aiml-security-assessment/functions/security/owasp_assessments/requirements.txt \
+     -r aiml-security-assessment/functions/security/resolve_regions/requirements.txt \
+     -r aiml-security-assessment/functions/security/responsible_ai_grc_assessments/requirements.txt \
+     -r aiml-security-assessment/functions/security/sagemaker_assessments/requirements.txt
+   $PYTHON -m pip check
 
-   # Run unit tests
-   python -m pytest tests/ -v
+   # Required by the test fixtures. These are test values, not AWS credentials.
+   export AIML_ASSESSMENT_BUCKET_NAME=test-assessment-bucket
+   export AWS_DEFAULT_REGION=us-east-1
+   export AWS_ACCESS_KEY_ID=testing
+   export AWS_SECRET_ACCESS_KEY=testing
+
+   # Match CI by linting the Python files changed by the pull request.
+   CHANGED_PY=$(git diff --name-only --diff-filter=ACMR origin/main...HEAD -- '*.py')
+   $RUFF check $CHANGED_PY
+   $RUFF format --check $CHANGED_PY
+
+   # Keep these as separate pytest sessions. Several Lambda packages import a
+   # top-level app.py, so combining suites can cause module-name collisions.
+   $PYTHON -m pytest tests/ -v --tb=short
+   $PYTHON -m pytest aiml-security-assessment/functions/security/responsible_ai_grc_tests/ -v --tb=short
+   $PYTHON -m pytest tests/test_consolidate_responsible_ai_grc.py -v --tb=short
+
+   (cd aiml-security-assessment/functions/security/generate_consolidated_report \
+     && $PYTHON -m pytest test_generate_report.py -v --tb=short)
    ```
+
+   If your change modifies a SAM or deployment template, also run the
+   CloudFormation lint and SAM validation/build commands documented in the
+   [Developer Guide](docs/DEVELOPER_GUIDE.md).
+
 5. Commit to your fork using clear commit messages.
 6. Send us a pull request, answering any default questions in the pull request interface.
 7. Pay attention to any automated CI failures reported in the pull request, and stay involved in the conversation.
@@ -53,6 +88,7 @@ To send us a pull request, please:
 The following checks run automatically on every pull request:
 
 - **Python Code Quality** — `ruff check` (lint) and `ruff format --check` (formatting) on changed Python files
+- **AI/ML Security Assessment Tests** — core, Responsible AI GRC, consolidator, and report-pipeline pytest sessions on Python 3.12
 - **CloudFormation Lint** — `cfn-lint` validation of deployment and SAM templates
 - **SAM Validate & Build** — `sam validate --lint` and `sam build` on SAM templates
 - **ASH Security Scan** — [Automated Security Helper](https://github.com/awslabs/automated-security-helper) scans changed files for secrets, dependency vulnerabilities, and IaC misconfigurations

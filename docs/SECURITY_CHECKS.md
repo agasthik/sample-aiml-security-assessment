@@ -1,6 +1,6 @@
 # Security Checks Reference
 
-This document provides a comprehensive reference for all 174 security checks performed by the AI/ML Security Assessment framework (71 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, 27 Agentic AI Security checks, 64 Responsible AI GRC checks, and 12 OWASP Top 10 for LLM checks).
+This document provides a comprehensive reference for all 194 security checks performed by the AI/ML Security Assessment framework (86 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, 32 Agentic AI Security checks, 64 Responsible AI GRC checks, and 12 OWASP Top 10 for LLM checks).
 
 Sources differ by bucket and are not interchangeable: the core Bedrock, SageMaker, and AgentCore checks derive from the AWS Well-Architected **Generative AI Lens** security best practices (`gensec*`); the Agentic AI Security checks from the AWS Well-Architected **Agentic AI Lens**; the `FS-*` **Responsible AI GRC** checks from the AWS GRC User Guide; and the `OW-*` checks from the OWASP Top 10 for LLM. The AWS Well-Architected **Responsible AI Lens** is not a source for any of them — see [Responsible AI GRC — scope, sources, and compatibility](RESPONSIBLE_AI_GRC_SCOPE.md).
 
@@ -12,10 +12,10 @@ The 64 Responsible AI GRC checks occupy 69 `FS-*` numbers: 64 ship as standalone
 - [Check ID Convention](#check-id-convention)
 - [Severity Levels](#severity-levels)
 - [Status Values](#status-values)
-- [Amazon SageMaker AI Security Checks (25)](#amazon-sagemaker-ai-security-checks-25)
-- [Amazon Bedrock Security Checks (33)](#amazon-bedrock-security-checks-33)
-- [Amazon Bedrock AgentCore Security Checks (13)](#amazon-bedrock-agentcore-security-checks-13)
-- [Agentic AI Security Checks (27)](#agentic-ai-security-checks-27)
+- [Amazon SageMaker AI Security Checks (29)](#amazon-sagemaker-ai-security-checks-29)
+- [Amazon Bedrock Security Checks (40)](#amazon-bedrock-security-checks-40)
+- [Amazon Bedrock AgentCore Security Checks (17)](#amazon-bedrock-agentcore-security-checks-17)
+- [Agentic AI Security Checks (32)](#agentic-ai-security-checks-32)
 - [Responsible AI GRC Checks (64)](#responsible-ai-grc-checks-64-additional-5-upstream-extensions)
 - [OWASP Top 10 for LLM Checks (12)](#owasp-top-10-for-llm-checks-12)
 
@@ -27,10 +27,10 @@ The framework evaluates your AI/ML workloads against AWS security best practices
 
 | Service | Number of Checks | Focus Areas |
 | --------- | ------------------ | ------------- |
-| Amazon SageMaker AI | 25 | Security Hub controls, encryption, network isolation, IAM, MLOps |
-| Amazon Bedrock | 33 | Guardrails, content filters, sensitive-information/PII filters, contextual grounding, automated reasoning, encryption (custom, imported, knowledge base, batch inference output), VPC endpoints, IAM permissions, agent guardrail association and least privilege, logging, CloudWatch alarms, cross-account policies, model evaluation, prompt flow validation, RAG evaluation, service quotas, Lambda code scanning (Amazon Inspector) |
-| Amazon Bedrock AgentCore | 13 | VPC configuration, encryption, observability, resource policies |
-| Agentic AI Security | 27 | Bounded autonomy, agent identity, tool authorization, guardrail enforcement, prompt/input protection, memory privacy, auditability, abuse protection |
+| Amazon SageMaker AI | 29 | Security Hub controls, encryption, network isolation, GuardDuty AI Protection, HyperPod, IAM, MLOps, Model Registry policy exposure |
+| Amazon Bedrock | 40 | Guardrails, prompt-attack/image filters, retention, inference profiles, automated reasoning and Marketplace endpoint governance, encryption, networking, IAM, logging, monitoring, and evaluation |
+| Amazon Bedrock AgentCore | 17 | Runtime/tool VPC isolation, encryption, browser recording, observability, resource policies, Identity token vaults, online evaluation |
+| Agentic AI Security | 32 | Bounded autonomy, agent identity, tool authorization, guardrail enforcement, prompt/input protection, memory privacy, auditability, continuous assurance, abuse protection |
 | Responsible AI GRC | 64 | Unbounded consumption, excessive agency, supply chain, training data poisoning, vector weaknesses, non-compliant output, misinformation, harmful output, biased output, PII disclosure, hallucination, prompt injection, improper output handling, off-topic output, out-of-date training data |
 | OWASP Top 10 for LLM | 12 | LLM01 Prompt Injection, LLM02 Sensitive Info Disclosure, LLM03 Supply Chain, LLM04 Data/Model Poisoning, LLM05 Improper Output Handling, LLM06 Excessive Agency, LLM07 System Prompt Leakage, LLM08 Vector/Embedding Weaknesses, LLM09 Misinformation, LLM10 Unbounded Consumption |
 
@@ -42,10 +42,10 @@ Each security check has a unique identifier with a service prefix:
 
 | Prefix | Service | Example |
 | -------- | --------- | --------- |
-| **SM-XX** | Amazon SageMaker | SM-01, SM-25 |
-| **BR-XX** | Amazon Bedrock | BR-01, BR-33 |
-| **AC-XX** | Amazon Bedrock AgentCore | AC-01, AC-13 |
-| **AG-XX** | Agentic AI Security | AG-01, AG-27 |
+| **SM-XX** | Amazon SageMaker | SM-01, SM-30 (`SM-29` reserved) |
+| **BR-XX** | Amazon Bedrock | BR-01, BR-40 |
+| **AC-XX** | Amazon Bedrock AgentCore | AC-01, AC-17 |
+| **AG-XX** | Agentic AI Security | AG-01, AG-32 |
 | **FS-XX** | Responsible AI GRC | FS-01, FS-69 |
 | **OW-XX** | OWASP Top 10 for LLM | OW-01, OW-12 |
 
@@ -73,7 +73,7 @@ Each security check has a unique identifier with a service prefix:
 
 ---
 
-## Amazon SageMaker AI Security Checks (25)
+## Amazon SageMaker AI Security Checks (29)
 
 ### SM-01: Internet Access
 
@@ -206,9 +206,31 @@ Each security check has a unique identifier with a service prefix:
 - **Severity:** Low
 - **Description:** Validates experiment tracking and lineage.
 
+### SM-26: GuardDuty AI Protection
+
+- **Severity:** High
+- **Description:** Reuses the regional GuardDuty detector inventory and verifies the `AI_PROTECTION` feature is `ENABLED`. No detector is N/A because SM-04 separately reports GuardDuty enablement.
+
+### SM-27: HyperPod EBS CMK Encryption
+
+- **Severity:** Medium
+- **Description:** Verifies every HyperPod instance group configures a customer-managed KMS key for its root EBS volume and all configured secondary EBS volumes. AWS documents that HyperPod root volumes use an AWS-owned key by default and that a customer-managed key is supplied through `InstanceStorageConfigs`; therefore, an absent root-volume storage configuration fails this CMK baseline rather than producing `N/A`.
+
+### SM-28: HyperPod VPC Configuration
+
+- **Severity:** Medium
+- **Description:** Verifies each HyperPod instance group's effective VPC configuration has subnets and security groups, honoring `OverrideVpcConfig` before the cluster-level `VpcConfig`.
+
+`SM-29` is reserved for SageMaker Unified Studio private networking. It is not currently emitted because the available domain APIs do not expose a sufficient domain-level networking configuration.
+
+### SM-30: Model Package Group Resource Policy Exposure
+
+- **Severity:** High for public or configured-boundary violations; Informational for unclassified external sharing
+- **Description:** Parses model package group resource policies to identify public wildcard principals and external accounts or organizations outside optional `AIML_APPROVED_EXTERNAL_ACCOUNT_IDS` / `AIML_APPROVED_ORG_IDS` boundaries. Configure those boundaries through the `ApprovedExternalAccountIds` and `ApprovedOrganizationIds` deployment parameters, respectively; both default to empty. Wildcard principals constrained by exact `aws:PrincipalAccount` or `aws:PrincipalOrgID` values, fixed-account `aws:PrincipalArn` patterns, or fixed-organization `aws:PrincipalOrgPaths` patterns are treated as bounded. Wildcard account/organization identifiers remain public; `ForAllValues` organization-path conditions count as boundaries only when a matching `Null: false` condition requires the key to be present. Because AWS supports `NotPrincipal` only with `Deny`, an `Allow` statement containing `NotPrincipal` is reported as unsupported and `N/A` rather than silently passing or being treated as public. Valid `Deny` statements do not create exposure and are ignored. If `sts:GetCallerIdentity` is unavailable, public wildcard statements are still reported, but account principals that cannot be distinguished as same-account or external produce `N/A` instead of an external-access finding. This is a conservative heuristic, not a complete IAM authorization simulator.
+
 ---
 
-## Amazon Bedrock Security Checks (33)
+## Amazon Bedrock Security Checks (40)
 
 ### BR-01: AWS IAM Least Privilege
 
@@ -394,9 +416,44 @@ Each security check has a unique identifier with a service prefix:
 - **Type:** Regional
 - **Description:** When Lambda functions with Bedrock indicators are detected in the region, verifies Amazon Inspector Lambda standard scanning (`lambda`) and Lambda code scanning (`lambdaCode`) are both enabled so those in-scope functions and their dependencies are scanned for vulnerable packages and hardcoded secrets. Calls `lambda:ListFunctions` for scoping and `inspector2:BatchGetAccountStatus` for Inspector status. Reports `Failed` only when in-scope Lambda functions exist and either `resourceState.lambda.status` or `resourceState.lambdaCode.status` is not `ENABLED`. No in-scope Lambda functions, access denied, and region-unavailable states resolve to `N/A`.
 
+### BR-34: Guardrail Prompt Attack Filter
+
+- **Severity:** High
+- **Description:** Requires each guardrail to have a preventive `PROMPT_ATTACK` input filter with `inputEnabled=true`, `inputAction=BLOCK`, and a non-`NONE` input strength. Standard tier is reported as a strengthening note.
+
+### BR-35: Guardrail Image Content Filter Coverage
+
+- **Severity:** Informational
+- **Description:** Uses `HATE`, `INSULTS`, `SEXUAL`, and `VIOLENCE` as the cross-region image-filter baseline. Because AWS documents `MISCONDUCT` image filtering as region-dependent, its absence is not reported as a gap, but a configured `MISCONDUCT` filter is reported when its input or output modalities omit `IMAGE`. Complete coverage is `Passed`; advisory gaps are `N/A`/Informational because the scanner cannot infer whether protected applications accept or produce images.
+
+### BR-36: Application Inference Profile Governance
+
+- **Severity:** Low
+- **Description:** Lists application inference profiles and reports completely untagged profiles. Organization-specific required tag keys can be enforced outside the default baseline.
+
+### BR-37: Bedrock Account Data Retention
+
+- **Severity:** High for provider sharing or an explicitly required zero-data-retention violation
+- **Description:** Fails `provider_data_share`, passes `none`, and reports `default`/`inherit` as informational unless the `RequireBedrockZeroDataRetention` deployment parameter is `true` (`REQUIRE_BEDROCK_ZERO_DATA_RETENTION` in the Lambda), in which case those modes fail.
+
+### BR-38: Automated Reasoning Policy CMK Encryption
+
+- **Severity:** Medium
+- **Description:** Deduplicates Automated Reasoning policy summaries and verifies each policy exposes a non-empty `kmsKeyArn`.
+
+### BR-39: Marketplace Model Endpoint VPC Configuration
+
+- **Severity:** High
+- **Description:** Requires SageMaker-backed Bedrock Marketplace endpoint configurations to include non-empty VPC subnet and security-group lists.
+
+### BR-40: Marketplace Model Endpoint CMK Encryption
+
+- **Severity:** Medium by default
+- **Description:** Requires a non-empty Marketplace endpoint `kmsEncryptionKey`. The `RequireMarketplaceEndpointCMK` deployment parameter defaults to `true` (`REQUIRE_MARKETPLACE_ENDPOINT_CMK` in the Lambda). Set it to `false` to make missing CMK configuration an `N/A`/Informational hardening advisory rather than a failure.
+
 ---
 
-## Amazon Bedrock AgentCore Security Checks (13)
+## Amazon Bedrock AgentCore Security Checks (17)
 
 ### AC-01: Runtime Amazon VPC Configuration
 
@@ -426,7 +483,7 @@ Each security check has a unique identifier with a service prefix:
 ### AC-06: Browser Tool Recording
 
 - **Severity:** Medium
-- **Description:** Checks storage configuration for browser tools.
+- **Description:** Uses custom browser inventory and requires `recording.enabled=true` with a non-empty S3 recording bucket.
 
 ### AC-07: Memory Encryption
 
@@ -463,9 +520,29 @@ Each security check has a unique identifier with a service prefix:
 - **Severity:** Medium
 - **Description:** Validates gateway security configuration.
 
+### AC-14: Identity Token Vault CMK Encryption
+
+- **Severity:** High
+- **Description:** Checks the configured/default regional Identity token vault and requires `CustomerManagedKey` with a KMS key ARN. Set the `AgentCoreTokenVaultId` deployment parameter to override the `default` vault ID (`AGENTCORE_TOKEN_VAULT_ID` in the Lambda).
+
+### AC-15: Code Interpreter Network Isolation
+
+- **Severity:** High
+- **Description:** Requires custom Code Interpreters to use `VPC` network mode with non-empty subnets and security groups.
+
+### AC-16: Custom Browser Network Isolation
+
+- **Severity:** High
+- **Description:** Requires custom browsers to use `VPC` network mode with non-empty subnets and security groups. Shares browser inventory with AC-06.
+
+### AC-17: Online Evaluation Coverage
+
+- **Severity:** Informational by default; Medium when required
+- **Description:** Reports whether online evaluation configurations are active/enabled and include non-zero sampling, evaluators, CloudWatch input data, and output logging. Set the `RequireAgentCoreOnlineEvaluation` deployment parameter to `true` (`REQUIRE_AGENTCORE_ONLINE_EVALUATION` in the Lambda) to make incomplete coverage fail.
+
 ---
 
-## Agentic AI Security Checks (27)
+## Agentic AI Security Checks (32)
 
 Agentic AI Security checks use the `AG-XX` namespace and are included with the
 default assessment. They follow a hybrid model:
@@ -652,9 +729,9 @@ with scope limited to the Security pillar.
 ### AG-25: Gateway Tool Policy Enforcement
 
 - **Severity:** High
-- **Source:** AgentCore `GetGateway.policyEngineConfiguration`
+- **Source:** AgentCore `GetGateway.policyEngineConfiguration` plus `ListPolicies`
 - **Domain:** Tool Authorization
-- **Description:** Fails gateways without a policy engine or with policy engine mode other than `ENFORCE`.
+- **Description:** Fails gateways without a policy engine, with mode other than `ENFORCE`, or with no `ACTIVE` policy whose enforcement mode is `ACTIVE`. A mix of enforcing and `LOG_ONLY`/inactive policies passes with an advisory.
 
 ### AG-26: Gateway Error Detail Exposure
 
@@ -669,6 +746,45 @@ with scope limited to the Security pillar.
 - **Source:** AgentCore `GetGateway.webAclArn`
 - **Domain:** Abuse & Cost Protection
 - **Description:** Fails AgentCore gateways without an associated AWS WAF web ACL.
+
+### AG-28: Identity Token Vault Protection
+
+- **Severity:** Source check severity
+- **Source:** AC-14
+- **Domain:** Agent Identity & Access
+- **Description:** Maps AgentCore Identity token-vault CMK encryption.
+
+### AG-29: Code Interpreter Isolation
+
+- **Severity:** Source check severity
+- **Source:** AC-15
+- **Domain:** Bounded Autonomy
+- **Description:** Maps custom Code Interpreter VPC isolation.
+
+### AG-30: Prompt Attack Protection
+
+- **Severity:** Source check severity
+- **Source:** BR-34
+- **Domain:** Prompt & Input Protection
+- **Description:** Maps preventive Bedrock Guardrails prompt-attack filtering.
+
+### AG-31: Browser Tool Isolation
+
+- **Severity:** Source check severity
+- **Source:** AC-16
+- **Domain:** Bounded Autonomy
+- **Description:** Maps custom AgentCore browser VPC isolation.
+
+### AG-32: Online Evaluation Assurance
+
+- **Severity:** Source check severity
+- **Source:** AC-17
+- **Domain:** Auditability & Continuous Assurance
+- **Description:** Maps AgentCore online evaluation configuration without claiming universal runtime trace coverage.
+
+### Runtime guardrail methodology note
+
+`InvokeGuardrailChecks` / `ApplyGuardrail` are per-request runtime APIs rather than a persistent configuration surface. The assessment therefore does not emit a pass/fail finding for their use; applications should validate these calls through runtime architecture review, telemetry, and testing.
 
 ---
 
