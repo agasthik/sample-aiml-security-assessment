@@ -43,9 +43,11 @@ unless `EnableResponsibleAIGRCAssessment=true`. OW-11 and OW-12 are the only
 for signals specific to LLM07 (System Prompt Leakage) that the existing
 checks do not cover.
 
-The OWASP Lambda runs after the per-service Lambdas (Bedrock, SageMaker,
-AgentCore, Responsible AI GRC) have written their per-region CSVs. It reads those CSVs,
-applies the `OWASP_CHECK_MAPPINGS` dict, runs OW-11 and OW-12, and writes
+The OWASP Lambda runs after the per-service Lambdas have written their CSVs.
+Bedrock, SageMaker, and AgentCore write per-region CSVs. Responsible AI GRC
+writes one execution-scoped CSV whose unscoped evidence is labeled `Global`
+rather than copied into target regions. OWASP reads those CSVs, applies the
+`OWASP_CHECK_MAPPINGS` dict, runs OW-11 and OW-12, and writes
 `owasp_security_report_<execution>_<region>.csv`.
 
 If a required source CSV is missing, the Lambda emits an informational `OW-00`
@@ -86,8 +88,10 @@ Maps from:
 | Source | Signal |
 | -------- | -------- |
 | BR-04 | Bedrock model invocation logging enabled (§4.3 prompt logging) |
+| BR-34 | Preventive Bedrock Guardrails `PROMPT_ATTACK` input filter |
 | BR-23 | Guardrail content filter coverage |
 | BR-27 | Contextual grounding guardrail |
+| SM-26 | GuardDuty AI Protection feature enabled |
 | FS-51 | PROMPT_ATTACK filter at Standard tier |
 | FS-52 | Bedrock-calling Lambda runtimes not deprecated |
 | FS-53 | WAF SQLi + KnownBadInputs managed rule groups |
@@ -166,6 +170,7 @@ Maps from:
 | BR-29 | Agent idle session TTL bound |
 | AC-02 | AgentCore IAM least privilege |
 | AC-10 | AgentCore resource-based policies |
+| AC-15 | AgentCore custom Code Interpreter VPC isolation |
 | FS-07 | Agent execution role least privilege (Responsible AI GRC) |
 | FS-08 | AgentCore runtime inbound authorizer (Responsible AI GRC) |
 | FS-09 | Agent tool concurrency limits |
@@ -251,6 +256,7 @@ Maps from:
 | -------- | -------- |
 | BR-22 | Service Quotas throttling limits |
 | BR-32 | CloudWatch consumption alarms |
+| SM-26 | GuardDuty AI Protection anomalous invocation and cost-harvesting detection |
 | FS-01 | WAF rate-based & Shield protection |
 | FS-02 | API Gateway usage plans |
 | FS-03 | Bedrock TPM/RPM quotas customised |

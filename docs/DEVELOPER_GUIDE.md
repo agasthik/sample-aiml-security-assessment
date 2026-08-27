@@ -44,7 +44,7 @@
 
 ## Architecture Overview
 
-The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 71 core security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, plus 27 always-on Agentic AI Security checks, with optional 64-check Responsible AI GRC and 12-check OWASP Top 10 for LLM assessments, generating interactive HTML reports with findings and remediation guidance.
+The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 86 core security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, plus 32 always-on Agentic AI Security checks, with optional 64-check Responsible AI GRC and 12-check OWASP Top 10 for LLM assessments, generating interactive HTML reports with findings and remediation guidance.
 
 ### Security Design Principles
 
@@ -227,7 +227,7 @@ sample-aiml-security-assessment/
 
 ## Assessment Structure
 
-The framework includes **71 core security checks** across three AI/ML services, plus **27 always-on Agentic AI Security checks**, **64 optional Responsible AI GRC checks** when `EnableResponsibleAIGRCAssessment` is enabled, and **12 optional OWASP Top 10 for LLM checks** when `EnableOWASPAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
+The framework includes **86 core security checks** across three AI/ML services, plus **32 always-on Agentic AI Security checks**, **64 optional Responsible AI GRC checks** when `EnableResponsibleAIGRCAssessment` is enabled, and **12 optional OWASP Top 10 for LLM checks** when `EnableOWASPAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
 
 ### AWS Lambda Functions
 
@@ -270,6 +270,28 @@ The Responsible AI GRC assessment Lambda is different. It is deployed in both SA
 - **Cleanup Bucket**: Removes old assessment data
 - **Resolve Regions**: Resolves target regions from `TargetRegions` parameter for the Map state
 - **Generate Consolidated Report**: Creates HTML report from CSV findings with region filtering
+
+### Optional Policy Baseline Propagation
+
+Organization-specific baselines are CloudFormation parameters rather than
+hard-coded scanner assumptions. Keep each parameter wired through both direct
+SAM templates, both top-level deployment templates, the corresponding CodeBuild
+environment variable, and every `sam deploy` path in `buildspec.yml`.
+
+| CloudFormation parameter | Lambda environment variable | Check |
+| --- | --- | --- |
+| `RequireBedrockZeroDataRetention` | `REQUIRE_BEDROCK_ZERO_DATA_RETENTION` | BR-37 |
+| `RequireMarketplaceEndpointCMK` | `REQUIRE_MARKETPLACE_ENDPOINT_CMK` | BR-40 |
+| `RequireAgentCoreOnlineEvaluation` | `REQUIRE_AGENTCORE_ONLINE_EVALUATION` | AC-17 |
+| `AgentCoreTokenVaultId` | `AGENTCORE_TOKEN_VAULT_ID` | AC-14 |
+| `ApprovedExternalAccountIds` | `AIML_APPROVED_EXTERNAL_ACCOUNT_IDS` | SM-30 |
+| `ApprovedOrganizationIds` | `AIML_APPROVED_ORG_IDS` | SM-30 |
+
+The top-level deployment templates expose the approved-account and
+approved-organization values to CodeBuild as `APPROVED_EXTERNAL_ACCOUNT_IDS`
+and `APPROVED_ORGANIZATION_IDS`; `buildspec.yml` then maps them to the SAM
+parameters shown above. Add or rename a baseline only when all layers and the
+public deployment documentation are updated together.
 
 ## Adding New AI/ML Service Assessments
 
@@ -519,6 +541,36 @@ sam build --template template.yaml
 sam local invoke ComprehendSecurityAssessmentFunction --event testfile.json
 ```
 
+## Adding a New Check Inside an Existing Service
+
+Most day-to-day contributions add or update individual security checks inside the existing assessment packages (Bedrock, SageMaker, or AgentCore) rather than creating an entire new service package.
+
+1. **Locate the target file**: Choose `bedrock_assessments/app.py`, `sagemaker_assessments/app.py`, or `agentcore_assessments/app.py`. New checks must follow the existing function structure and naming patterns inside that file.
+
+2. **Implement the check**: Write a function that returns a dict with a `"csv_data"` list of findings. Always pass `region=region` (or the loop variable) to every `create_finding()` call. Use the shared `schema.py` helpers where present.
+
+3. **Status and severity semantics** (critical):
+   - Access-denied, region-unavailable, or "service not present" paths must return `status="N/A"` and `severity="Informational"`.
+   - Use the `is_region_unsupported()` and `describe_api_error()` helpers in `bedrock_assessments/app.py` (or equivalent patterns) instead of raw string matching.
+   - Never emit a row with `status="Failed"` and `resolution="No action required"`.
+   - For optional policy baselines (e.g., `REQUIRE_MARKETPLACE_ENDPOINT_CMK=false`), emit `N/A` + `Informational` when the hardening gap is observed; reserve `Passed` only for controls that were checked and satisfied.
+
+4. **Pagination and error isolation**: Use `get_paginator()` or the `_agentcore_list_all` pattern for list APIs. Wrap per-resource detail calls in individual try/except blocks so one throttle or delete-race does not abort the whole check.
+
+5. **Synthesized mappings** (if applicable): If the new check should also appear under the Agentic AI lens (AG- prefix) or an OWASP category, update the corresponding mapping dictionary. Values in `OWASP_CHECK_MAPPINGS` are lists because one source check can emit multiple OW- rows. Allocate new AG numbers by hand across both mapping files and native checks to avoid collisions (current catalog ends at AG-32).
+
+6. **Add tests**: Every new check requires at least four cases: compliant (Passed), non-compliant (Failed), no-resource (N/A), and access-denied / API-unavailable. Shared inventory checks also need list-error and per-resource detail-error tests. See `tests/test_bedrock_checks.py` and `tests/test_sagemaker_checks.py` for patterns.
+
+7. **Update documentation**: Add the check description, severity rationale, and remediation steps to `docs/SECURITY_CHECKS.md` (or the matching file under `docs/SECURITY_CHECKS_*.md`). Keep the check counts in README.md and DEVELOPER_GUIDE.md in sync.
+
+8. **Run the gates before committing**:
+   - `ruff check` and `ruff format --check` only on the changed `.py` files (match CI scope).
+   - The three separate pytest sessions (`tests/`, `responsible_ai_grc_tests/`, `test_consolidate_responsible_ai_grc.py`, and the report-pipeline session).
+   - `cfn-lint` on any edited templates.
+   - Full review checklist in [AGENTS.md](../AGENTS.md) / [CLAUDE.md](../CLAUDE.md) (API names, IAM in all 5 locations, status semantics, mapping drift, CSV schema, etc.).
+
+9. **Generate and verify the HTML report** (mandatory before opening a PR): Follow the Report Verification steps in the [Testing Your Extensions](#4-report-verification-required-before-opening-a-pr) section. Open the generated reports and confirm your new check renders correctly in the table, sidebar, filters, and both light/dark modes.
+
 ## Assessment Best Practices
 
 ### 1. Security Check Implementation
@@ -606,6 +658,29 @@ aws stepfunctions start-execution \
 3. Monitor AWS CodeBuild logs for deployment and execution status
 4. Verify results in central Amazon S3 bucket
 
+### 4. Report Verification (Required Before Opening a PR)
+
+When adding a new check, extending a lens (AG-*), or introducing a new compliance standard (OW-*, NR-*, EU-*, etc.), you **must** generate the HTML report from the test fixtures and verify the output before creating a pull request. This catches data-routing, template, and rendering issues that unit tests alone may not surface.
+
+```bash
+# Generate viewable HTML reports from the fixture data
+cd aiml-security-assessment/functions/security/generate_consolidated_report
+python -m pytest test_generate_report.py -k "generate_viewable_report or generate_multi_account_report" -s --tb=no
+```
+
+The generated reports are written under `aiml-security-assessment/functions/security/generate_consolidated_report/test_reports/`. Open the single-account and multi-account HTML files in a browser (desktop and mobile viewports) and verify:
+
+- Your new `Check_ID` (for example BR-41, SM-31, AC-18, AG-33, OW-13, or NR-01) appears in the findings table with the expected Finding name, Severity badge, Status, Region, and Resolution text.
+- The row is correctly routed into the sidebar navigation:
+  - Core service checks (BR-*, SM-*, AC-*) appear under "By Service".
+  - AG-* findings appear under "By Lens" → Agentic AI Security.
+  - OW-*, and any new NR-*/EU-* standards appear under "By Compliance Standard".
+- Filters (region, severity, status, search) continue to work for both existing and new rows.
+- Long finding details or remediation text do not overflow or break the table layout.
+- Dark mode, responsive design, and the executive dashboard summary reflect the new content accurately.
+
+If the report looks correct, commit the generated `test_reports/*.html` files only if your change intentionally updates the canonical fixtures; otherwise they are git-ignored or regenerated on demand.
+
 ## Monitoring and Debugging
 
 For detailed troubleshooting guidance, common issues, and debugging tips, see the [Troubleshooting Guide](TROUBLESHOOTING.md).
@@ -614,7 +689,7 @@ For detailed troubleshooting guidance, common issues, and debugging tips, see th
 
 ### Current Status
 
-- **AI/ML Assessment**: 71 core checks across three services, 27 always-on Agentic AI Security checks, plus 64 optional Responsible AI GRC checks and 12 optional OWASP Top 10 for LLM checks (see [Security Checks Reference](SECURITY_CHECKS.md))
+- **AI/ML Assessment**: 86 core checks across three services, 32 always-on Agentic AI Security checks, plus 64 optional Responsible AI GRC checks and 12 optional OWASP Top 10 for LLM checks (see [Security Checks Reference](SECURITY_CHECKS.md))
 
 ### Potential Additions
 
@@ -667,6 +742,20 @@ To update report styling, layout, or features:
    - `get_html_template()` - HTML/CSS/JS structure
    - `generate_table_rows()` - Finding row generation
    - `generate_html_report()` - Main entry point with `mode` parameter ('single' or 'multi')
+
+## Extending or Adding Lenses
+
+The Agentic AI Security lens (AG-01 through AG-32) is **synthesized at runtime**, not produced by a separate scanner. It re-uses findings from the core Bedrock, SageMaker, and AgentCore assessments plus a small number of native gateway checks.
+
+- Mapping dictionaries live in two places:
+  - `bedrock_assessments/app.py` → `AGENTIC_BEDROCK_CHECK_MAPPINGS`
+  - `agentcore_assessments/app.py` → `AGENTIC_AGENTCORE_CHECK_MAPPINGS`
+- Native checks (currently AG-24 through AG-27) are implemented directly inside the AgentCore assessment package because they require the `bedrock-agentcore` control-plane client.
+- When adding new AG checks, manually allocate numbers to avoid collisions across both mapping dictionaries and the native checks. The current high-water mark for the catalog is AG-32.
+- The HTML report reconstructs the lens via the AG- prefix and the `COMPLIANCE_STANDARDS` list in `report_template.py` (same mechanism used for OWASP and future standards).
+- Follow the same seven-site wiring checklist as a new compliance standard (CloudFormation parameters are not required for the always-on Agentic lens, but any new native checks still need IAM grants in all five policy locations).
+- Update `docs/SECURITY_CHECKS.md` and run the full mapping-drift, test-coverage, and gate checklist before merging.
+- **Generate and verify the HTML report** (mandatory before opening a PR): Follow the Report Verification steps in the [Testing Your Extensions](#4-report-verification-required-before-opening-a-pr) section. Confirm AG-* findings appear under the correct lens section, with proper severity and routing.
 
 ## Adding a Compliance Standard (OWASP-style)
 
@@ -741,6 +830,8 @@ end-to-end. Concrete steps:
 9. **Add tests**: mapping emission, native-check behavior, routing, and
    report-template rendering. See `tests/test_owasp_checks.py` and
    `tests/test_report_template_owasp.py` as templates.
+
+10. **Generate and verify the HTML report** (mandatory before opening a PR): Follow the Report Verification steps in the [Testing Your Extensions](#4-report-verification-required-before-opening-a-pr) section. Because new standards are data-driven through `COMPLIANCE_STANDARDS`, confirm that the new prefix routes correctly into the "By Compliance Standard" sidebar, that findings appear with the expected severity, and that the report renders cleanly in both single- and multi-account modes.
 
 ## Documentation and Screenshots
 
