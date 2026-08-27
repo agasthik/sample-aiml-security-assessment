@@ -101,6 +101,22 @@ class TestOWASPMappings:
         assert all(r["Status"] == "Passed" for r in rows)
         assert all(r["Region"] == "us-west-2" for r in rows)
 
+    def test_global_responsible_ai_grc_region_is_preserved(self):
+        source_rows = [
+            {
+                "Check_ID": "FS-42",
+                "Finding_Details": "Execution-scoped Responsible AI GRC evidence.",
+                "Severity": "Medium",
+                "Status": "Passed",
+                "Region": "Global",
+            }
+        ]
+
+        rows = owasp_app.build_owasp_mapping_findings(source_rows, region="us-east-1")
+
+        assert rows
+        assert all(row["Region"] == "Global" for row in rows)
+
     def test_na_source_produces_informational_owasp_row(self):
         # Per CLAUDE.md status semantics — N/A source should NOT inflate
         # the OWASP row's severity.

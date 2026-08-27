@@ -88,6 +88,18 @@ AGENTCORE_POLICY_ENGINE_REFERENCE_URL = (
     "https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/"
     "API_GatewayPolicyEngineConfiguration.html"
 )
+AGENTCORE_IDENTITY_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "identity-data-encryption.html"
+)
+AGENTCORE_SECURITY_HUB_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/securityhub/latest/userguide/"
+    "bedrockagentcore-controls.html"
+)
+AGENTCORE_ONLINE_EVALUATION_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "get-online-evaluations.html"
+)
 
 AGENTIC_AGENTCORE_CHECK_MAPPINGS = {
     "AC-01": {
@@ -152,6 +164,34 @@ AGENTIC_AGENTCORE_CHECK_MAPPINGS = {
         "lens_domain": "Tool Authorization",
         "agentic_context": "Gateway configuration can include tool schemas, target definitions, and integration metadata.",
         "resolution": "Configure AgentCore gateways with customer-managed KMS keys where enhanced key control is required.",
+    },
+    "AC-14": {
+        "check_id": "AG-28",
+        "finding": "Agentic AI Identity Token Vault Protection",
+        "lens_domain": "Agent Identity & Access",
+        "agentic_context": "Agent credentials stored in the Identity token vault should use customer-controlled encryption where enhanced key control is required.",
+        "resolution": "Configure the AgentCore Identity token vault with a customer-managed KMS key.",
+    },
+    "AC-15": {
+        "check_id": "AG-29",
+        "finding": "Agentic AI Code Interpreter Isolation",
+        "lens_domain": "Bounded Autonomy",
+        "agentic_context": "Agent-executed code should run inside an explicit VPC boundary with controlled network paths.",
+        "resolution": "Configure custom AgentCore Code Interpreters in VPC mode with approved subnets and security groups.",
+    },
+    "AC-16": {
+        "check_id": "AG-31",
+        "finding": "Agentic AI Browser Tool Isolation",
+        "lens_domain": "Bounded Autonomy",
+        "agentic_context": "Browser tools can reach external systems and should use explicit private network boundaries.",
+        "resolution": "Configure custom AgentCore browsers in VPC mode with approved subnets and security groups.",
+    },
+    "AC-17": {
+        "check_id": "AG-32",
+        "finding": "Agentic AI Online Evaluation Assurance",
+        "lens_domain": "Auditability & Continuous Assurance",
+        "agentic_context": "Online evaluation provides continuous evidence about agent behavior, quality, and policy-relevant outcomes.",
+        "resolution": "Configure an active AgentCore online evaluation with sampling, evaluators, CloudWatch input logs, and an output log group.",
     },
 }
 
@@ -232,7 +272,7 @@ def check_timeout() -> bool:
 
 
 def _agentcore_list_all(
-    list_method_name: str, result_keys: List[str]
+    list_method_name: str, result_keys: List[str], **list_kwargs
 ) -> List[Dict[str, Any]]:
     """Collect all items from an AgentCore list API, following nextToken."""
     if agentcore_client is None:
@@ -243,7 +283,7 @@ def _agentcore_list_all(
     list_method = getattr(agentcore_client, list_method_name)
 
     while True:
-        kwargs = {}
+        kwargs = dict(list_kwargs)
         if next_token:
             kwargs["nextToken"] = next_token
 
@@ -272,6 +312,35 @@ def _agentcore_list_all(
             break
 
     return items
+
+
+def get_custom_browser_inventory() -> Dict[str, Any]:
+    """List custom browsers once and isolate per-browser detail failures."""
+    inventory = {"items": [], "errors": [], "list_error": None}
+    if agentcore_client is None:
+        return inventory
+
+    try:
+        browsers = _agentcore_list_all(
+            "list_browsers", ["browserSummaries"], type="CUSTOM"
+        )
+    except Exception as error:
+        inventory["list_error"] = error
+        return inventory
+
+    for summary in browsers:
+        browser_id = summary.get("browserId")
+        if not browser_id:
+            continue
+        try:
+            detail = _unwrap_agentcore_detail(
+                agentcore_client.get_browser(browserId=browser_id), "browser"
+            )
+            inventory["items"].append({"summary": summary, "detail": detail})
+        except Exception as error:
+            inventory["errors"].append({"summary": summary, "error": error})
+
+    return inventory
 
 
 def _unwrap_agentcore_detail(
@@ -1471,16 +1540,10 @@ def check_agentcore_encryption() -> List[Dict[str, Any]]:
     return findings
 
 
-def check_browser_tool_recording() -> List[Dict[str, Any]]:
-    """
-    Check Browser Tool recording configuration.
-
-    Note: Browser Tools are configured as part of Runtime configuration in AgentCore.
-    This check validates that Runtimes have appropriate storage configuration.
-
-    Returns:
-        List of findings
-    """
+def check_browser_tool_recording(
+    browser_inventory: Dict[str, Any] = None,
+) -> List[Dict[str, Any]]:
+    """AC-06: Require recording and an S3 destination on custom browsers."""
     findings = []
 
     if agentcore_client is None:
@@ -1498,72 +1561,85 @@ def check_browser_tool_recording() -> List[Dict[str, Any]]:
         return findings
 
     try:
-        logger.info(
-            "Checking Browser Tool recording configuration (via Runtime config)"
-        )
-
-        # Browser Tools are part of Runtime configuration
-        # Check if Runtimes have appropriate storage configured
-        runtimes = _agentcore_list_all("list_agent_runtimes", ["agentRuntimes"])
-
-        if not runtimes:
-            logger.info("No AgentCore Runtimes found")
+        inventory = browser_inventory or get_custom_browser_inventory()
+        if inventory.get("list_error"):
+            error = inventory["list_error"]
             findings.append(
                 create_finding(
                     check_id="AC-06",
                     finding_name="AgentCore Browser Tool Recording Check",
-                    finding_details="No AgentCore Runtimes found to check browser tool configuration",
-                    resolution="No action required",
-                    reference=AGENTCORE_BROWSER_REFERENCE_URL,
+                    finding_details=f"Could not assess custom browser recording: {type(error).__name__}.",
+                    resolution="Grant bedrock-agentcore:ListBrowsers and bedrock-agentcore:GetBrowser, then retry.",
+                    reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )
             )
             return findings
 
-        logger.info(f"Found {len(runtimes)} AgentCore Runtimes")
-
-        # Check if runtimes have storage configuration for browser tools
-        for runtime in runtimes:
-            runtime_id = runtime.get("agentRuntimeId", "unknown")
-            runtime_name = runtime.get("agentRuntimeName", runtime_id)
-
-            try:
-                runtime_details = agentcore_client.get_agent_runtime(
-                    agentRuntimeId=runtime_id
-                )
-
-                # Check for storage configuration (browser tools need storage)
-                storage_config = runtime_details.get("storageConfig", {})
-
-                if not storage_config:
-                    findings.append(
-                        create_finding(
-                            check_id="AC-06",
-                            finding_name="AgentCore Runtime Storage Configuration",
-                            finding_details=f"Runtime '{runtime_name}' ({runtime_id}) does not have storage configuration for browser tools",
-                            resolution="Configure S3 storage for browser tool session recordings and artifacts",
-                            reference=AGENTCORE_BROWSER_REFERENCE_URL,
-                            severity=SeverityEnum.MEDIUM,
-                            status=StatusEnum.FAILED,
-                        )
-                    )
-
-            except ClientError as e:
-                if e.response["Error"]["Code"] != "ResourceNotFoundException":
-                    logger.error(f"Error describing runtime {runtime_id}: {e}")
-
-        # If no findings, return passed
-        if not findings:
+        browsers = inventory.get("items", [])
+        if not browsers and not inventory.get("errors"):
             findings.append(
                 create_finding(
                     check_id="AC-06",
                     finding_name="AgentCore Browser Tool Recording Check",
-                    finding_details=f"All {len(runtimes)} Runtimes have proper storage configuration",
+                    finding_details="No custom AgentCore browsers found",
                     resolution="No action required",
-                    reference=AGENTCORE_BROWSER_REFERENCE_URL,
+                    reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+            return findings
+
+        for item in browsers:
+            summary = item["summary"]
+            detail = item["detail"]
+            browser_id = summary.get("browserId", "unknown")
+            browser_name = summary.get("name", browser_id)
+            recording = detail.get("recording") or {}
+            s3_location = recording.get("s3Location") or {}
+            enabled = recording.get("enabled") is True
+            bucket = s3_location.get("bucket")
+            configured = enabled and bool(bucket)
+
+            findings.append(
+                create_finding(
+                    check_id="AC-06",
+                    finding_name="AgentCore Browser Session Recording",
+                    finding_details=(
+                        f"Custom browser '{browser_name}' ({browser_id}) has session "
+                        f"recording enabled with S3 bucket '{bucket}'."
+                        if configured
+                        else f"Custom browser '{browser_name}' ({browser_id}) does not "
+                        "have session recording enabled with an S3 destination."
+                    ),
+                    resolution=(
+                        "No action required"
+                        if configured
+                        else "Enable browser session recording and configure a non-empty S3 recording destination."
+                    ),
+                    reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
                     severity=SeverityEnum.MEDIUM,
-                    status=StatusEnum.PASSED,
+                    status=StatusEnum.PASSED if configured else StatusEnum.FAILED,
+                )
+            )
+
+        for item in inventory.get("errors", []):
+            summary = item["summary"]
+            error = item["error"]
+            findings.append(
+                create_finding(
+                    check_id="AC-06",
+                    finding_name="AgentCore Browser Tool Recording Check",
+                    finding_details=(
+                        f"Custom browser '{summary.get('name', summary.get('browserId', 'unknown'))}' "
+                        f"could not be assessed: {type(error).__name__}."
+                    ),
+                    resolution="Grant bedrock-agentcore:GetBrowser and retry.",
+                    reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
                 )
             )
 
@@ -1573,15 +1649,406 @@ def check_browser_tool_recording() -> List[Dict[str, Any]]:
             create_finding(
                 check_id="AC-06",
                 finding_name="AgentCore Browser Tool Recording Check",
-                finding_details=f"Error during check: {str(e)}",
-                resolution="Investigate error and retry assessment",
+                finding_details=f"Could not assess custom browser recording: {type(e).__name__}.",
+                resolution="Resolve the assessment prerequisite or permission issue and retry.",
                 reference=AGENTCORE_BROWSER_REFERENCE_URL,
-                severity=SeverityEnum.MEDIUM,
-                status=StatusEnum.FAILED,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
             )
         )
 
     return findings
+
+
+def check_agentcore_token_vault_encryption() -> List[Dict[str, Any]]:
+    """AC-14: Verify the default regional Identity token vault uses a CMK."""
+    if agentcore_client is None:
+        return [
+            create_finding(
+                check_id="AC-14",
+                finding_name="AgentCore Identity Token Vault CMK Encryption",
+                finding_details="AgentCore client not available in this region",
+                resolution="No action required unless AgentCore Identity is expected in this region.",
+                reference=AGENTCORE_IDENTITY_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    token_vault_id = os.environ.get("AGENTCORE_TOKEN_VAULT_ID", "default")
+    try:
+        detail = agentcore_client.get_token_vault(tokenVaultId=token_vault_id)
+        kms_config = detail.get("kmsConfiguration") or {}
+        uses_cmk = kms_config.get("keyType") == "CustomerManagedKey" and bool(
+            kms_config.get("kmsKeyArn")
+        )
+        return [
+            create_finding(
+                check_id="AC-14",
+                finding_name="AgentCore Identity Token Vault CMK Encryption",
+                finding_details=(
+                    f"AgentCore token vault '{token_vault_id}' uses customer-managed KMS key "
+                    f"{kms_config.get('kmsKeyArn')}."
+                    if uses_cmk
+                    else f"AgentCore token vault '{token_vault_id}' uses a service-managed or AWS-owned key."
+                ),
+                resolution=(
+                    "No action required"
+                    if uses_cmk
+                    else "Configure the AgentCore Identity token vault with a customer-managed KMS key."
+                ),
+                reference=AGENTCORE_IDENTITY_REFERENCE_URL,
+                severity=SeverityEnum.HIGH,
+                status=StatusEnum.PASSED if uses_cmk else StatusEnum.FAILED,
+            )
+        ]
+    except ClientError as error:
+        code = error.response.get("Error", {}).get("Code", "")
+        not_configured = code in {
+            "ResourceNotFoundException",
+            "ValidationException",
+        }
+        if not_configured or _is_access_denied_client_error(error):
+            return [
+                create_finding(
+                    check_id="AC-14",
+                    finding_name="AgentCore Identity Token Vault CMK Encryption",
+                    finding_details=(
+                        "No assessable AgentCore Identity token vault was found."
+                        if not_configured
+                        else "Could not assess the AgentCore Identity token vault because access was denied."
+                    ),
+                    resolution=(
+                        "No action required"
+                        if not_configured
+                        else "Grant bedrock-agentcore:GetTokenVault and retry."
+                    ),
+                    reference=AGENTCORE_IDENTITY_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            ]
+        raise
+    except Exception as error:
+        return [
+            create_finding(
+                check_id="AC-14",
+                finding_name="AgentCore Identity Token Vault CMK Encryption",
+                finding_details=f"Could not assess the token vault: {type(error).__name__}.",
+                resolution="Resolve the assessment prerequisite or regional API availability issue and retry.",
+                reference=AGENTCORE_IDENTITY_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+
+def check_agentcore_code_interpreter_isolation() -> List[Dict[str, Any]]:
+    """AC-15: Require custom Code Interpreters to use complete VPC config."""
+    if agentcore_client is None:
+        return [
+            create_finding(
+                check_id="AC-15",
+                finding_name="AgentCore Code Interpreter Network Isolation",
+                finding_details="AgentCore client not available in this region",
+                resolution="No action required unless custom Code Interpreters are expected.",
+                reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    findings = []
+    try:
+        interpreters = _agentcore_list_all(
+            "list_code_interpreters", ["codeInterpreterSummaries"], type="CUSTOM"
+        )
+        if not interpreters:
+            return [
+                create_finding(
+                    check_id="AC-15",
+                    finding_name="AgentCore Code Interpreter Network Isolation",
+                    finding_details="No custom AgentCore Code Interpreters found",
+                    resolution="No action required",
+                    reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            ]
+
+        for summary in interpreters:
+            interpreter_id = summary.get("codeInterpreterId")
+            name = summary.get("name", interpreter_id or "unknown")
+            try:
+                detail = _unwrap_agentcore_detail(
+                    agentcore_client.get_code_interpreter(
+                        codeInterpreterId=interpreter_id
+                    ),
+                    "codeInterpreter",
+                )
+                network = detail.get("networkConfiguration") or {}
+                vpc = network.get("vpcConfig") or {}
+                isolated = (
+                    network.get("networkMode") == "VPC"
+                    and bool(vpc.get("subnets"))
+                    and bool(vpc.get("securityGroups"))
+                )
+                findings.append(
+                    create_finding(
+                        check_id="AC-15",
+                        finding_name="AgentCore Code Interpreter Network Isolation",
+                        finding_details=(
+                            f"Custom Code Interpreter '{name}' ({interpreter_id}) uses VPC network isolation."
+                            if isolated
+                            else f"Custom Code Interpreter '{name}' ({interpreter_id}) does not use complete VPC network isolation."
+                        ),
+                        resolution=(
+                            "No action required"
+                            if isolated
+                            else "Configure the custom Code Interpreter in VPC mode with non-empty subnets and security groups."
+                        ),
+                        reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                        severity=SeverityEnum.HIGH,
+                        status=StatusEnum.PASSED if isolated else StatusEnum.FAILED,
+                    )
+                )
+            except Exception as error:
+                findings.append(
+                    create_finding(
+                        check_id="AC-15",
+                        finding_name="AgentCore Code Interpreter Network Isolation",
+                        finding_details=f"Custom Code Interpreter '{name}' could not be assessed: {type(error).__name__}.",
+                        resolution="Grant bedrock-agentcore:GetCodeInterpreter and retry.",
+                        reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                        severity=SeverityEnum.INFORMATIONAL,
+                        status=StatusEnum.NA,
+                    )
+                )
+    except Exception as error:
+        findings.append(
+            create_finding(
+                check_id="AC-15",
+                finding_name="AgentCore Code Interpreter Network Isolation",
+                finding_details=f"Could not list custom Code Interpreters: {type(error).__name__}.",
+                resolution="Grant bedrock-agentcore:ListCodeInterpreters and retry.",
+                reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        )
+    return findings
+
+
+def check_agentcore_browser_network_isolation(
+    browser_inventory: Dict[str, Any] = None,
+) -> List[Dict[str, Any]]:
+    """AC-16: Require custom browsers to use complete VPC configuration."""
+    if agentcore_client is None:
+        return [
+            create_finding(
+                check_id="AC-16",
+                finding_name="AgentCore Custom Browser Network Isolation",
+                finding_details="AgentCore client not available in this region",
+                resolution="No action required unless custom browsers are expected.",
+                reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    inventory = browser_inventory or get_custom_browser_inventory()
+    if inventory.get("list_error"):
+        return [
+            create_finding(
+                check_id="AC-16",
+                finding_name="AgentCore Custom Browser Network Isolation",
+                finding_details=f"Could not list custom browsers: {type(inventory['list_error']).__name__}.",
+                resolution="Grant bedrock-agentcore:ListBrowsers and retry.",
+                reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+    if not inventory.get("items") and not inventory.get("errors"):
+        return [
+            create_finding(
+                check_id="AC-16",
+                finding_name="AgentCore Custom Browser Network Isolation",
+                finding_details="No custom AgentCore browsers found",
+                resolution="No action required",
+                reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    findings = []
+    for item in inventory.get("items", []):
+        summary = item["summary"]
+        detail = item["detail"]
+        browser_id = summary.get("browserId", "unknown")
+        name = summary.get("name", browser_id)
+        network = detail.get("networkConfiguration") or {}
+        vpc = network.get("vpcConfig") or {}
+        isolated = (
+            network.get("networkMode") == "VPC"
+            and bool(vpc.get("subnets"))
+            and bool(vpc.get("securityGroups"))
+        )
+        findings.append(
+            create_finding(
+                check_id="AC-16",
+                finding_name="AgentCore Custom Browser Network Isolation",
+                finding_details=(
+                    f"Custom browser '{name}' ({browser_id}) uses VPC network isolation."
+                    if isolated
+                    else f"Custom browser '{name}' ({browser_id}) is not configured with complete VPC network isolation."
+                ),
+                resolution=(
+                    "No action required"
+                    if isolated
+                    else "Configure the custom browser in VPC mode with non-empty subnets and security groups."
+                ),
+                reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                severity=SeverityEnum.HIGH,
+                status=StatusEnum.PASSED if isolated else StatusEnum.FAILED,
+            )
+        )
+    for item in inventory.get("errors", []):
+        summary = item["summary"]
+        findings.append(
+            create_finding(
+                check_id="AC-16",
+                finding_name="AgentCore Custom Browser Network Isolation",
+                finding_details=f"Custom browser '{summary.get('name', summary.get('browserId', 'unknown'))}' could not be assessed: {type(item['error']).__name__}.",
+                resolution="Grant bedrock-agentcore:GetBrowser and retry.",
+                reference=AGENTCORE_SECURITY_HUB_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        )
+    return findings
+
+
+def check_agentcore_online_evaluation_coverage() -> List[Dict[str, Any]]:
+    """AC-17: Report whether an operational online-evaluation config exists."""
+    if agentcore_client is None:
+        return [
+            create_finding(
+                check_id="AC-17",
+                finding_name="AgentCore Online Evaluation Coverage",
+                finding_details="AgentCore client not available in this region",
+                resolution="No action required unless online evaluation is expected.",
+                reference=AGENTCORE_ONLINE_EVALUATION_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    required = os.environ.get("REQUIRE_AGENTCORE_ONLINE_EVALUATION", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    try:
+        configs = _agentcore_list_all(
+            "list_online_evaluation_configs", ["onlineEvaluationConfigs"]
+        )
+        if not configs:
+            return [
+                create_finding(
+                    check_id="AC-17",
+                    finding_name="AgentCore Online Evaluation Coverage",
+                    finding_details="No AgentCore online evaluation configurations found.",
+                    resolution="Configure online evaluation for production agent workloads where continuous assurance is required.",
+                    reference=AGENTCORE_ONLINE_EVALUATION_REFERENCE_URL,
+                    severity=SeverityEnum.MEDIUM
+                    if required
+                    else SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.FAILED if required else StatusEnum.NA,
+                )
+            ]
+
+        findings = []
+        for summary in configs:
+            config_id = summary.get("onlineEvaluationConfigId")
+            name = summary.get("onlineEvaluationConfigName", config_id or "unknown")
+            try:
+                detail = agentcore_client.get_online_evaluation_config(
+                    onlineEvaluationConfigId=config_id
+                )
+                sampling = (
+                    (detail.get("rule") or {})
+                    .get("samplingConfig", {})
+                    .get("samplingPercentage", 0)
+                )
+                data_source = (detail.get("dataSourceConfig") or {}).get(
+                    "cloudWatchLogs", {}
+                )
+                output = (detail.get("outputConfig") or {}).get("cloudWatchConfig", {})
+                operational = all(
+                    [
+                        detail.get("status") == "ACTIVE",
+                        detail.get("executionStatus") == "ENABLED",
+                        sampling > 0,
+                        bool(detail.get("evaluators")),
+                        bool(data_source.get("logGroupNames"))
+                        or bool(data_source.get("serviceNames")),
+                        bool(output.get("logGroupName")),
+                    ]
+                )
+                findings.append(
+                    create_finding(
+                        check_id="AC-17",
+                        finding_name="AgentCore Online Evaluation Coverage",
+                        finding_details=(
+                            f"Online evaluation '{name}' ({config_id}) is active with sampling, evaluators, input logs, and output logging."
+                            if operational
+                            else f"Online evaluation '{name}' ({config_id}) is missing one or more operational coverage settings."
+                        ),
+                        resolution=(
+                            "No action required. Confirm the rule filters cover the intended production traces."
+                            if operational
+                            else "Set the evaluation ACTIVE and ENABLED, use non-zero sampling, add evaluators, and configure CloudWatch input and output log groups."
+                        ),
+                        reference=AGENTCORE_ONLINE_EVALUATION_REFERENCE_URL,
+                        severity=SeverityEnum.MEDIUM
+                        if required
+                        else SeverityEnum.INFORMATIONAL,
+                        status=(
+                            StatusEnum.PASSED
+                            if operational
+                            else StatusEnum.FAILED
+                            if required
+                            else StatusEnum.NA
+                        ),
+                    )
+                )
+            except Exception as error:
+                findings.append(
+                    create_finding(
+                        check_id="AC-17",
+                        finding_name="AgentCore Online Evaluation Coverage",
+                        finding_details=f"Online evaluation '{name}' could not be assessed: {type(error).__name__}.",
+                        resolution="Grant bedrock-agentcore:GetOnlineEvaluationConfig and retry.",
+                        reference=AGENTCORE_ONLINE_EVALUATION_REFERENCE_URL,
+                        severity=SeverityEnum.INFORMATIONAL,
+                        status=StatusEnum.NA,
+                    )
+                )
+        return findings
+    except Exception as error:
+        return [
+            create_finding(
+                check_id="AC-17",
+                finding_name="AgentCore Online Evaluation Coverage",
+                finding_details=f"Could not list online evaluation configurations: {type(error).__name__}.",
+                resolution="Grant bedrock-agentcore:ListOnlineEvaluationConfigs and retry.",
+                reference=AGENTCORE_ONLINE_EVALUATION_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
 
 
 def check_agentcore_memory_configuration() -> List[Dict[str, Any]]:
@@ -2756,6 +3223,10 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
         policy_engine_config = gateway_details.get("policyEngineConfiguration") or {}
         policy_engine_mode = policy_engine_config.get("mode")
         policy_engine_arn = policy_engine_config.get("arn")
+        policy_engine_id = (
+            policy_engine_config.get("policyEngineId")
+            or (policy_engine_arn or "").rsplit("/", 1)[-1]
+        )
 
         if authorizer_type in {"AWS_IAM", "CUSTOM_JWT"}:
             findings.append(
@@ -2835,17 +3306,78 @@ def check_agentcore_gateway_agentic_security() -> List[Dict[str, Any]]:
                 )
             )
         else:
-            findings.append(
-                create_finding(
-                    check_id="AG-25",
-                    finding_name="Agentic AI Gateway Tool Policy Enforcement",
-                    finding_details=f"Gateway '{gateway_name}' ({gateway_id}) has policy engine {policy_engine_arn or 'unknown'} in ENFORCE mode.",
-                    resolution="No action required",
-                    reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
-                    severity=SeverityEnum.HIGH,
-                    status=StatusEnum.PASSED,
+            try:
+                policies = _agentcore_list_all(
+                    "list_policies",
+                    ["policies"],
+                    policyEngineId=policy_engine_id,
                 )
-            )
+                active_policies = [
+                    policy
+                    for policy in policies
+                    if policy.get("status") == "ACTIVE"
+                    and policy.get("enforcementMode") == "ACTIVE"
+                ]
+                non_enforcing = [
+                    policy
+                    for policy in policies
+                    if policy.get("status") != "ACTIVE"
+                    or policy.get("enforcementMode") != "ACTIVE"
+                ]
+                if not active_policies:
+                    findings.append(
+                        create_finding(
+                            check_id="AG-25",
+                            finding_name="Agentic AI Gateway Tool Policy Enforcement Missing",
+                            finding_details=(
+                                f"Gateway '{gateway_name}' ({gateway_id}) has policy engine "
+                                f"{policy_engine_arn or policy_engine_id or 'unknown'} in ENFORCE "
+                                "mode, but it has no ACTIVE policies with ACTIVE enforcement."
+                            ),
+                            resolution="Create or activate at least one enforcing policy. LOG_ONLY policies do not change caller responses.",
+                            reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                            severity=SeverityEnum.HIGH,
+                            status=StatusEnum.FAILED,
+                        )
+                    )
+                else:
+                    advisory = (
+                        f" {len(non_enforcing)} additional policies are inactive or LOG_ONLY."
+                        if non_enforcing
+                        else ""
+                    )
+                    findings.append(
+                        create_finding(
+                            check_id="AG-25",
+                            finding_name="Agentic AI Gateway Tool Policy Enforcement",
+                            finding_details=(
+                                f"Gateway '{gateway_name}' ({gateway_id}) has policy engine "
+                                f"{policy_engine_arn or policy_engine_id or 'unknown'} in ENFORCE "
+                                f"mode with {len(active_policies)} active enforcing policies."
+                                f"{advisory}"
+                            ),
+                            resolution=(
+                                "Review inactive or LOG_ONLY policies before relying on them for authorization."
+                                if non_enforcing
+                                else "No action required"
+                            ),
+                            reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                            severity=SeverityEnum.HIGH,
+                            status=StatusEnum.PASSED,
+                        )
+                    )
+            except Exception as error:
+                findings.append(
+                    create_finding(
+                        check_id="AG-25",
+                        finding_name="Agentic AI Gateway Tool Policy Enforcement",
+                        finding_details=f"Gateway '{gateway_name}' policy enforcement could not be fully assessed: {type(error).__name__}.",
+                        resolution="Grant bedrock-agentcore:ListPolicies and retry the assessment.",
+                        reference=AGENTCORE_POLICY_ENGINE_REFERENCE_URL,
+                        severity=SeverityEnum.INFORMATIONAL,
+                        status=StatusEnum.NA,
+                    )
+                )
 
         if gateway_details.get("exceptionLevel") == "DEBUG":
             findings.append(
@@ -3078,6 +3610,8 @@ def lambda_handler(event, context):
             f"Starting AgentCore security assessment for execution: {execution_id}"
         )
 
+        browser_inventory = get_custom_browser_inventory()
+
         # Execute regional assessment checks (IAM-only checks AC-02/AC-03 and the
         # global service-linked role check AC-09 are run separately, once, on the
         # primary region above)
@@ -3085,13 +3619,29 @@ def lambda_handler(event, context):
             ("VPC Configuration", check_agentcore_vpc_configuration),
             ("Observability", check_agentcore_observability),
             ("Encryption", check_agentcore_encryption),
-            ("Browser Tool Recording", check_browser_tool_recording),
+            (
+                "Browser Tool Recording",
+                lambda: check_browser_tool_recording(browser_inventory),
+            ),
             ("Memory Configuration", check_agentcore_memory_configuration),
             ("Gateway Configuration", check_agentcore_gateway_configuration),
             ("VPC Endpoints", check_agentcore_vpc_endpoints),
             ("Resource-Based Policies", check_agentcore_resource_based_policies),
             ("Policy Engine Encryption", check_agentcore_policy_engine_encryption),
             ("Gateway Encryption", check_agentcore_gateway_encryption),
+            ("Identity Token Vault Encryption", check_agentcore_token_vault_encryption),
+            (
+                "Code Interpreter Isolation",
+                check_agentcore_code_interpreter_isolation,
+            ),
+            (
+                "Custom Browser Isolation",
+                lambda: check_agentcore_browser_network_isolation(browser_inventory),
+            ),
+            (
+                "Online Evaluation Coverage",
+                check_agentcore_online_evaluation_coverage,
+            ),
             ("Agentic Gateway Security", check_agentcore_gateway_agentic_security),
         ]
 

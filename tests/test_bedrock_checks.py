@@ -1551,6 +1551,98 @@ class TestBR15CrossAccountGuardrails:
         assert "not in use" in findings[0]["Finding_Details"]
 
     @patch("bedrock_app.boto3.client")
+    def test_br15_member_account_with_local_enforcement_returns_na(self, mock_client):
+        bedrock_client = MagicMock()
+        bedrock_client.list_enforced_guardrails_configuration.return_value = {
+            "guardrailsConfig": [{"guardrailIdentifier": "guardrail-1"}]
+        }
+        org_client = MagicMock()
+        org_client.describe_organization.return_value = {
+            "Organization": {"MasterAccountId": "111111111111"}
+        }
+        sts_client = MagicMock()
+        sts_client.get_caller_identity.return_value = {"Account": "222222222222"}
+
+        def client_factory(service, **kwargs):
+            return {
+                "bedrock": bedrock_client,
+                "organizations": org_client,
+                "sts": sts_client,
+            }[service]
+
+        mock_client.side_effect = client_factory
+
+        finding = extract_csv_data(
+            bedrock_app.check_bedrock_cross_account_guardrails(region="Global")
+        )[0]
+
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+        assert "Found 1 account-level" in finding["Finding_Details"]
+        assert "cannot be fully established" in finding["Finding_Details"]
+
+    @patch("bedrock_app.boto3.client")
+    def test_br15_member_account_does_not_claim_absence_after_probe_error(
+        self, mock_client
+    ):
+        bedrock_client = MagicMock()
+        bedrock_client.list_enforced_guardrails_configuration.side_effect = ClientError(
+            {"Error": {"Code": "AccessDeniedException"}},
+            "ListEnforcedGuardrailsConfiguration",
+        )
+        org_client = MagicMock()
+        org_client.describe_organization.return_value = {
+            "Organization": {"MasterAccountId": "111111111111"}
+        }
+        sts_client = MagicMock()
+        sts_client.get_caller_identity.return_value = {"Account": "222222222222"}
+
+        def client_factory(service, **kwargs):
+            return {
+                "bedrock": bedrock_client,
+                "organizations": org_client,
+                "sts": sts_client,
+            }[service]
+
+        mock_client.side_effect = client_factory
+
+        finding = extract_csv_data(
+            bedrock_app.check_bedrock_cross_account_guardrails(region="Global")
+        )[0]
+
+        assert finding["Status"] == "N/A"
+        assert "could not be assessed" in finding["Finding_Details"]
+        assert "No account-level" not in finding["Finding_Details"]
+
+    @patch("bedrock_app.boto3.client")
+    def test_br15_organizations_not_in_use_does_not_claim_absence_after_probe_error(
+        self, mock_client
+    ):
+        bedrock_client = MagicMock()
+        bedrock_client.list_enforced_guardrails_configuration.side_effect = ClientError(
+            {"Error": {"Code": "AccessDeniedException"}},
+            "ListEnforcedGuardrailsConfiguration",
+        )
+        org_client = MagicMock()
+        org_client.describe_organization.side_effect = ClientError(
+            {"Error": {"Code": "AWSOrganizationsNotInUseException"}},
+            "DescribeOrganization",
+        )
+
+        def client_factory(service, **kwargs):
+            return bedrock_client if service == "bedrock" else org_client
+
+        mock_client.side_effect = client_factory
+
+        finding = extract_csv_data(
+            bedrock_app.check_bedrock_cross_account_guardrails(region="Global")
+        )[0]
+
+        assert finding["Status"] == "N/A"
+        assert "could not be assessed" in finding["Finding_Details"]
+        assert "no account-level" not in finding["Finding_Details"]
+
+    @patch("bedrock_app.boto3.client")
     def test_br15_policy_type_not_enabled_returns_failed(self, mock_client):
         check = bedrock_app.check_bedrock_cross_account_guardrails
 
@@ -1605,6 +1697,9 @@ class TestBR15CrossAccountGuardrails:
         }
         org_client.list_policies.return_value = {
             "Policies": [{"Id": "p-123", "Name": "BedrockGuardrailPolicy"}]
+        }
+        org_client.list_targets_for_policy.return_value = {
+            "Targets": [{"TargetId": "r-abc123", "Type": "ROOT"}]
         }
 
         sts_client = MagicMock()
@@ -3558,6 +3653,7 @@ class TestAgenticBedrockMapping:
         "BR-28": "AG-01",
         "BR-29": "AG-13",
         "BR-32": "AG-14",
+        "BR-34": "AG-30",
     }
 
     def test_all_bedrock_agentic_mappings_emit_expected_rows(self):
@@ -3602,6 +3698,415 @@ class TestAgenticBedrockMapping:
         assert set(actual_by_source) == set(self.EXPECTED_AGENTIC_MAPPINGS)
         for source_check_id, expected_ag_id in self.EXPECTED_AGENTIC_MAPPINGS.items():
             assert actual_by_source[source_check_id]["Check_ID"] == expected_ag_id
+
+
+class TestProposedBedrockChecks:
+    """BR-34 through BR-40 proposal checks."""
+
+    @staticmethod
+    def _guardrail_inventory(filters):
+        return {
+            "items": [
+                {
+                    "summary": {"id": "gr-1", "name": "TestGuardrail"},
+                    "detail": {
+                        "contentPolicy": {
+                            "filters": filters,
+                            "tier": {"tierName": "STANDARD"},
+                        }
+                    },
+                }
+            ],
+            "errors": [],
+            "list_error": None,
+        }
+
+    def test_br34_preventive_prompt_attack_passes(self):
+        result = bedrock_app.check_bedrock_guardrail_prompt_attack_filter(
+            region="us-east-1",
+            guardrail_inventory=self._guardrail_inventory(
+                [
+                    {
+                        "type": "PROMPT_ATTACK",
+                        "inputEnabled": True,
+                        "inputAction": "BLOCK",
+                        "inputStrength": "HIGH",
+                    }
+                ]
+            ),
+        )
+        finding = extract_csv_data(result)[0]
+        assert finding["Check_ID"] == "BR-34"
+        assert finding["Status"] == "Passed"
+
+    def test_br34_detect_only_prompt_attack_fails(self):
+        result = bedrock_app.check_bedrock_guardrail_prompt_attack_filter(
+            region="us-east-1",
+            guardrail_inventory=self._guardrail_inventory(
+                [
+                    {
+                        "type": "PROMPT_ATTACK",
+                        "inputEnabled": True,
+                        "inputAction": "NONE",
+                        "inputStrength": "HIGH",
+                    }
+                ]
+            ),
+        )
+        assert extract_csv_data(result)[0]["Status"] == "Failed"
+
+    def test_br35_image_gap_is_advisory(self):
+        result = bedrock_app.check_bedrock_guardrail_image_content_filters(
+            region="us-east-1",
+            guardrail_inventory=self._guardrail_inventory(
+                [
+                    {
+                        "type": "HATE",
+                        "inputModalities": ["TEXT"],
+                        "outputModalities": ["TEXT"],
+                    }
+                ]
+            ),
+        )
+        finding = extract_csv_data(result)[0]
+        assert finding["Check_ID"] == "BR-35"
+        assert finding["Severity"] == "Informational"
+        assert finding["Status"] == "N/A"
+
+    def test_br35_misconduct_is_not_required_when_absent(self):
+        filters = [
+            {
+                "type": filter_type,
+                "inputModalities": ["TEXT", "IMAGE"],
+                "outputModalities": ["TEXT", "IMAGE"],
+            }
+            for filter_type in ("HATE", "INSULTS", "SEXUAL", "VIOLENCE")
+        ]
+        result = bedrock_app.check_bedrock_guardrail_image_content_filters(
+            region="us-east-1",
+            guardrail_inventory=self._guardrail_inventory(filters),
+        )
+        finding = extract_csv_data(result)[0]
+        assert "reports IMAGE input/output coverage" in finding["Finding_Details"]
+        assert "MISCONDUCT" not in finding["Finding_Details"]
+
+    def test_br35_assesses_misconduct_modalities_when_configured(self):
+        filters = [
+            {
+                "type": filter_type,
+                "inputModalities": ["TEXT", "IMAGE"],
+                "outputModalities": ["TEXT", "IMAGE"],
+            }
+            for filter_type in ("HATE", "INSULTS", "SEXUAL", "VIOLENCE")
+        ]
+        filters.append(
+            {
+                "type": "MISCONDUCT",
+                "inputModalities": ["TEXT"],
+                "outputModalities": ["TEXT"],
+            }
+        )
+        result = bedrock_app.check_bedrock_guardrail_image_content_filters(
+            region="us-east-1",
+            guardrail_inventory=self._guardrail_inventory(filters),
+        )
+        finding = extract_csv_data(result)[0]
+        assert "image-modality gaps for: MISCONDUCT" in finding["Finding_Details"]
+        assert finding["Severity"] == "Informational"
+        assert finding["Status"] == "N/A"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br36_untagged_profile_fails_low(self, mock_client):
+        client = MagicMock()
+        client.list_inference_profiles.return_value = {
+            "inferenceProfileSummaries": [
+                {
+                    "inferenceProfileArn": "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/p-1",
+                    "inferenceProfileName": "profile-1",
+                }
+            ]
+        }
+        client.list_tags_for_resource.return_value = {"tags": []}
+        mock_client.return_value = client
+        finding = extract_csv_data(
+            bedrock_app.check_bedrock_inference_profile_governance("us-east-1")
+        )[0]
+        assert finding["Check_ID"] == "BR-36"
+        assert finding["Status"] == "Failed"
+        assert finding["Severity"] == "Low"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br36_tagged_profile_passes(self, mock_client):
+        client = MagicMock()
+        client.list_inference_profiles.return_value = {
+            "inferenceProfileSummaries": [
+                {
+                    "inferenceProfileArn": "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/p-1",
+                    "inferenceProfileName": "profile-1",
+                }
+            ]
+        }
+        client.list_tags_for_resource.return_value = {
+            "tags": [{"key": "owner", "value": "ml-team"}]
+        }
+        mock_client.return_value = client
+        finding = extract_csv_data(
+            bedrock_app.check_bedrock_inference_profile_governance("us-east-1")
+        )[0]
+        assert finding["Status"] == "Passed"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br37_provider_sharing_fails(self, mock_client):
+        mock_client.return_value.get_account_data_retention.return_value = {
+            "mode": "provider_data_share"
+        }
+        finding = extract_csv_data(
+            bedrock_app.check_bedrock_account_data_retention("us-east-1")
+        )[0]
+        assert finding["Check_ID"] == "BR-37"
+        assert finding["Status"] == "Failed"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br37_zero_retention_passes(self, mock_client):
+        mock_client.return_value.get_account_data_retention.return_value = {
+            "mode": "none"
+        }
+        finding = extract_csv_data(
+            bedrock_app.check_bedrock_account_data_retention("us-east-1")
+        )[0]
+        assert finding["Status"] == "Passed"
+
+    @patch.dict(
+        os.environ,
+        {"REQUIRE_BEDROCK_ZERO_DATA_RETENTION": "false"},
+        clear=False,
+    )
+    @patch("bedrock_app.boto3.client")
+    def test_br37_default_retention_is_advisory_na(self, mock_client):
+        mock_client.return_value.get_account_data_retention.return_value = {
+            "mode": "default"
+        }
+
+        finding = extract_csv_data(
+            bedrock_app.check_bedrock_account_data_retention("us-east-1")
+        )[0]
+
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+        assert finding["Resolution"].startswith("Review the inherited/default")
+
+    @patch.dict(
+        os.environ,
+        {"REQUIRE_BEDROCK_ZERO_DATA_RETENTION": "true"},
+        clear=False,
+    )
+    @patch("bedrock_app.boto3.client")
+    def test_br37_default_retention_fails_when_required(self, mock_client):
+        mock_client.return_value.get_account_data_retention.return_value = {
+            "mode": "default"
+        }
+
+        finding = extract_csv_data(
+            bedrock_app.check_bedrock_account_data_retention("us-east-1")
+        )[0]
+
+        assert finding["Status"] == "Failed"
+        assert finding["Severity"] == "High"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br38_policy_without_cmk_fails(self, mock_client):
+        client = MagicMock()
+        client.list_automated_reasoning_policies.return_value = {
+            "automatedReasoningPolicySummaries": [
+                {
+                    "policyArn": "arn:aws:bedrock:us-east-1:123456789012:automated-reasoning-policy/p-1",
+                    "policyId": "p-1",
+                    "name": "policy-1",
+                }
+            ]
+        }
+        client.get_automated_reasoning_policy.return_value = {"kmsKeyArn": None}
+        mock_client.return_value = client
+        finding = extract_csv_data(
+            bedrock_app.check_bedrock_automated_reasoning_policy_encryption("us-east-1")
+        )[0]
+        assert finding["Check_ID"] == "BR-38"
+        assert finding["Status"] == "Failed"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br38_policy_with_cmk_passes(self, mock_client):
+        client = MagicMock()
+        client.list_automated_reasoning_policies.return_value = {
+            "automatedReasoningPolicySummaries": [
+                {
+                    "policyArn": "arn:aws:bedrock:us-east-1:123456789012:automated-reasoning-policy/p-1",
+                    "policyId": "p-1",
+                    "name": "policy-1",
+                }
+            ]
+        }
+        client.get_automated_reasoning_policy.return_value = {
+            "kmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/key-1"
+        }
+        mock_client.return_value = client
+        finding = extract_csv_data(
+            bedrock_app.check_bedrock_automated_reasoning_policy_encryption("us-east-1")
+        )[0]
+        assert finding["Status"] == "Passed"
+
+    def test_br39_and_br40_share_marketplace_inventory(self):
+        inventory = {
+            "items": [
+                {
+                    "summary": {"endpointArn": "arn:endpoint-1"},
+                    "detail": {
+                        "endpointConfig": {
+                            "sageMaker": {
+                                "vpc": {
+                                    "subnetIds": ["subnet-1"],
+                                    "securityGroupIds": ["sg-1"],
+                                },
+                                "kmsEncryptionKey": "arn:kms:key-1",
+                            }
+                        }
+                    },
+                }
+            ],
+            "errors": [],
+            "list_error": None,
+        }
+        br39 = extract_csv_data(
+            bedrock_app.check_bedrock_marketplace_endpoint_vpc("us-east-1", inventory)
+        )[0]
+        br40 = extract_csv_data(
+            bedrock_app.check_bedrock_marketplace_endpoint_cmk("us-east-1", inventory)
+        )[0]
+        assert br39["Status"] == "Passed"
+        assert br40["Status"] == "Passed"
+
+    def test_br39_and_br40_missing_controls_fail(self):
+        inventory = {
+            "items": [
+                {
+                    "summary": {"endpointArn": "arn:endpoint-1"},
+                    "detail": {"endpointConfig": {"sageMaker": {}}},
+                }
+            ],
+            "errors": [],
+            "list_error": None,
+        }
+        br39 = extract_csv_data(
+            bedrock_app.check_bedrock_marketplace_endpoint_vpc("us-east-1", inventory)
+        )[0]
+        br40 = extract_csv_data(
+            bedrock_app.check_bedrock_marketplace_endpoint_cmk("us-east-1", inventory)
+        )[0]
+        assert br39["Status"] == "Failed"
+        assert br40["Status"] == "Failed"
+
+    @patch.dict(
+        os.environ,
+        {"REQUIRE_MARKETPLACE_ENDPOINT_CMK": "false"},
+        clear=False,
+    )
+    def test_br40_missing_optional_cmk_is_advisory_na(self):
+        inventory = {
+            "items": [
+                {
+                    "summary": {"endpointArn": "arn:endpoint-1"},
+                    "detail": {"endpointConfig": {"sageMaker": {}}},
+                }
+            ],
+            "errors": [],
+            "list_error": None,
+        }
+        finding = extract_csv_data(
+            bedrock_app.check_bedrock_marketplace_endpoint_cmk("us-east-1", inventory)
+        )[0]
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+        assert finding["Resolution"].startswith("No action required")
+
+    def test_new_guardrail_checks_access_denied_return_na(self):
+        inventory = {
+            "items": [],
+            "errors": [],
+            "list_error": _make_client_error("AccessDeniedException"),
+        }
+        for check in (
+            bedrock_app.check_bedrock_guardrail_prompt_attack_filter,
+            bedrock_app.check_bedrock_guardrail_image_content_filters,
+        ):
+            finding = extract_csv_data(check("us-east-1", inventory))[0]
+            assert finding["Status"] == "N/A"
+            assert finding["Severity"] == "Informational"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br36_access_denied_returns_na(self, mock_client):
+        mock_client.return_value.list_inference_profiles.side_effect = (
+            _make_client_error("AccessDeniedException")
+        )
+        finding = extract_csv_data(
+            bedrock_app.check_bedrock_inference_profile_governance("us-east-1")
+        )[0]
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br37_access_denied_returns_na(self, mock_client):
+        mock_client.return_value.get_account_data_retention.side_effect = (
+            _make_client_error("AccessDeniedException")
+        )
+        finding = extract_csv_data(
+            bedrock_app.check_bedrock_account_data_retention("us-east-1")
+        )[0]
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+
+    @patch("bedrock_app.boto3.client")
+    def test_br38_access_denied_returns_na(self, mock_client):
+        mock_client.return_value.list_automated_reasoning_policies.side_effect = (
+            _make_client_error("AccessDeniedException")
+        )
+        finding = extract_csv_data(
+            bedrock_app.check_bedrock_automated_reasoning_policy_encryption("us-east-1")
+        )[0]
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+
+    def test_marketplace_checks_access_denied_return_na(self):
+        inventory = {
+            "items": [],
+            "errors": [],
+            "list_error": _make_client_error("AccessDeniedException"),
+        }
+        for check in (
+            bedrock_app.check_bedrock_marketplace_endpoint_vpc,
+            bedrock_app.check_bedrock_marketplace_endpoint_cmk,
+        ):
+            finding = extract_csv_data(check("us-east-1", inventory))[0]
+            assert finding["Status"] == "N/A"
+            assert finding["Severity"] == "Informational"
+
+    def test_new_bedrock_operation_contracts_exist(self):
+        client = bedrock_app.boto3.client(
+            "bedrock",
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",  # pragma: allowlist secret - synthetic test credential
+        )
+        model = client.meta.service_model
+        for operation in [
+            "ListInferenceProfiles",
+            "ListTagsForResource",
+            "GetAccountDataRetention",
+            "ListAutomatedReasoningPolicies",
+            "GetAutomatedReasoningPolicy",
+            "ListMarketplaceModelEndpoints",
+            "GetMarketplaceModelEndpoint",
+            "ListEnforcedGuardrailsConfiguration",
+        ]:
+            assert model.operation_model(operation)
 
     def test_br22_na_generates_ag12_informational_na(self):
         source_findings = [

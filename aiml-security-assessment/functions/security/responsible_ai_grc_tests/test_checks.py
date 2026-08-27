@@ -3894,7 +3894,7 @@ class TestGenerateCsvReport:
             "region-b",
         ]
 
-    def test_stamp_regions_expands_missing_csv_regions(self):
+    def test_stamp_regions_labels_missing_csv_regions_global_once(self):
         findings = [
             {
                 "check_name": "Test",
@@ -3926,9 +3926,9 @@ class TestGenerateCsvReport:
         app._stamp_regions(findings, ["region-a", "region-b"])
 
         regions = [row["Region"] for row in findings[0]["csv_data"]]
-        assert regions == ["region-a", "region-b", "Global"]
+        assert regions == ["Global", "Global"]
 
-    def test_apply_region_scope_does_not_copy_failures_to_empty_regions(self):
+    def test_apply_region_scope_does_not_copy_failures_to_target_regions(self):
         findings = [
             {
                 "check_name": "Test",
@@ -3959,11 +3959,11 @@ class TestGenerateCsvReport:
         failed_rows = [row for row in rows if row["Status"] == "Failed"]
         na_rows = [row for row in rows if row["Status"] == "N/A"]
 
-        assert [row["Region"] for row in failed_rows] == ["region-with-resources"]
+        assert [row["Region"] for row in failed_rows] == ["Global"]
         assert [row["Region"] for row in na_rows] == ["region-without-resources"]
         assert na_rows[0]["Check_ID"] == "FS-00"
 
-    def test_apply_region_scope_suppresses_unscoped_rows_when_all_regions_empty(self):
+    def test_apply_region_scope_preserves_global_rows_when_all_regions_empty(self):
         findings = [
             {
                 "check_name": "Test",
@@ -3990,9 +3990,39 @@ class TestGenerateCsvReport:
 
         rows = [row for finding in findings for row in finding["csv_data"]]
 
-        assert {row["Region"] for row in rows} == {"region-a", "region-b"}
-        assert {row["Status"] for row in rows} == {"N/A"}
-        assert {row["Check_ID"] for row in rows} == {"FS-00"}
+        assert {row["Region"] for row in rows} == {"Global", "region-a", "region-b"}
+        assert {row["Status"] for row in rows} == {"Failed", "N/A"}
+        assert {row["Check_ID"] for row in rows} == {"FS-01", "FS-00"}
+
+    def test_apply_region_scope_does_not_clone_evidence_across_active_regions(self):
+        findings = [
+            {
+                "check_name": "Test",
+                "status": "WARN",
+                "csv_data": [
+                    {
+                        "Check_ID": "FS-01",
+                        "Finding": "Default-region evidence",
+                        "Finding_Details": "Collected once",
+                        "Resolution": "Fix",
+                        "Reference": "https://example.com",
+                        "Severity": "High",
+                        "Status": "Failed",
+                    }
+                ],
+            }
+        ]
+
+        with patch(
+            "finserv_app._partition_regions_by_finserv_footprint",
+            return_value=(["region-a", "region-b"], []),
+        ):
+            app._apply_region_scope(findings, ["region-a", "region-b"])
+
+        rows = [row for finding in findings for row in finding["csv_data"]]
+
+        assert len(rows) == 1
+        assert rows[0]["Region"] == "Global"
 
     def test_multiple_findings_multiple_rows(self):
         findings = [

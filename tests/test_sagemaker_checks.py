@@ -12,7 +12,7 @@ Each check is tested for:
 import sys
 import os
 import importlib.util
-from unittest.mock import patch, MagicMock
+from unittest.mock import call, patch, MagicMock
 from botocore.exceptions import EndpointConnectionError, ClientError
 
 from tests.test_helpers import extract_csv_data, assert_finding_schema
@@ -328,6 +328,554 @@ class TestSM04GuardDuty:
             assert_finding_schema(f)
 
 
+class TestProposedSageMakerChecks:
+    """SM-26 through SM-30 proposal checks (SM-29 remains reserved/deferred)."""
+
+    def test_sm26_ai_protection_enabled_passes(self):
+        inventory = {
+            "detector_id": "detector-1",
+            "detail": {
+                "Status": "ENABLED",
+                "Features": [{"Name": "AI_PROTECTION", "Status": "ENABLED"}],
+            },
+            "error": None,
+        }
+        finding = extract_csv_data(
+            sagemaker_app.check_guardduty_ai_protection("us-east-1", inventory)
+        )[0]
+        assert finding["Check_ID"] == "SM-26"
+        assert finding["Status"] == "Passed"
+
+    def test_sm26_ai_protection_disabled_fails(self):
+        inventory = {
+            "detector_id": "detector-1",
+            "detail": {"Status": "ENABLED", "Features": []},
+            "error": None,
+        }
+        finding = extract_csv_data(
+            sagemaker_app.check_guardduty_ai_protection("us-east-1", inventory)
+        )[0]
+        assert finding["Status"] == "Failed"
+        assert finding["Severity"] == "High"
+
+    def test_sm27_and_sm28_share_hyperpod_inventory(self):
+        inventory = {
+            "items": [
+                {
+                    "summary": {"ClusterName": "cluster-1"},
+                    "detail": {
+                        "ClusterName": "cluster-1",
+                        "VpcConfig": {
+                            "Subnets": ["subnet-1"],
+                            "SecurityGroupIds": ["sg-1"],
+                        },
+                        "InstanceGroups": [
+                            {
+                                "InstanceGroupName": "workers",
+                                "InstanceStorageConfigs": [
+                                    {
+                                        "EbsVolumeConfig": {
+                                            "RootVolume": True,
+                                            "VolumeKmsKeyId": "arn:kms:key-1",
+                                        }
+                                    },
+                                    {
+                                        "EbsVolumeConfig": {
+                                            "RootVolume": False,
+                                            "VolumeKmsKeyId": "arn:kms:key-2",
+                                        }
+                                    },
+                                ],
+                            }
+                        ],
+                    },
+                }
+            ],
+            "errors": [],
+            "list_error": None,
+        }
+        sm27 = extract_csv_data(
+            sagemaker_app.check_hyperpod_ebs_cmk_encryption("us-east-1", inventory)
+        )[0]
+        sm28 = extract_csv_data(
+            sagemaker_app.check_hyperpod_vpc_configuration("us-east-1", inventory)
+        )[0]
+        assert sm27["Status"] == "Passed"
+        assert sm28["Status"] == "Passed"
+
+    def test_sm27_missing_root_volume_config_fails(self):
+        inventory = {
+            "items": [
+                {
+                    "summary": {"ClusterName": "cluster-1"},
+                    "detail": {
+                        "ClusterName": "cluster-1",
+                        "InstanceGroups": [
+                            {
+                                "InstanceGroupName": "workers",
+                                "InstanceStorageConfigs": [],
+                            }
+                        ],
+                    },
+                }
+            ],
+            "errors": [],
+            "list_error": None,
+        }
+        finding = extract_csv_data(
+            sagemaker_app.check_hyperpod_ebs_cmk_encryption("us-east-1", inventory)
+        )[0]
+        assert finding["Status"] == "Failed"
+        assert "root volume" in finding["Finding_Details"]
+        assert finding["Finding_Details"].count("root volume") == 1
+
+    def test_sm27_deduplicates_unencrypted_volume_labels(self):
+        inventory = {
+            "items": [
+                {
+                    "summary": {"ClusterName": "cluster-1"},
+                    "detail": {
+                        "ClusterName": "cluster-1",
+                        "InstanceGroups": [
+                            {
+                                "InstanceGroupName": "workers",
+                                "InstanceStorageConfigs": [
+                                    {
+                                        "EbsVolumeConfig": {
+                                            "RootVolume": True,
+                                        }
+                                    },
+                                    {
+                                        "EbsVolumeConfig": {
+                                            "RootVolume": True,
+                                        }
+                                    },
+                                ],
+                            }
+                        ],
+                    },
+                }
+            ],
+            "errors": [],
+            "list_error": None,
+        }
+        finding = extract_csv_data(
+            sagemaker_app.check_hyperpod_ebs_cmk_encryption("us-east-1", inventory)
+        )[0]
+        assert finding["Finding_Details"].count("root volume") == 1
+
+    def test_sm28_incomplete_vpc_fails(self):
+        inventory = {
+            "items": [
+                {
+                    "summary": {"ClusterName": "cluster-1"},
+                    "detail": {
+                        "ClusterName": "cluster-1",
+                        "InstanceGroups": [
+                            {
+                                "InstanceGroupName": "workers",
+                            }
+                        ],
+                    },
+                }
+            ],
+            "errors": [],
+            "list_error": None,
+        }
+        finding = extract_csv_data(
+            sagemaker_app.check_hyperpod_vpc_configuration("us-east-1", inventory)
+        )[0]
+        assert finding["Status"] == "Failed"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm30_public_resource_policy_fails(self, mock_client):
+        sagemaker_client = MagicMock()
+        sts_client = MagicMock()
+        sts_client.get_caller_identity.return_value = {"Account": "123456789012"}
+        sagemaker_client.get_model_package_group_policy.return_value = {
+            "ResourcePolicy": (
+                '{"Version":"2012-10-17","Statement":'
+                '[{"Effect":"Allow","Principal":"*",'
+                '"Action":"sagemaker:CreateModelPackage","Resource":"*"}]}'
+            )
+        }
+
+        def client_factory(service, **kwargs):
+            return sts_client if service == "sts" else sagemaker_client
+
+        mock_client.side_effect = client_factory
+        finding = extract_csv_data(
+            sagemaker_app.check_model_package_group_policy_exposure(
+                "us-east-1",
+                [{"ModelPackageGroupName": "group-1"}],
+            )
+        )[0]
+        assert finding["Check_ID"] == "SM-30"
+        assert finding["Status"] == "Failed"
+
+    def test_sm30_condition_boundaries_accept_supported_patterns(self):
+        boundaries = sagemaker_app._policy_condition_boundaries(
+            {
+                "Condition": {
+                    "StringLike": {
+                        "aws:PrincipalOrgID": "o-a1b2c3d4e5",
+                    },
+                    "ArnLike": {
+                        "aws:PrincipalArn": "arn:aws:iam::111122223333:role/ml-*",
+                    },
+                    "ForAnyValue:StringLike": {
+                        "aws:PrincipalOrgPaths": "o-f6g7h8i9j0/r-ab12/ou-ab12-11111111/*",
+                    },
+                }
+            }
+        )
+        assert boundaries["accounts"] == {"111122223333"}
+        assert boundaries["organizations"] == {
+            "o-a1b2c3d4e5",
+            "o-f6g7h8i9j0",
+        }
+
+    def test_sm30_condition_boundaries_reject_unbounded_patterns(self):
+        boundaries = sagemaker_app._policy_condition_boundaries(
+            {
+                "Condition": {
+                    "StringLike": {
+                        "aws:PrincipalOrgID": "o-*",
+                    },
+                    "ArnLike": {
+                        "aws:PrincipalArn": "arn:aws:iam::*:role/ml-*",
+                    },
+                    "ForAllValues:StringLike": {
+                        "aws:PrincipalOrgPaths": "o-a1b2c3d4e5/*",
+                    },
+                }
+            }
+        )
+        assert boundaries == {"accounts": set(), "organizations": set()}
+
+    def test_sm30_for_all_org_paths_requires_non_null_condition(self):
+        boundaries = sagemaker_app._policy_condition_boundaries(
+            {
+                "Condition": {
+                    "ForAllValues:StringLike": {
+                        "aws:PrincipalOrgPaths": "o-a1b2c3d4e5/*",
+                    },
+                    "Null": {
+                        "aws:PrincipalOrgPaths": "false",
+                    },
+                }
+            }
+        )
+        assert boundaries["organizations"] == {"o-a1b2c3d4e5"}
+
+    @patch.dict(
+        os.environ,
+        {"AIML_APPROVED_ORG_IDS": "o-a1b2c3d4e5"},
+        clear=False,
+    )
+    @patch("sagemaker_app.boto3.client")
+    def test_sm30_org_path_condition_is_not_public(self, mock_client):
+        sagemaker_client = MagicMock()
+        sts_client = MagicMock()
+        sts_client.get_caller_identity.return_value = {"Account": "123456789012"}
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": "*",
+                    "Action": "sagemaker:CreateModelPackage",
+                    "Resource": "*",
+                    "Condition": {
+                        "ForAnyValue:StringLike": {
+                            "aws:PrincipalOrgPaths": (
+                                "o-a1b2c3d4e5/r-ab12/ou-ab12-11111111/*"
+                            )
+                        }
+                    },
+                }
+            ],
+        }
+        sagemaker_client.get_model_package_group_policy.return_value = {
+            "ResourcePolicy": sagemaker_app.json.dumps(policy)
+        }
+
+        def client_factory(service, **kwargs):
+            return sts_client if service == "sts" else sagemaker_client
+
+        mock_client.side_effect = client_factory
+        finding = extract_csv_data(
+            sagemaker_app.check_model_package_group_policy_exposure(
+                "us-east-1",
+                [{"ModelPackageGroupName": "group-1"}],
+            )
+        )[0]
+        assert finding["Status"] == "Passed"
+        assert finding["Finding"] == "Model Package Group Resource Policy Exposure"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm30_allow_notprincipal_is_unsupported(self, mock_client):
+        sagemaker_client = MagicMock()
+        sts_client = MagicMock()
+        sts_client.get_caller_identity.return_value = {"Account": "123456789012"}
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "NotPrincipal": {
+                        "AWS": "arn:aws:iam::111122223333:root",
+                    },
+                    "Action": "sagemaker:CreateModelPackage",
+                    "Resource": "*",
+                }
+            ],
+        }
+        sagemaker_client.get_model_package_group_policy.return_value = {
+            "ResourcePolicy": sagemaker_app.json.dumps(policy)
+        }
+
+        def client_factory(service, **kwargs):
+            return sts_client if service == "sts" else sagemaker_client
+
+        mock_client.side_effect = client_factory
+        finding = extract_csv_data(
+            sagemaker_app.check_model_package_group_policy_exposure(
+                "us-east-1",
+                [{"ModelPackageGroupName": "group-1"}],
+            )
+        )[0]
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+        assert finding["Finding"] == ("Unsupported Model Package Group Resource Policy")
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm30_deny_notprincipal_does_not_create_exposure(self, mock_client):
+        sagemaker_client = MagicMock()
+        sts_client = MagicMock()
+        sts_client.get_caller_identity.return_value = {"Account": "123456789012"}
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Deny",
+                    "NotPrincipal": {
+                        "AWS": "arn:aws:iam::123456789012:role/approved",
+                    },
+                    "Action": "sagemaker:*",
+                    "Resource": "*",
+                },
+                {
+                    "Effect": "Allow",
+                    "Principal": {
+                        "AWS": "arn:aws:iam::123456789012:role/approved",
+                    },
+                    "Action": "sagemaker:CreateModelPackage",
+                    "Resource": "*",
+                },
+            ],
+        }
+        sagemaker_client.get_model_package_group_policy.return_value = {
+            "ResourcePolicy": sagemaker_app.json.dumps(policy)
+        }
+
+        def client_factory(service, **kwargs):
+            return sts_client if service == "sts" else sagemaker_client
+
+        mock_client.side_effect = client_factory
+        finding = extract_csv_data(
+            sagemaker_app.check_model_package_group_policy_exposure(
+                "us-east-1",
+                [{"ModelPackageGroupName": "group-1"}],
+            )
+        )[0]
+        assert finding["Status"] == "Passed"
+        assert finding["Finding"] == "Model Package Group Resource Policy Exposure"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm30_public_allow_precedes_unsupported_statement(self, mock_client):
+        sagemaker_client = MagicMock()
+        sts_client = MagicMock()
+        sts_client.get_caller_identity.return_value = {"Account": "123456789012"}
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "NotPrincipal": {
+                        "AWS": "arn:aws:iam::111122223333:root",
+                    },
+                    "Action": "sagemaker:CreateModelPackage",
+                    "Resource": "*",
+                },
+                {
+                    "Effect": "Allow",
+                    "Principal": "*",
+                    "Action": "sagemaker:CreateModelPackage",
+                    "Resource": "*",
+                },
+            ],
+        }
+        sagemaker_client.get_model_package_group_policy.return_value = {
+            "ResourcePolicy": sagemaker_app.json.dumps(policy)
+        }
+
+        def client_factory(service, **kwargs):
+            return sts_client if service == "sts" else sagemaker_client
+
+        mock_client.side_effect = client_factory
+        finding = extract_csv_data(
+            sagemaker_app.check_model_package_group_policy_exposure(
+                "us-east-1",
+                [{"ModelPackageGroupName": "group-1"}],
+            )
+        )[0]
+        assert finding["Status"] == "Failed"
+        assert finding["Finding"] == "Public Model Package Group Resource Policy"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm30_unknown_caller_account_returns_na(self, mock_client):
+        sagemaker_client = MagicMock()
+        sts_client = MagicMock()
+        sts_client.get_caller_identity.side_effect = RuntimeError("STS unavailable")
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {
+                        "AWS": "arn:aws:iam::123456789012:role/registry-writer"
+                    },
+                    "Action": "sagemaker:CreateModelPackage",
+                    "Resource": "*",
+                }
+            ],
+        }
+        sagemaker_client.get_model_package_group_policy.return_value = {
+            "ResourcePolicy": sagemaker_app.json.dumps(policy)
+        }
+
+        def client_factory(service, **kwargs):
+            return sts_client if service == "sts" else sagemaker_client
+
+        mock_client.side_effect = client_factory
+        finding = extract_csv_data(
+            sagemaker_app.check_model_package_group_policy_exposure(
+                "us-east-1",
+                [{"ModelPackageGroupName": "group-1"}],
+            )
+        )[0]
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+        assert "Account Context Unavailable" in finding["Finding"]
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm30_public_policy_fails_even_when_sts_unavailable(self, mock_client):
+        sagemaker_client = MagicMock()
+        sts_client = MagicMock()
+        sts_client.get_caller_identity.side_effect = RuntimeError("STS unavailable")
+        sagemaker_client.get_model_package_group_policy.return_value = {
+            "ResourcePolicy": (
+                '{"Version":"2012-10-17","Statement":'
+                '[{"Effect":"Allow","Principal":"*",'
+                '"Action":"sagemaker:CreateModelPackage","Resource":"*"}]}'
+            )
+        }
+
+        def client_factory(service, **kwargs):
+            return sts_client if service == "sts" else sagemaker_client
+
+        mock_client.side_effect = client_factory
+        finding = extract_csv_data(
+            sagemaker_app.check_model_package_group_policy_exposure(
+                "us-east-1",
+                [{"ModelPackageGroupName": "group-1"}],
+            )
+        )[0]
+        assert finding["Status"] == "Failed"
+        assert finding["Finding"] == "Public Model Package Group Resource Policy"
+
+    def test_new_sagemaker_checks_access_denied_return_na(self):
+        error = _make_client_error("AccessDeniedException")
+        sm26 = extract_csv_data(
+            sagemaker_app.check_guardduty_ai_protection(
+                "us-east-1",
+                {"detector_id": None, "detail": None, "error": error},
+            )
+        )[0]
+        inventory = {"items": [], "errors": [], "list_error": error}
+        sm27 = extract_csv_data(
+            sagemaker_app.check_hyperpod_ebs_cmk_encryption("us-east-1", inventory)
+        )[0]
+        sm28 = extract_csv_data(
+            sagemaker_app.check_hyperpod_vpc_configuration("us-east-1", inventory)
+        )[0]
+        for finding in (sm26, sm27, sm28):
+            assert finding["Status"] == "N/A"
+            assert finding["Severity"] == "Informational"
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm30_policy_access_denied_returns_na_and_continues(self, mock_client):
+        sagemaker_client = MagicMock()
+        sts_client = MagicMock()
+        sts_client.get_caller_identity.return_value = {"Account": "123456789012"}
+        sagemaker_client.get_model_package_group_policy.side_effect = [
+            {"ResourcePolicy": "{}"},
+            _make_client_error("AccessDeniedException"),
+            {
+                "ResourcePolicy": (
+                    '{"Version":"2012-10-17","Statement":'
+                    '[{"Effect":"Allow","Principal":"*",'
+                    '"Action":"sagemaker:CreateModelPackage","Resource":"*"}]}'
+                )
+            },
+        ]
+
+        def client_factory(service, **kwargs):
+            return sts_client if service == "sts" else sagemaker_client
+
+        mock_client.side_effect = client_factory
+        findings = extract_csv_data(
+            sagemaker_app.check_model_package_group_policy_exposure(
+                "us-east-1",
+                [
+                    {"ModelPackageGroupName": "group-1"},
+                    {"ModelPackageGroupName": "group-2"},
+                    {"ModelPackageGroupName": "group-3"},
+                ],
+            )
+        )
+
+        assert [finding["Status"] for finding in findings] == [
+            "Passed",
+            "N/A",
+            "Failed",
+        ]
+        assert findings[1]["Severity"] == "Informational"
+        assert "group-2" in findings[1]["Finding_Details"]
+        assert "AccessDeniedException" in findings[1]["Finding_Details"]
+        assert sagemaker_client.get_model_package_group_policy.call_args_list == [
+            call(ModelPackageGroupName="group-1"),
+            call(ModelPackageGroupName="group-2"),
+            call(ModelPackageGroupName="group-3"),
+        ]
+
+    def test_new_sagemaker_operation_contracts_exist(self):
+        client = sagemaker_app.boto3.client(
+            "sagemaker",
+            region_name="us-east-1",
+            aws_access_key_id="testing",
+            aws_secret_access_key="testing",  # pragma: allowlist secret - synthetic test credential
+        )
+        model = client.meta.service_model
+        for operation in [
+            "ListClusters",
+            "DescribeCluster",
+            "GetModelPackageGroupPolicy",
+        ]:
+            assert model.operation_model(operation)
+
+
 # ===================================================================
 # SM-05: check_sagemaker_mlops_utilization
 # ===================================================================
@@ -370,6 +918,41 @@ class TestSM05MLOps:
         result = check(empty_permission_cache)
         for f in extract_csv_data(result):
             assert_finding_schema(f)
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm05_paginates_model_packages(self, mock_client, empty_permission_cache):
+        check = sagemaker_app.check_sagemaker_mlops_utilization
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+
+        group_paginator = MagicMock()
+        group_paginator.paginate.return_value = [
+            {"ModelPackageGroupSummaryList": [{"ModelPackageGroupName": "group-a"}]}
+        ]
+        package_paginator = MagicMock()
+        package_paginator.paginate.return_value = [
+            {"ModelPackageSummaryList": [{"ModelPackageArn": "arn:package-1"}]},
+            {"ModelPackageSummaryList": [{"ModelPackageArn": "arn:package-2"}]},
+        ]
+        feature_group_paginator = MagicMock()
+        feature_group_paginator.paginate.return_value = [{"FeatureGroupSummaries": []}]
+        pipeline_paginator = MagicMock()
+        pipeline_paginator.paginate.return_value = [{"PipelineSummaries": []}]
+        paginators = {
+            "list_model_package_groups": group_paginator,
+            "list_model_packages": package_paginator,
+            "list_feature_groups": feature_group_paginator,
+            "list_pipelines": pipeline_paginator,
+        }
+        mock_sm.get_paginator.side_effect = paginators.__getitem__
+
+        result = check(empty_permission_cache)
+        findings = extract_csv_data(result)
+
+        assert not any("minimal versioning" in f["Finding_Details"] for f in findings)
+        package_paginator.paginate.assert_called_once_with(
+            ModelPackageGroupName="group-a"
+        )
 
 
 # ===================================================================
@@ -495,6 +1078,39 @@ class TestSM08ModelRegistry:
         result = check(empty_permission_cache)
         for f in extract_csv_data(result):
             assert_finding_schema(f)
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm08_paginates_model_packages(self, mock_client, empty_permission_cache):
+        check = sagemaker_app.check_model_registry_usage
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+
+        group_paginator = MagicMock()
+        group_paginator.paginate.return_value = [
+            {"ModelPackageGroupSummaryList": [{"ModelPackageGroupName": "group-a"}]}
+        ]
+        package_paginator = MagicMock()
+        package_paginator.paginate.return_value = [
+            {
+                "ModelPackageSummaryList": [
+                    {"ModelApprovalStatus": "PendingManualApproval"}
+                ]
+            },
+            {"ModelPackageSummaryList": [{"ModelApprovalStatus": "Approved"}]},
+        ]
+        mock_sm.get_paginator.side_effect = lambda name: (
+            group_paginator
+            if name == "list_model_package_groups"
+            else package_paginator
+        )
+
+        result = check(empty_permission_cache)
+        findings = extract_csv_data(result)
+
+        assert not any("No Approved Models" in f["Finding"] for f in findings)
+        package_paginator.paginate.assert_called_once_with(
+            ModelPackageGroupName="group-a"
+        )
 
 
 # ===================================================================
@@ -1509,6 +2125,225 @@ class TestSM25LineageTracking:
         result = check()
         for f in extract_csv_data(result):
             assert_finding_schema(f)
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm25_paginates_model_groups_and_packages(self, mock_client):
+        check = sagemaker_app.check_ml_lineage_tracking
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        mock_sm.list_experiments.return_value = {"ExperimentSummaries": []}
+        mock_sm.list_artifacts.side_effect = [
+            {
+                "ArtifactSummaries": [
+                    {
+                        "ArtifactArn": "arn:aws:sagemaker:us-east-1:123456789012:artifact/package-a"
+                    }
+                ]
+            },
+            {
+                "ArtifactSummaries": [
+                    {
+                        "ArtifactArn": "arn:aws:sagemaker:us-east-1:123456789012:artifact/package-b"
+                    }
+                ]
+            },
+        ]
+        mock_sm.list_associations.return_value = {"AssociationSummaries": []}
+
+        group_paginator = MagicMock()
+        group_paginator.paginate.return_value = [
+            {"ModelPackageGroupSummaryList": [{"ModelPackageGroupName": "group-a"}]},
+            {"ModelPackageGroupSummaryList": [{"ModelPackageGroupName": "group-b"}]},
+        ]
+        package_paginator = MagicMock()
+        package_paginator.paginate.side_effect = [
+            [
+                {
+                    "ModelPackageSummaryList": [
+                        {
+                            "ModelPackageArn": "arn:aws:sagemaker:us-east-1:123456789012:model-package/group-a/1",
+                            "ModelPackageName": "package-a",
+                        }
+                    ]
+                }
+            ],
+            [
+                {
+                    "ModelPackageSummaryList": [
+                        {
+                            "ModelPackageArn": "arn:aws:sagemaker:us-east-1:123456789012:model-package/group-b/1",
+                            "ModelPackageName": "package-b",
+                        }
+                    ]
+                }
+            ],
+        ]
+        mock_sm.get_paginator.side_effect = lambda name: (
+            group_paginator
+            if name == "list_model_package_groups"
+            else package_paginator
+        )
+
+        result = check()
+        findings = extract_csv_data(result)
+
+        lineage_findings = [f for f in findings if "Missing Lineage" in f["Finding"]]
+        assert len(lineage_findings) == 2
+        assert package_paginator.paginate.call_count == 2
+        assert mock_sm.list_artifacts.call_args_list == [
+            call(
+                SourceUri="arn:aws:sagemaker:us-east-1:123456789012:model-package/group-a/1",
+                MaxResults=1,
+            ),
+            call(
+                SourceUri="arn:aws:sagemaker:us-east-1:123456789012:model-package/group-b/1",
+                MaxResults=1,
+            ),
+        ]
+        assert mock_sm.list_associations.call_args_list == [
+            call(
+                SourceArn="arn:aws:sagemaker:us-east-1:123456789012:artifact/package-a",
+                MaxResults=1,
+            ),
+            call(
+                DestinationArn="arn:aws:sagemaker:us-east-1:123456789012:artifact/package-a",
+                MaxResults=1,
+            ),
+            call(
+                SourceArn="arn:aws:sagemaker:us-east-1:123456789012:artifact/package-b",
+                MaxResults=1,
+            ),
+            call(
+                DestinationArn="arn:aws:sagemaker:us-east-1:123456789012:artifact/package-b",
+                MaxResults=1,
+            ),
+        ]
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm25_accepts_destination_lineage_association(self, mock_client):
+        check = sagemaker_app.check_ml_lineage_tracking
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        mock_sm.list_experiments.return_value = {"ExperimentSummaries": []}
+        mock_sm.list_artifacts.return_value = {
+            "ArtifactSummaries": [
+                {
+                    "ArtifactArn": "arn:aws:sagemaker:us-east-1:123456789012:artifact/package-a"
+                }
+            ]
+        }
+        mock_sm.list_associations.side_effect = [
+            {"AssociationSummaries": []},
+            {"AssociationSummaries": [{"AssociationType": "Produced"}]},
+        ]
+
+        group_paginator = MagicMock()
+        group_paginator.paginate.return_value = [
+            {"ModelPackageGroupSummaryList": [{"ModelPackageGroupName": "group-a"}]}
+        ]
+        package_paginator = MagicMock()
+        package_paginator.paginate.return_value = [
+            {
+                "ModelPackageSummaryList": [
+                    {
+                        "ModelPackageArn": "arn:aws:sagemaker:us-east-1:123456789012:model-package/group-a/1",
+                        "ModelPackageName": "package-a",
+                    }
+                ]
+            }
+        ]
+        mock_sm.get_paginator.side_effect = lambda name: (
+            group_paginator
+            if name == "list_model_package_groups"
+            else package_paginator
+        )
+
+        findings = extract_csv_data(check())
+
+        assert not any("Missing Lineage" in f["Finding"] for f in findings)
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm25_stops_after_five_lineage_findings(self, mock_client):
+        check = sagemaker_app.check_ml_lineage_tracking
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        mock_sm.list_experiments.return_value = {"ExperimentSummaries": []}
+        mock_sm.list_artifacts.side_effect = lambda SourceUri, MaxResults: {
+            "ArtifactSummaries": [
+                {
+                    "ArtifactArn": SourceUri.replace(
+                        ":model-package/group-a/", ":artifact/package-"
+                    )
+                }
+            ]
+        }
+        mock_sm.list_associations.return_value = {"AssociationSummaries": []}
+
+        group_paginator = MagicMock()
+        group_paginator.paginate.return_value = [
+            {"ModelPackageGroupSummaryList": [{"ModelPackageGroupName": "group-a"}]}
+        ]
+        package_paginator = MagicMock()
+        package_paginator.paginate.return_value = [
+            {
+                "ModelPackageSummaryList": [
+                    {
+                        "ModelPackageArn": f"arn:aws:sagemaker:us-east-1:123456789012:model-package/group-a/{version}",
+                        "ModelPackageName": f"package-{version}",
+                    }
+                    for version in range(1, 7)
+                ]
+            }
+        ]
+        mock_sm.get_paginator.side_effect = lambda name: (
+            group_paginator
+            if name == "list_model_package_groups"
+            else package_paginator
+        )
+
+        findings = extract_csv_data(check())
+        lineage_findings = [f for f in findings if "Missing Lineage" in f["Finding"]]
+
+        assert len(lineage_findings) == 5
+        assert mock_sm.list_artifacts.call_count == 5
+
+    @patch("sagemaker_app.boto3.client")
+    def test_sm25_lineage_access_denied_is_na_not_missing(self, mock_client):
+        check = sagemaker_app.check_ml_lineage_tracking
+        mock_sm = MagicMock()
+        mock_client.return_value = mock_sm
+        mock_sm.list_experiments.return_value = {"ExperimentSummaries": []}
+        mock_sm.list_artifacts.side_effect = _make_client_error("AccessDeniedException")
+
+        group_paginator = MagicMock()
+        group_paginator.paginate.return_value = [
+            {"ModelPackageGroupSummaryList": [{"ModelPackageGroupName": "group-a"}]}
+        ]
+        package_paginator = MagicMock()
+        package_paginator.paginate.return_value = [
+            {
+                "ModelPackageSummaryList": [
+                    {
+                        "ModelPackageArn": "arn:aws:sagemaker:us-east-1:123456789012:model-package/group-a/1",
+                        "ModelPackageName": "package-a",
+                    }
+                ]
+            }
+        ]
+        mock_sm.get_paginator.side_effect = lambda name: (
+            group_paginator
+            if name == "list_model_package_groups"
+            else package_paginator
+        )
+
+        findings = extract_csv_data(check())
+
+        assert not any("Missing Lineage" in f["Finding"] for f in findings)
+        assessment_findings = [
+            f for f in findings if "Model Package Assessment" in f["Finding"]
+        ]
+        assert len(assessment_findings) == 1
+        assert_could_not_assess_finding(assessment_findings[0])
 
 
 # ===================================================================

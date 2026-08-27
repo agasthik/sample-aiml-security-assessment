@@ -80,6 +80,12 @@ Resources:
                   - bedrock:GetImportedModel
                   # Batch inference jobs (BR-31)
                   - bedrock:ListModelInvocationJobs
+                  - bedrock:ListInferenceProfiles
+                  - bedrock:GetAccountDataRetention
+                  - bedrock:GetAutomatedReasoningPolicy
+                  - bedrock:ListMarketplaceModelEndpoints
+                  - bedrock:GetMarketplaceModelEndpoint
+                  - bedrock:ListEnforcedGuardrailsConfiguration
                 Resource: "*"
               # Bedrock Agent Permissions (Agents for Amazon Bedrock)
               - Effect: Allow
@@ -102,6 +108,7 @@ Resources:
                   - organizations:DescribeOrganization
                   - organizations:ListRoots
                   - organizations:ListPolicies
+                  - organizations:ListTargetsForPolicy
                   - servicequotas:ListServiceQuotas
                   - servicequotas:GetServiceQuota
                   - servicequotas:GetAWSDefaultServiceQuota
@@ -121,6 +128,14 @@ Resources:
                   - bedrock-agentcore:ListPolicyEngines
                   - bedrock-agentcore:GetPolicyEngine
                   - bedrock-agentcore:GetResourcePolicy
+                  - bedrock-agentcore:GetTokenVault
+                  - bedrock-agentcore:ListCodeInterpreters
+                  - bedrock-agentcore:GetCodeInterpreter
+                  - bedrock-agentcore:ListBrowsers
+                  - bedrock-agentcore:GetBrowser
+                  - bedrock-agentcore:ListOnlineEvaluationConfigs
+                  - bedrock-agentcore:GetOnlineEvaluationConfig
+                  - bedrock-agentcore:ListPolicies
                 Resource: "*"
               # SageMaker Assessment Permissions
               - Effect: Allow
@@ -134,6 +149,9 @@ Resources:
                   - sagemaker:ListModelPackageGroups
                   - sagemaker:ListModelPackages
                   - sagemaker:DescribeModelPackage
+                  - sagemaker:GetModelPackageGroupPolicy
+                  - sagemaker:ListClusters
+                  - sagemaker:DescribeCluster
                   - sagemaker:ListFeatureGroups
                   - sagemaker:DescribeFeatureGroup
                   - sagemaker:ListPipelines
@@ -162,6 +180,7 @@ Resources:
                   - sagemaker:DescribeExperiment
                   - sagemaker:ListTrials
                   - sagemaker:DescribeTrial
+                  - sagemaker:ListArtifacts
                   - sagemaker:ListAssociations
                 Resource: "*"
               # CloudTrail Permissions

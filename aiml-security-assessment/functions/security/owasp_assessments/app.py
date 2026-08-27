@@ -121,6 +121,28 @@ ACCESS_DENIED_ERROR_CODES = {
 # ---------------------------------------------------------------------------
 OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, str]]] = {
     # LLM01 Prompt Injection
+    "BR-34": [
+        {
+            "check_id": "OW-01",
+            "owasp_category": "LLM01:2025 Prompt Injection",
+            "finding": "OWASP LLM01: Preventive Prompt Attack Filter",
+            "resolution": "Configure a preventive Bedrock Guardrails PROMPT_ATTACK input filter with BLOCK action and a non-NONE strength.",
+        }
+    ],
+    "SM-26": [
+        {
+            "check_id": "OW-01",
+            "owasp_category": "LLM01:2025 Prompt Injection",
+            "finding": "OWASP LLM01: GuardDuty AI Protection",
+            "resolution": "Enable the GuardDuty AI_PROTECTION detector feature to detect supported direct prompt-injection activity.",
+        },
+        {
+            "check_id": "OW-10",
+            "owasp_category": "LLM10:2025 Unbounded Consumption",
+            "finding": "OWASP LLM10: GuardDuty AI Protection",
+            "resolution": "Enable the GuardDuty AI_PROTECTION detector feature to detect supported anomalous model invocation and cost-harvesting activity.",
+        },
+    ],
     "BR-23": [
         {
             "check_id": "OW-01",
@@ -498,6 +520,14 @@ OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, str]]] = {
         }
     ],
     # LLM06 Excessive Agency
+    "AC-15": [
+        {
+            "check_id": "OW-06",
+            "owasp_category": "LLM06:2025 Excessive Agency",
+            "finding": "OWASP LLM06: Code Interpreter Network Isolation",
+            "resolution": "Run custom AgentCore Code Interpreters in VPC mode with approved subnets and security groups.",
+        }
+    ],
     "BR-21": [
         {
             "check_id": "OW-06",
@@ -820,8 +850,8 @@ def _list_all_items(
 #
 # Per-region-scoped services (Bedrock, SageMaker, AgentCore) write one CSV per
 # region as `<prefix>_<execution_id>_<region>.csv`. Responsible AI GRC is
-# different: it runs once (RegionIndex==0), emits per-region Region values in
-# its rows, and writes a single un-suffixed
+# different: it runs once (RegionIndex==0), emits its unscoped evidence with
+# Region=Global plus any explicit regional N/A rows, and writes a single un-suffixed
 # `responsible_ai_grc_security_report_<execution_id>.csv`. So the OWASP
 # Lambda must key on RegionIndex too — mappings that read per-region CSVs run
 # in every region, but FS→OW mappings run only from RegionIndex==0's
@@ -847,8 +877,8 @@ def _read_service_csvs_for_region(
 
     Always reads bedrock/sagemaker/agentcore's per-region CSVs. When
     `include_finserv` is True (RegionIndex==0), also reads the Responsible AI
-    GRC execution-scoped CSV. Rows already carry per-region Region values, so
-    downstream mapping preserves them without further modification.
+    GRC execution-scoped CSV. Rows already carry either Global or explicit
+    regional values, so downstream mapping preserves them without modification.
 
     Missing objects are returned to the caller when `return_missing` is True
     so OWASP can emit explicit coverage rows instead of silently dropping all
