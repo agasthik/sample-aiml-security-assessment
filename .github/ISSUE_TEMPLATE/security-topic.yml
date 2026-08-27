@@ -1,0 +1,54 @@
+name: Security topic (public)
+description: Ask a general security question without disclosing vulnerability details
+title: "[Security topic]: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Do not disclose vulnerability details in this public issue
+
+        Public issues are visible to everyone. Report suspected vulnerabilities privately through one of these channels:
+
+        1. Use this repository's **Security** tab and select **Report a vulnerability** to open a private GitHub security advisory.
+        2. For AWS-related security issues, follow the [AWS vulnerability reporting process](https://aws.amazon.com/security/vulnerability-reporting/).
+
+        Use this form only for general security questions or false-positive discussions that do not reveal sensitive details. Use the **Feature request** form for documentation improvements, new checks, and scanner enhancements.
+
+  - type: checkboxes
+    id: acknowledgment
+    attributes:
+      label: Public disclosure acknowledgment
+      options:
+        - label: I understand this is a public issue and will not include vulnerability details, exploit code, credentials, customer data, or other sensitive information.
+          required: true
+        - label: I have reviewed the private reporting options above.
+          required: true
+
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic
+      options:
+        - General security question
+        - False positive in security assessment
+        - Other non-sensitive security topic
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the topic without including sensitive or vulnerability-specific details.
+      placeholder: Explain the general question or false-positive behavior.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add non-sensitive references, check IDs, or documentation links.
+    validations:
+      required: false

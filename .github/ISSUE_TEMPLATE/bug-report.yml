@@ -1,0 +1,141 @@
+name: Bug report
+description: Report a reproducible problem with the assessment, deployment, or report
+title: "[Bug]: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Keep public reports non-sensitive
+
+        Public issues are visible to everyone. Do not include credentials, customer data, AWS account IDs, resource ARNs, unredacted logs, vulnerability details, or exploit code.
+
+        Report suspected vulnerabilities privately through this repository's **Security** tab by selecting **Report a vulnerability**. For AWS-related security issues, follow the [AWS vulnerability reporting process](https://aws.amazon.com/security/vulnerability-reporting/).
+
+  - type: checkboxes
+    id: acknowledgment
+    attributes:
+      label: Public disclosure acknowledgment
+      options:
+        - label: I have removed credentials, customer data, account identifiers, resource identifiers, and other sensitive information.
+          required: true
+        - label: This report does not disclose a suspected vulnerability or exploit.
+          required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected component
+      options:
+        - Security assessment check
+        - Deployment or CloudFormation
+        - Step Functions or Lambda execution
+        - HTML or CSV report
+        - Documentation
+        - Tests or development tooling
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: check_ids
+    attributes:
+      label: Check ID or component name
+      description: Include relevant BR-, SM-, AC-, AG-, FS-, or OW- check IDs, function names, or template names.
+      placeholder: "Example: BR-35 or BedrockSecurityAssessmentFunction"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: deployment_mode
+    attributes:
+      label: Deployment mode
+      options:
+        - Single account
+        - Multi-account
+        - Local SAM invocation
+        - Development or test environment
+        - Not applicable
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Provide the release version or Git commit when known.
+      placeholder: "Example: v1.2.0 or abc1234"
+    validations:
+      required: false
+
+  - type: input
+    id: regions
+    attributes:
+      label: AWS Region or Regions
+      description: List only Region names; do not include account or resource identifiers.
+      placeholder: "Example: us-east-1, us-west-2"
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem description
+      description: Clearly describe the problem and when it occurs.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest reproducible sequence using sanitized values.
+      placeholder: |
+        1. Deploy or invoke ...
+        2. Enable ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: Describe the observed behavior, finding status, or error.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+      description: Describe what should have happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs or report excerpt
+      description: Include only the minimum relevant excerpt after removing all sensitive values and identifiers.
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: report_environment
+    attributes:
+      label: Report viewing environment
+      description: For HTML report issues only, provide the browser and version.
+      placeholder: "Example: Chrome 128"
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add non-sensitive references, screenshots, or configuration details.
+    validations:
+      required: false

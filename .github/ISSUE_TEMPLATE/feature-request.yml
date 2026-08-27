@@ -1,0 +1,136 @@
+name: Feature request
+description: Suggest a new check, service integration, report enhancement, or other improvement
+title: "[Feature]: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Keep public requests non-sensitive
+
+        Public issues are visible to everyone. Do not include credentials, customer data, AWS account IDs, resource ARNs, vulnerability details, exploit code, or other sensitive information.
+
+        Use the **Security topic (public)** form for general security questions and false-positive discussions. Report suspected vulnerabilities privately through this repository's **Security** tab by selecting **Report a vulnerability**.
+
+  - type: checkboxes
+    id: acknowledgment
+    attributes:
+      label: Public disclosure acknowledgment
+      options:
+        - label: This request contains no vulnerability details, credentials, customer data, account identifiers, resource identifiers, or other sensitive information.
+          required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Feature category
+      options:
+        - New security assessment check
+        - Support for an additional AWS service or API
+        - Existing check enhancement
+        - Deployment or multi-account behavior
+        - HTML or CSV report
+        - Responsible AI GRC or compliance mapping
+        - OWASP mapping
+        - Documentation
+        - Tests or development tooling
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: aws_service
+    attributes:
+      label: AWS service or API
+      description: Identify the relevant AWS service or API when applicable.
+      placeholder: "Example: Amazon Bedrock Guardrails"
+    validations:
+      required: false
+
+  - type: input
+    id: check_ids
+    attributes:
+      label: Related check IDs
+      description: List existing BR-, SM-, AC-, AG-, FS-, or OW- check IDs when applicable.
+      placeholder: "Example: BR-35, AG-08"
+    validations:
+      required: false
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or security use case
+      description: Describe the gap, threat, workflow, or user need this proposal addresses.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior or outcome you would like.
+    validations:
+      required: true
+
+  - type: textarea
+    id: check_behavior
+    attributes:
+      label: Proposed check behavior
+      description: For assessment changes, describe compliant, non-compliant, no-resource, and access-denied outcomes when known.
+      placeholder: |
+        Passed:
+        Failed or advisory N/A:
+        No resources:
+        Access denied or API unavailable:
+    validations:
+      required: false
+
+  - type: dropdown
+    id: deployment_impact
+    attributes:
+      label: Deployment scope
+      options:
+        - Both single-account and multi-account modes
+        - Single-account mode
+        - Multi-account mode
+        - Local development only
+        - Not applicable
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe workarounds or alternative designs you considered.
+    validations:
+      required: false
+
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Add non-sensitive AWS documentation, standards, or related issue links.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: contribution
+    attributes:
+      label: Contribution
+      description: Would you be willing to contribute an implementation?
+      options:
+        - "Yes"
+        - "No"
+        - Maybe, with guidance
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add other non-sensitive information or screenshots.
+    validations:
+      required: false
