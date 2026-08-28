@@ -291,15 +291,36 @@ class TestOWASPMappings:
     def test_new_core_controls_map_to_direct_owasp_analogues(self):
         expected_mappings = {
             "AC-14": ["OW-02"],
+            "AC-15": ["OW-06"],
             "AC-16": ["OW-06"],
+            "BR-34": ["OW-01"],
             "BR-37": ["OW-02"],
             "BR-38": ["OW-02"],
             "BR-39": ["OW-03"],
             "BR-40": ["OW-02"],
+            "SM-26": ["OW-01", "OW-10"],
             "SM-27": ["OW-02"],
             "SM-28": ["OW-03"],
             "SM-30": ["OW-03"],
         }
+        intentionally_unmapped = {
+            "AC-17",
+            "AG-28",
+            "AG-29",
+            "AG-30",
+            "AG-31",
+            "AG-32",
+            "BR-35",
+            "BR-36",
+        }
+        new_check_ids = set(expected_mappings) | intentionally_unmapped
+
+        assert len(new_check_ids) == 20
+        assert len(expected_mappings) == 12
+        assert set(owasp_app.OWASP_CHECK_MAPPINGS) & new_check_ids == set(
+            expected_mappings
+        )
+
         source_rows = [
             {
                 "Check_ID": source_id,

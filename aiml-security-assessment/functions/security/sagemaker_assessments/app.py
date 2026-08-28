@@ -4578,7 +4578,7 @@ def get_role_usage(role_name: str) -> str:
 
     try:
         # Check Lambda functions
-        lambda_client = boto3.client("lambda")
+        lambda_client = boto3.client("lambda", config=boto3_config)
         for page in lambda_client.get_paginator("list_functions").paginate():
             for function in page.get("Functions", []):
                 if role_name in function["Role"]:
@@ -4591,7 +4591,7 @@ def get_role_usage(role_name: str) -> str:
 
     try:
         # Check ECS tasks
-        ecs_client = boto3.client("ecs")
+        ecs_client = boto3.client("ecs", config=boto3_config)
         cluster_paginator = ecs_client.get_paginator("list_clusters")
         task_paginator = ecs_client.get_paginator("list_tasks")
         for cluster_page in cluster_paginator.paginate():

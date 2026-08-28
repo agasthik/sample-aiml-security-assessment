@@ -118,6 +118,16 @@ ACCESS_DENIED_ERROR_CODES = {
 # Disclaimer: mappings are PRELIMINARY and ILLUSTRATIVE. Each firm should
 # validate them against its own interpretation of the OWASP LLM Top 10
 # 2025 controls before relying on them as evidence.
+#
+# Deliberate non-mappings among the checks added with the 194-check catalog:
+# - BR-35 measures harmful-content IMAGE modality coverage, not image-borne
+#   prompt-injection protection or downstream output validation.
+# - BR-36 verifies governance tags; tags do not bound model consumption.
+# - AC-17 verifies generic online-evaluation plumbing without establishing
+#   which OWASP risk, if any, the configured evaluators measure.
+# - AG-28..AG-32 are derived from BR/AC findings, not independent evidence.
+#   Mapping them would duplicate source evidence or bypass a deliberate
+#   source-level non-mapping.
 # ---------------------------------------------------------------------------
 OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, str]]] = {
     # LLM01 Prompt Injection
