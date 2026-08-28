@@ -2,6 +2,7 @@
 
 ## Table of Contents
 
+- [Agentic Development](#agentic-development)
 - [Architecture Overview](#architecture-overview)
   - [Architecture Diagrams](#architecture-diagrams)
   - [Two-Phase Architecture](#two-phase-architecture)
@@ -41,6 +42,26 @@
   - [Documentation](#documentation)
 
 ---
+
+## Agentic Development
+
+This repository includes instructions for developers using AI coding agents:
+
+- [AGENTS.md](../AGENTS.md) is the canonical repository guidance. It defines
+  the required `.venv/` toolchain, separate pytest sessions, architecture and
+  schema contracts, status semantics, pagination requirements, IAM coverage
+  across all five policy locations, mapping checks, identifier hygiene, and
+  the pre-commit review gates.
+- [CLAUDE.md](../CLAUDE.md) is a compatibility entry point for tools that look
+  specifically for that filename. It delegates to `AGENTS.md` so the
+  instructions have a single source of truth.
+
+AI-assisted development should begin by loading the repository-root
+`AGENTS.md`, then use this guide for implementation workflows and architecture
+details. Human reviewers should evaluate agent-generated changes against the
+same instructions. Update `AGENTS.md` when repository-wide agent guidance
+changes; keep `CLAUDE.md` as the delegation shim unless a tool requires
+additional compatibility syntax.
 
 ## Architecture Overview
 
@@ -102,11 +123,13 @@ The AI/ML Security Assessment Framework is a serverless, multi-account security 
 
 ```text
 sample-aiml-security-assessment/
+├── AGENTS.md                         # Canonical AI coding-agent guidance
+├── CLAUDE.md                         # Compatibility shim that loads AGENTS.md
 ├── aiml-security-assessment/
 │   ├── functions/security/
-│   │   ├── bedrock_assessments/      # Bedrock security checks (33)
-│   │   ├── sagemaker_assessments/    # SageMaker security checks (25)
-│   │   ├── agentcore_assessments/    # AgentCore security checks (13)
+│   │   ├── bedrock_assessments/      # Bedrock security checks (40)
+│   │   ├── sagemaker_assessments/    # SageMaker checks (29; SM-29 reserved)
+│   │   ├── agentcore_assessments/    # AgentCore security checks (17)
 │   │   ├── responsible_ai_grc_assessments/  # Optional Responsible AI GRC checks (64)
 │   │   ├── owasp_assessments/        # Optional OWASP Top 10 for LLM checks (12)
 │   │   ├── responsible_ai_grc_tests/ # Responsible AI GRC-specific unit and coverage tests
@@ -188,7 +211,7 @@ sample-aiml-security-assessment/
     "Scan Regions": {
       "Type": "Map",
       "ItemsPath": "$.ResolvedRegions.regions",
-      "MaxConcurrency": "${MaxRegionConcurrency}",
+      "MaxConcurrency": ${MaxRegionConcurrency},
       "ItemProcessor": {
         "ProcessorConfig": {"Mode": "INLINE"},
         "StartAt": "Run Security Assessments",
@@ -211,6 +234,26 @@ sample-aiml-security-assessment/
                 }
               }
             ],
+            "Next": "OWASP Enabled?"
+          },
+          "OWASP Enabled?": {
+            "Type": "Choice",
+            "Choices": [
+              {
+                "Variable": "$.OriginalInput.enableOWASP",
+                "StringEquals": "true",
+                "Next": "OWASP Security Assessment"
+              }
+            ],
+            "Default": "OWASP Assessment Skipped"
+          },
+          "OWASP Security Assessment": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "End": true
+          },
+          "OWASP Assessment Skipped": {
+            "Type": "Pass",
             "End": true
           }
         }
@@ -565,9 +608,9 @@ Most day-to-day contributions add or update individual security checks inside th
 
 8. **Run the gates before committing**:
    - `ruff check` and `ruff format --check` only on the changed `.py` files (match CI scope).
-   - The three separate pytest sessions (`tests/`, `responsible_ai_grc_tests/`, `test_consolidate_responsible_ai_grc.py`, and the report-pipeline session).
+   - The four separate pytest sessions (`tests/`, `responsible_ai_grc_tests/`, `test_consolidate_responsible_ai_grc.py`, and the report-pipeline session).
    - `cfn-lint` on any edited templates.
-   - Full review checklist in [AGENTS.md](../AGENTS.md) / [CLAUDE.md](../CLAUDE.md) (API names, IAM in all 5 locations, status semantics, mapping drift, CSV schema, etc.).
+   - Full review checklist in [AGENTS.md](../AGENTS.md) (API names, IAM in all 5 locations, status semantics, mapping drift, CSV schema, etc.).
 
 9. **Generate and verify the HTML report** (mandatory before opening a PR): Follow the Report Verification steps in the [Testing Your Extensions](#4-report-verification-required-before-opening-a-pr) section. Open the generated reports and confirm your new check renders correctly in the table, sidebar, filters, and both light/dark modes.
 
@@ -583,13 +626,12 @@ Most day-to-day contributions add or update individual security checks inside th
 - **Status Semantics**: Use correct status values:
   - `Passed`: Resources were checked and met the assessed best practice
   - `Failed`: Resources were checked and found non-compliant
-  - `N/A`: No resources exist to check (for example, "No notebooks found", "No guardrails configured")
+  - `N/A`: The check is not applicable, requires manual review, targets an unavailable API or region, or could not determine a result
 - **Severity Values**: Use appropriate severity levels:
   - `High`: Critical security issues requiring immediate attention
   - `Medium`: Important security improvements recommended
   - `Low`: Minor optimizations suggested
-  - `Informational`: Advisory information, no action required
-  - `N/A`: Check not applicable (typically paired with N/A status)
+  - `Informational`: Advisory information or an N/A disposition
 
 ### 2. Performance Optimization
 
@@ -614,7 +656,7 @@ except ClientError as e:
             finding_details=describe_api_error(e, "Service check", region),
             resolution="Grant required permissions to assessment role",
             reference="https://docs.aws.amazon.com/service/permissions",
-            severity="Medium",
+            severity="Informational",
             status="N/A",
             region=region,
         )
@@ -664,8 +706,9 @@ When adding a new check, extending a lens (AG-*), or introducing a new complianc
 
 ```bash
 # Generate viewable HTML reports from the fixture data
-cd aiml-security-assessment/functions/security/generate_consolidated_report
-python -m pytest test_generate_report.py -k "generate_viewable_report or generate_multi_account_report" -s --tb=no
+(cd aiml-security-assessment/functions/security/generate_consolidated_report \
+  && ../../../../.venv/bin/python -m pytest test_generate_report.py \
+    -k "generate_viewable_report or generate_multi_account_report" -s --tb=no)
 ```
 
 The generated reports are written under `aiml-security-assessment/functions/security/generate_consolidated_report/test_reports/`. Open the single-account and multi-account HTML files in a browser (desktop and mobile viewports) and verify:
@@ -737,7 +780,7 @@ Both call `generate_html_report()` from `report_template.py` with different para
 To update report styling, layout, or features:
 
 1. Edit `report_template.py` only - changes apply to both single and multi-account reports
-2. Run the report generator tests from the report package directory: `python -m pytest test_generate_report.py -v`
+2. Run the report generator tests from the report package directory: `../../../../.venv/bin/python -m pytest test_generate_report.py -v`
 3. Key functions:
    - `get_html_template()` - HTML/CSS/JS structure
    - `generate_table_rows()` - Finding row generation
@@ -788,7 +831,7 @@ end-to-end. Concrete steps:
    - `aiml-security-assessment/template-multi-account.yaml` (same)
 
 4. **Add IAM grants** for any AWS APIs the new Lambda calls in all five
-   policy locations per CLAUDE.md. Scope each grant correctly:
+   policy locations per [AGENTS.md](../AGENTS.md). Scope each grant correctly:
    - In `aiml-security-assessment/template.yaml` and
      `aiml-security-assessment/template-multi-account.yaml`, add the grant
      to the **specific function's `Policies` block** that actually makes
@@ -845,8 +888,9 @@ After making changes to `report_template.py`, regenerate sample reports from a f
 
 ```bash
 # Generate local viewable reports from fixtures
-cd aiml-security-assessment/functions/security/generate_consolidated_report
-python -m pytest test_generate_report.py -k "generate_viewable_report or generate_multi_account_report" -s
+(cd aiml-security-assessment/functions/security/generate_consolidated_report \
+  && ../../../../.venv/bin/python -m pytest test_generate_report.py \
+    -k "generate_viewable_report or generate_multi_account_report" -s)
 ```
 
 The fixture reports are written under `aiml-security-assessment/functions/security/generate_consolidated_report/test_reports/`. Use them to validate report rendering before refreshing the canonical files in `sample-reports/`.
@@ -856,15 +900,12 @@ The fixture reports are written under `aiml-security-assessment/functions/securi
 The repository includes an automated screenshot capture tool:
 
 ```bash
-# Activate virtual environment
-source .venv/bin/activate
-
 # Install dependencies (first time only)
-pip install -r sample-reports/dev-requirements.txt
-playwright install chromium
+.venv/bin/pip install -r sample-reports/dev-requirements.txt
+.venv/bin/playwright install chromium
 
 # Capture and optimize screenshots
-python sample-reports/scripts/capture_screenshots.py
+.venv/bin/python sample-reports/scripts/capture_screenshots.py
 ```
 
 **What the script does:**
@@ -926,7 +967,7 @@ SCREENSHOTS = [
 
 | Issue | Solution |
 | ------- | ---------- |
-| `playwright not installed` | `pip install playwright && playwright install chromium` |
+| `playwright not installed` | `.venv/bin/pip install playwright && .venv/bin/playwright install chromium` |
 | Sample reports not found | Run from repository root |
 | Screenshots too large | Lower `JPEG_QUALITY` or reduce viewport size |
 | Browser launch fails | Run `playwright install-deps` (Linux only) |
@@ -983,14 +1024,23 @@ cfn-lint suppressions are configured in `.cfnlintrc` at the repository root for 
 Before pushing, run these checks locally to catch issues early:
 
 ```bash
-# Install tools (first time only)
-pip install ruff cfn-lint
-pip install -r tests/requirements.txt
-pip install "pydantic>=2.0.0"
+# Bootstrap or refresh the repository-local virtual environment
+.venv/bin/pip install -r tests/requirements.txt \
+  -r aiml-security-assessment/functions/security/agentcore_assessments/requirements.txt \
+  -r aiml-security-assessment/functions/security/bedrock_assessments/requirements.txt \
+  -r aiml-security-assessment/functions/security/cleanup_bucket/requirements.txt \
+  -r aiml-security-assessment/functions/security/responsible_ai_grc_assessments/requirements.txt \
+  -r aiml-security-assessment/functions/security/generate_consolidated_report/requirements.txt \
+  -r aiml-security-assessment/functions/security/iam_permission_caching/requirements.txt \
+  -r aiml-security-assessment/functions/security/owasp_assessments/requirements.txt \
+  -r aiml-security-assessment/functions/security/resolve_regions/requirements.txt \
+  -r aiml-security-assessment/functions/security/sagemaker_assessments/requirements.txt
+.venv/bin/pip check
 
-# Python lint and format
-ruff check aiml-security-assessment/functions/security/
-ruff format --check aiml-security-assessment/functions/security/
+# Match CI by checking Python files changed relative to main
+changed_py=$(git diff --name-only --diff-filter=ACMR origin/main...HEAD -- '*.py')
+.venv/bin/ruff check $changed_py
+.venv/bin/ruff format --check $changed_py
 
 # Unit tests. Run these as separate pytest sessions because multiple
 # assessment packages use top-level app.py imports.
@@ -999,25 +1049,24 @@ export AWS_DEFAULT_REGION=us-east-1
 export AWS_ACCESS_KEY_ID=testing
 export AWS_SECRET_ACCESS_KEY=testing
 
-python -m pytest tests/ -v --tb=short
-python -m pytest aiml-security-assessment/functions/security/responsible_ai_grc_tests/ -v --tb=short
-python -m pytest tests/test_consolidate_responsible_ai_grc.py -v --tb=short
+.venv/bin/python -m pytest tests/ -v --tb=short
+.venv/bin/python -m pytest aiml-security-assessment/functions/security/responsible_ai_grc_tests/ -v --tb=short
+.venv/bin/python -m pytest tests/test_consolidate_responsible_ai_grc.py -v --tb=short
 
-cd aiml-security-assessment/functions/security/generate_consolidated_report
-python -m pytest test_generate_report.py -v --tb=short
-cd -
+(cd aiml-security-assessment/functions/security/generate_consolidated_report \
+  && ../../../../.venv/bin/python -m pytest test_generate_report.py -v --tb=short)
 
 # CloudFormation lint
-cfn-lint deployment/*.yaml
-cfn-lint aiml-security-assessment/template.yaml
-cfn-lint aiml-security-assessment/template-multi-account.yaml
+.venv/bin/cfn-lint deployment/*.yaml \
+  aiml-security-assessment/template.yaml \
+  aiml-security-assessment/template-multi-account.yaml
 
 # SAM validate and build
-cd aiml-security-assessment
-sam validate --template template.yaml --lint
-sam validate --template template-multi-account.yaml --lint
-sam build --template template.yaml
-sam build --template template-multi-account.yaml
+(cd aiml-security-assessment \
+  && sam validate --template template.yaml --lint \
+  && sam validate --template template-multi-account.yaml --lint \
+  && sam build --template template.yaml \
+  && sam build --template template-multi-account.yaml)
 ```
 
 ## Support and Resources

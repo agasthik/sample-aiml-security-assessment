@@ -263,7 +263,11 @@ Both deployment modes support scanning multiple AWS regions in parallel via the 
 | Comma- or space-separated (for example, `us-east-1,us-west-2` or `us-east-1 us-west-2`) | Scans those regions in parallel |
 | `all` | Discovers and scans all regions where assessed services are available |
 
-Scanning uses a Step Functions Map state, so multiple regions execute in parallel with no additional time cost. Services unavailable in a region produce an informational N/A finding.
+Scanning uses a Step Functions Map state and runs up to `MaxRegionConcurrency`
+regions concurrently. This reduces elapsed time compared with sequential
+scanning, although total duration and AWS API usage still depend on the number
+of regions and resources assessed. Services unavailable in a region produce an
+informational N/A finding.
 
 The HTML report includes a Region column, filter dropdown, and "Risk by Region / Scope" summary.
 
@@ -275,7 +279,7 @@ The HTML report includes a Region column, filter dropdown, and "Risk by Region /
 
 1. **Deploy** — CloudFormation creates CodeBuild, S3, IAM roles, and a Lambda trigger
 2. **CodeBuild runs** — builds and deploys the SAM assessment stack (per account in multi-account mode)
-3. **Step Functions execute** — orchestrates: S3 cleanup → IAM permission caching → resolve regions → Map state fans out per-region assessments (Bedrock, SageMaker, AgentCore in parallel) → optionally run Responsible AI GRC checks → optionally run OWASP Top 10 for LLM checks → generate consolidated report
+3. **Step Functions execute** — orchestrates: S3 cleanup → IAM permission caching → resolve regions → Map state fans out across regions. Within each region, Bedrock, SageMaker, and AgentCore run in parallel; Responsible AI GRC runs once from the first region when either Responsible AI GRC or OWASP requires its source rows; OWASP then runs per region when enabled → generate consolidated report
 4. **Results** — HTML and CSV reports are stored in your S3 bucket
 
 ### Optional: Responsible AI GRC Checks (`EnableResponsibleAIGRCAssessment`)
@@ -284,12 +288,14 @@ The 64 Responsible AI GRC (FS-XX) checks are **opt-in** and default
 to `false`. Set the `EnableResponsibleAIGRCAssessment` deployment parameter to `true`
 when you want the additional Responsible AI GRC assessment. When
 enabled, the Responsible AI GRC assessment Lambda runs and its findings appear in a
-dedicated **Responsible AI GRC** section of the HTML report. When left `false`,
-no Responsible AI GRC findings are produced and the report omits that section
-entirely. The toggle is threaded into the Step Functions execution input
-(`enableResponsibleAIGRC`); the Responsible AI GRC Lambda is always deployed but is invoked only
-when the flag is `true`. A legacy `EnableFinServAssessment` parameter is also
-available as an alias — see
+dedicated **Responsible AI GRC** section of the HTML report. When left `false`
+and OWASP is also disabled, no Responsible AI GRC findings are produced and the
+report omits that section entirely. The toggle is threaded into the Step
+Functions execution input (`enableResponsibleAIGRC`); the Responsible AI GRC
+Lambda is always deployed and is invoked when either `enableResponsibleAIGRC`
+or `enableOWASP` is `true`. In the OWASP-only case, its FS-* findings are hidden
+source rows rather than a customer-visible Responsible AI GRC section. A legacy
+`EnableFinServAssessment` parameter is also available as an alias — see
 [Responsible AI GRC alias migration guide](docs/RESPONSIBLE_AI_GRC_ALIAS_MIGRATION.md).
 
 > **Deployment path note.** The `EnableResponsibleAIGRCAssessment` parameter is wired
@@ -366,7 +372,9 @@ For detailed architecture, execution flow, and extension guidance, see the [Deve
    - Amazon Bedrock AgentCore Assessment AWS Lambda
    - Responsible AI GRC Assessment AWS Lambda
    - OWASP Top 10 for LLM Assessment AWS Lambda
+   - Amazon S3 Cleanup AWS Lambda
    - AWS IAM Permission Caching AWS Lambda
+   - Region Resolution AWS Lambda
    - Consolidated Report Generation AWS Lambda
 
 4. **Assessment Execution**: AWS Step Functions orchestrate parallel AWS Lambda execution
@@ -413,7 +421,7 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
 - **Features**:
 
   - Executive summary with metrics (Total, High, Medium, Low severity counts)
-  - Service breakdown (Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, Responsible AI GRC)
+  - Service, Agentic AI lens, Responsible AI GRC, and OWASP compliance views
   - Priority recommendations
   - Light/dark mode toggle (persists through localStorage)
   - Dropdown filters for Account ID, Region, Service, Severity, Status
@@ -426,13 +434,13 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
 - **Content**: Account-specific CSV and HTML files for AI/ML assessments
 - **Files Include**:
 
-  - `bedrock_security_report_{execution_id}.csv` - Amazon Bedrock security assessment results
-  - `sagemaker_security_report_{execution_id}.csv` - Amazon SageMaker AI security assessment results
-  - `agentcore_security_report_{execution_id}.csv` - Amazon Bedrock AgentCore security assessment results
+  - `bedrock_security_report_{execution_id}_{region}.csv` - Amazon Bedrock security assessment results
+  - `sagemaker_security_report_{execution_id}_{region}.csv` - Amazon SageMaker AI security assessment results
+  - `agentcore_security_report_{execution_id}_{region}.csv` - Amazon Bedrock AgentCore security assessment results
   - `responsible_ai_grc_security_report_{execution_id}.csv` - Responsible AI
     GRC risk assessment results (64 FS-XX checks; present in the report bucket
     only when `EnableResponsibleAIGRCAssessment` is enabled)
-  - `owasp_security_report_{execution_id}.csv` - OWASP Top 10 for LLM
+  - `owasp_security_report_{execution_id}_{region}.csv` - OWASP Top 10 for LLM
     assessment results (12 OW-XX checks; present only when
     `EnableOWASPAssessment` is enabled)
   - `permissions_cache_{execution_id}.json` - IAM permissions cache
@@ -451,7 +459,7 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
 | --- | --- |
 | **Failed** | Security issue identified |
 | **Passed** | Resource meets best practice |
-| **N/A** | No resources to assess or service not available in region |
+| **N/A** | Not applicable, advisory/manual review, unavailable API or region, or assessment could not determine a result |
 
 ---
 
