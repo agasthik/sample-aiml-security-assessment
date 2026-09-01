@@ -19,6 +19,8 @@ Metadata:
           - RequireBedrockZeroDataRetention
           - RequireMarketplaceEndpointCMK
           - RequireAgentCoreOnlineEvaluation
+          - RequireAgentRegistryManualApproval
+          - RequireAgentRegistryCMK
           - AgentCoreTokenVaultId
           - ApprovedExternalAccountIds
           - ApprovedOrganizationIds
@@ -67,6 +69,16 @@ Parameters:
     Default: "false"
     AllowedValues: ["true", "false"]
     Description: Fail AC-17 when no complete active online evaluation configuration is found.
+  RequireAgentRegistryManualApproval:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Fail AC-18 when an Agent Registry automatically approves submitted records.
+  RequireAgentRegistryCMK:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Fail AC-20 when an Agent Registry uses the default AWS owned encryption key.
   AgentCoreTokenVaultId:
     Type: String
     Default: default
@@ -471,6 +483,8 @@ Resources:
           TARGET_REGIONS: !Ref TargetRegions
           AGENTCORE_TOKEN_VAULT_ID: !Ref AgentCoreTokenVaultId
           REQUIRE_AGENTCORE_ONLINE_EVALUATION: !Ref RequireAgentCoreOnlineEvaluation
+          REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL: !Ref RequireAgentRegistryManualApproval
+          REQUIRE_AGENT_REGISTRY_CMK: !Ref RequireAgentRegistryCMK
       Policies:
         - S3CrudPolicy:
             BucketName: !Ref AIMLAssessmentBucket
@@ -513,6 +527,17 @@ Resources:
                 - bedrock-agentcore:GetOnlineEvaluationConfig
                 - bedrock-agentcore:ListPolicies
               Resource: '*'
+            - Sid: AgentRegistryListPermissions
+              Effect: Allow
+              Action:
+                - agent-registry:ListRegistries
+              Resource: '*'
+            - Sid: AgentRegistryReadPermissions
+              Effect: Allow
+              Action:
+                - agent-registry:GetRegistry
+                - agent-registry:ListRegistryRecords
+              Resource: !Sub 'arn:${AWS::Partition}:agent-registry:*:${AWS::AccountId}:registry/*'
             - Sid: IAMRolePermissions
               Effect: Allow
               Action:

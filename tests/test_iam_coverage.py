@@ -161,6 +161,9 @@ REQUIRED_AGENTCORE_ACTIONS = {
     "bedrock-agentcore:ListPolicyEngines",
     "bedrock-agentcore:GetPolicyEngine",
     "bedrock-agentcore:GetResourcePolicy",
+    "agent-registry:ListRegistries",
+    "agent-registry:GetRegistry",
+    "agent-registry:ListRegistryRecords",
 }
 
 _ACTION_RE = re.compile(r"-\s+([a-z0-9-]+:[A-Za-z0-9]+)")
@@ -356,7 +359,8 @@ def test_required_agentcore_actions_are_granted_to_the_agentcore_function(templa
 # Known service prefixes used by this tool. `bedrock-agent:` is intentionally
 # absent: it is NOT a valid IAM namespace. Amazon Bedrock Knowledge Base / Data
 # Source / Flow / Agent actions all use the `bedrock:` prefix; AgentCore uses
-# `bedrock-agentcore:`. A `bedrock-agent:` grant silently authorizes nothing.
+# `bedrock-agentcore:` and AWS Agent Registry uses `agent-registry:`. A
+# `bedrock-agent:` grant silently authorizes nothing.
 _INVALID_ACTION_PREFIXES = ("bedrock-agent:", "bedrock-agentcore-control:")
 _INVALID_ACTION_NAMES = {
     "bedrock:ListModelInvocations",

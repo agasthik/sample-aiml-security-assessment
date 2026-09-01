@@ -54,7 +54,7 @@ If a required source CSV is missing, the Lambda emits an informational `OW-00`
 coverage row instead of silently omitting all derived rows from that source.
 `OW-00` is not an OWASP Top 10 control; it is a report-completeness marker.
 
-### Mapping scope for the 194-check catalog expansion
+### Mapping scope for recent catalog expansions
 
 Twelve of the 20 checks added in the 194-check catalog expansion have direct
 OWASP mappings. The remaining eight are intentionally unmapped:
@@ -71,6 +71,11 @@ OWASP mappings. The remaining eight are intentionally unmapped:
 - `AG-28` through `AG-32` are synthesized from BR/AC source findings. Mapping
   them again would duplicate source evidence for `AG-28` through `AG-31` and
   would bypass the deliberate `AC-17` non-mapping for `AG-32`.
+- `AC-18` through `AC-23` assess AWS Agent Registry approval, discovery
+  authorization, encryption, organization auto-detection, record lifecycle,
+  and provenance. `AG-33` through `AG-38` synthesize the same evidence. None
+  directly proves an OWASP LLM01–LLM10 control, so all twelve are intentionally
+  unmapped.
 
 ## Extensibility
 

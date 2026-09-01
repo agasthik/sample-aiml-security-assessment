@@ -2,7 +2,8 @@
 Amazon Bedrock AgentCore Security Assessment Lambda Function
 
 This function performs comprehensive security assessments for Amazon Bedrock AgentCore
-resources including Runtimes, Code Interpreters, Browser Tools, Memory, and Gateways.
+resources including Runtimes, Code Interpreters, Browser Tools, Memory, Gateways, and
+AWS Agent Registry.
 """
 
 import boto3
@@ -10,6 +11,7 @@ import csv
 import json
 import logging
 import os
+import re
 import time
 from io import StringIO
 from datetime import datetime, timezone
@@ -37,6 +39,7 @@ logs_client = None
 xray_client = None
 cloudwatch_client = None
 agentcore_client = None
+agent_registry_control_client = None
 
 # Environment variables
 BUCKET_NAME = os.environ.get("AIML_ASSESSMENT_BUCKET_NAME")
@@ -96,6 +99,30 @@ AGENTCORE_BROWSER_RECORDING_FINDING_NAME = "AgentCore Browser Session Recording"
 AGENTCORE_ONLINE_EVALUATION_REFERENCE_URL = (
     "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
     "get-online-evaluations.html"
+)
+AGENT_REGISTRY_APPROVAL_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/agent-registry-control/latest/APIReference/"
+    "API_ApprovalConfiguration.html"
+)
+AGENT_REGISTRY_AUTHORIZATION_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/agent-registry-control/latest/APIReference/"
+    "API_CustomJWTAuthorizerConfiguration.html"
+)
+AGENT_REGISTRY_ENCRYPTION_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "registry-data-encryption.html"
+)
+AGENT_REGISTRY_AUTO_DETECTION_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "registry-organizations.html"
+)
+AGENT_REGISTRY_RECORD_LIFECYCLE_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/agent-registry-control/latest/APIReference/"
+    "API_SubmitRegistryRecordForApproval.html"
+)
+AGENT_REGISTRY_PROVENANCE_REFERENCE_URL = (
+    "https://docs.aws.amazon.com/agent-registry-control/latest/APIReference/"
+    "API_Provenance.html"
 )
 
 AGENTIC_AGENTCORE_CHECK_MAPPINGS = {
@@ -189,6 +216,48 @@ AGENTIC_AGENTCORE_CHECK_MAPPINGS = {
         "lens_domain": "Auditability & Continuous Assurance",
         "agentic_context": "Online evaluation provides continuous evidence about agent behavior, quality, and policy-relevant outcomes.",
         "resolution": "Configure an active AgentCore online evaluation with sampling, evaluators, CloudWatch input logs, and an output log group.",
+    },
+    "AC-18": {
+        "check_id": "AG-33",
+        "finding": "Agentic AI Registry Publication Approval Governance",
+        "lens_domain": "Agent Identity & Access",
+        "agentic_context": "Registry approval workflows control which agents, tools, and skills become discoverable to consumers.",
+        "resolution": "Require manual review for registry publication where organizational policy does not permit automatic approval.",
+    },
+    "AC-19": {
+        "check_id": "AG-34",
+        "finding": "Agentic AI Registry Discovery Authorization",
+        "lens_domain": "Agent Identity & Access",
+        "agentic_context": "Registry discovery authorization should bind callers to an intended IAM principal or constrained JWT audience, client, scope, or claim.",
+        "resolution": "Use AWS IAM authorization or constrain custom JWT authorization to approved audiences, clients, scopes, or claims.",
+    },
+    "AC-20": {
+        "check_id": "AG-35",
+        "finding": "Agentic AI Registry Metadata Encryption",
+        "lens_domain": "Memory & Data Privacy",
+        "agentic_context": "Registry records can contain agent, tool, endpoint, and ownership metadata that benefits from customer-controlled encryption and auditable key usage.",
+        "resolution": "Create the registry with a customer-managed KMS key when organizational policy requires customer-controlled encryption.",
+    },
+    "AC-21": {
+        "check_id": "AG-36",
+        "finding": "Agentic AI Organization Discovery Coverage",
+        "lens_domain": "Auditability & Continuous Assurance",
+        "agentic_context": "Organization-wide auto-detection provides continuous visibility into AgentCore runtimes and gateways that could otherwise become unmanaged shadow AI.",
+        "resolution": "Enable organization-scoped registry auto-detection and satisfy its AWS Organizations prerequisites where centralized discovery is required.",
+    },
+    "AC-22": {
+        "check_id": "AG-37",
+        "finding": "Agentic AI Registry Record Lifecycle Governance",
+        "lens_domain": "Agent Identity & Access",
+        "agentic_context": "Registry records should remain in explicit draft, review, approved, rejected, or deprecated lifecycle states so discoverability is governed.",
+        "resolution": "Resolve failed or unknown record states and use the registry approval workflow before publishing records.",
+    },
+    "AC-23": {
+        "check_id": "AG-38",
+        "finding": "Agentic AI Registry Record Provenance",
+        "lens_domain": "Auditability & Continuous Assurance",
+        "agentic_context": "Consumers need attributable record origin and source lineage to understand which account and AgentCore resource produced an agent or tool entry.",
+        "resolution": "Ensure records retain creator attribution and that auto-detected records include DETECTED_FROM provenance for the source runtime or gateway.",
     },
 }
 
@@ -311,6 +380,313 @@ def _agentcore_list_all(
         seen_tokens.add(next_token)
 
     return items
+
+
+def get_agent_registry_inventory(
+    initialization_error: Exception = None,
+) -> Dict[str, Any]:
+    """List registries once and isolate failures retrieving registry details."""
+    inventory = {
+        "items": [],
+        "errors": [],
+        "list_error": None,
+        "initialization_error": initialization_error,
+        "unavailable": False,
+    }
+    if agent_registry_control_client is None:
+        if initialization_error is not None:
+            inventory["list_error"] = initialization_error
+        else:
+            inventory["unavailable"] = True
+        return inventory
+
+    try:
+        paginator = agent_registry_control_client.get_paginator("list_registries")
+        summaries = []
+        for page in paginator.paginate():
+            page_registries = page.get("registries", [])
+            if isinstance(page_registries, list):
+                summaries.extend(page_registries)
+    except EndpointConnectionError as error:
+        inventory["unavailable"] = True
+        inventory["list_error"] = error
+        return inventory
+    except ClientError as error:
+        error_code = error.response.get("Error", {}).get("Code", "")
+        inventory["unavailable"] = error_code in REGION_UNAVAILABLE_ERROR_CODES
+        inventory["list_error"] = error
+        return inventory
+    except Exception as error:
+        inventory["list_error"] = error
+        return inventory
+
+    for summary in summaries:
+        registry_id = summary.get("registryId") or summary.get("registryArn")
+        if not registry_id:
+            inventory["errors"].append(
+                {
+                    "summary": summary,
+                    "error": ValueError(
+                        "Registry summary did not include an identifier"
+                    ),
+                }
+            )
+            continue
+
+        try:
+            detail = agent_registry_control_client.get_registry(registryId=registry_id)
+            inventory["items"].append({"summary": summary, "detail": detail})
+        except Exception as error:
+            inventory["errors"].append({"summary": summary, "error": error})
+
+    return inventory
+
+
+def get_agent_registry_record_inventory(
+    registry_inventory: Dict[str, Any],
+) -> Dict[str, Any]:
+    """List registry records once and retain summary metadata used by checks."""
+    inventory = {
+        "items": [],
+        "errors": [],
+        "list_errors": [],
+        "skipped_registries": [],
+        "registry_inventory": registry_inventory,
+    }
+    if agent_registry_control_client is None:
+        return inventory
+
+    for registry_item in registry_inventory.get("items", []):
+        registry_summary = registry_item["summary"]
+        registry_detail = registry_item["detail"]
+        registry_id = (
+            registry_detail.get("registryId")
+            or registry_summary.get("registryId")
+            or registry_detail.get("registryArn")
+            or registry_summary.get("registryArn")
+        )
+        registry_status = registry_detail.get("status") or registry_summary.get(
+            "status"
+        )
+        if not registry_id or registry_status != "READY":
+            inventory["skipped_registries"].append(registry_item)
+            continue
+
+        try:
+            paginator = agent_registry_control_client.get_paginator(
+                "list_registry_records"
+            )
+            record_summaries = []
+            for page in paginator.paginate(registryId=registry_id):
+                page_records = page.get("registryRecords", [])
+                if isinstance(page_records, list):
+                    record_summaries.extend(page_records)
+        except Exception as error:
+            inventory["list_errors"].append({"registry": registry_item, "error": error})
+            continue
+
+        for record_summary in record_summaries:
+            record_id = record_summary.get("recordId") or record_summary.get(
+                "recordArn"
+            )
+            if not record_id:
+                inventory["errors"].append(
+                    {
+                        "registry": registry_item,
+                        "summary": record_summary,
+                        "error": ValueError(
+                            "Registry record summary did not include an identifier"
+                        ),
+                    }
+                )
+                continue
+
+            inventory["items"].append(
+                {
+                    "registry": registry_item,
+                    "summary": record_summary,
+                    "detail": record_summary,
+                }
+            )
+
+    return inventory
+
+
+def _agent_registry_inventory_error_detail(error: Exception) -> str:
+    """Return a stable error description without embedding service messages."""
+    if isinstance(error, ClientError):
+        return error.response.get("Error", {}).get("Code", "ClientError")
+    return type(error).__name__
+
+
+def _agent_registry_inventory_failure_detail(inventory: Dict[str, Any]) -> str:
+    """Describe whether registry inventory failed during setup or listing."""
+    error = inventory["list_error"]
+    error_detail = _agent_registry_inventory_error_detail(error)
+    if inventory.get("initialization_error") is error:
+        return f"Agent Registry client initialization returned {error_detail}"
+    return f"ListRegistries returned {error_detail}"
+
+
+def _agent_registry_error_resolution(error: Exception, action: str) -> str:
+    """Return remediation appropriate to an Agent Registry inventory error."""
+    if isinstance(error, EndpointConnectionError):
+        return "Retry in a region where the AWS Agent Registry endpoint is available."
+
+    if isinstance(error, ClientError):
+        error_code = error.response.get("Error", {}).get("Code", "ClientError")
+        normalized_code = error_code.lower()
+        if "accessdenied" in normalized_code or "unauthorized" in normalized_code:
+            return f"Grant {action} and retry the assessment."
+        if (
+            "throttl" in normalized_code
+            or "toomanyrequests" in normalized_code
+            or "requestlimitexceeded" in normalized_code
+        ):
+            return "Retry the assessment after the service throttling condition clears."
+        if "resourcenotfound" in normalized_code or "notfound" in normalized_code:
+            return (
+                "Retry the assessment; the resource may have changed or been deleted."
+            )
+        if "validation" in normalized_code:
+            return (
+                "Review the resource identifier returned by Agent Registry and retry."
+            )
+        return f"Review the {error_code} API error and retry the assessment."
+
+    if isinstance(error, ValueError):
+        return "Review the Agent Registry response and retry the assessment."
+
+    return "Review the assessment logs for the API error and retry."
+
+
+def _agent_registry_incomplete_findings(
+    inventory: Dict[str, Any],
+    check_id: str,
+    finding_name: str,
+    reference: str,
+) -> List[Dict[str, Any]]:
+    """Build N/A rows for registry detail calls that could not be completed."""
+    findings = []
+    for item in inventory.get("errors", []):
+        summary = item.get("summary", {})
+        registry_name = summary.get("name") or summary.get("registryId") or "unknown"
+        error_detail = _agent_registry_inventory_error_detail(item["error"])
+        findings.append(
+            create_finding(
+                check_id=check_id,
+                finding_name=f"{finding_name} Incomplete",
+                finding_details=(
+                    f"Registry '{registry_name}' could not be assessed because "
+                    f"GetRegistry returned {error_detail}."
+                ),
+                resolution=_agent_registry_error_resolution(
+                    item["error"], "agent-registry:GetRegistry"
+                ),
+                reference=reference,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        )
+    return findings
+
+
+def _agent_registry_record_incomplete_findings(
+    inventory: Dict[str, Any],
+    check_id: str,
+    finding_name: str,
+    reference: str,
+) -> List[Dict[str, Any]]:
+    """Build N/A rows for incomplete registry-record inventory operations."""
+    findings = []
+    registry_inventory = inventory["registry_inventory"]
+    findings.extend(
+        _agent_registry_incomplete_findings(
+            registry_inventory,
+            check_id,
+            finding_name,
+            reference,
+        )
+    )
+
+    for registry_item in inventory.get("skipped_registries", []):
+        summary = registry_item["summary"]
+        detail = registry_item["detail"]
+        registry_id = detail.get("registryId") or summary.get("registryId") or "unknown"
+        registry_name = detail.get("name") or summary.get("name") or registry_id
+        status = detail.get("status") or summary.get("status")
+        findings.append(
+            create_finding(
+                check_id=check_id,
+                finding_name=finding_name,
+                finding_details=(
+                    f"Registry '{registry_name}' ({registry_id}) is in "
+                    f"{status or 'an unknown'} state, so its records could not "
+                    "be assessed."
+                ),
+                resolution="Retry after the registry reaches READY state.",
+                reference=reference,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        )
+
+    for item in inventory.get("list_errors", []):
+        registry_summary = item["registry"]["summary"]
+        registry_detail = item["registry"]["detail"]
+        registry_name = (
+            registry_detail.get("name")
+            or registry_summary.get("name")
+            or registry_detail.get("registryId")
+            or registry_summary.get("registryId")
+            or "unknown"
+        )
+        error_detail = _agent_registry_inventory_error_detail(item["error"])
+        findings.append(
+            create_finding(
+                check_id=check_id,
+                finding_name=f"{finding_name} Incomplete",
+                finding_details=(
+                    f"Records in registry '{registry_name}' could not be listed "
+                    f"because ListRegistryRecords returned {error_detail}."
+                ),
+                resolution=_agent_registry_error_resolution(
+                    item["error"], "agent-registry:ListRegistryRecords"
+                ),
+                reference=reference,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        )
+
+    for item in inventory.get("errors", []):
+        record_summary = item.get("summary", {})
+        record_name = (
+            record_summary.get("displayName")
+            or record_summary.get("name")
+            or record_summary.get("recordId")
+            or "unknown"
+        )
+        error_detail = _agent_registry_inventory_error_detail(item["error"])
+        findings.append(
+            create_finding(
+                check_id=check_id,
+                finding_name=f"{finding_name} Incomplete",
+                finding_details=(
+                    f"Registry record '{record_name}' could not be assessed because "
+                    f"ListRegistryRecords returned incomplete metadata "
+                    f"({error_detail})."
+                ),
+                resolution=_agent_registry_error_resolution(
+                    item["error"], "agent-registry:ListRegistryRecords"
+                ),
+                reference=reference,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        )
+
+    return findings
 
 
 def get_custom_browser_inventory() -> Dict[str, Any]:
@@ -712,6 +1088,103 @@ def check_agentcore_vpc_configuration() -> List[Dict[str, Any]]:
     return findings
 
 
+AGENT_PLATFORM_IAM_NAMESPACES = {"bedrock-agentcore", "agent-registry"}
+
+
+def _policy_document(policy: Dict[str, Any]) -> Dict[str, Any]:
+    """Return one cached IAM policy document as a mapping."""
+    document = policy.get("document", {})
+    if isinstance(document, str):
+        document = json.loads(document)
+    if not isinstance(document, dict):
+        raise ValueError("IAM policy document is not a mapping")
+    return document
+
+
+def _allow_statements(policy: Dict[str, Any]):
+    """Yield Allow statements from one cached attached or inline policy."""
+    statements = _policy_document(policy).get("Statement", [])
+    if not isinstance(statements, list):
+        statements = [statements]
+    for statement in statements:
+        if isinstance(statement, dict) and statement.get("Effect") == "Allow":
+            yield statement
+
+
+def _statement_actions(statement: Dict[str, Any]) -> List[str]:
+    """Return normalized action strings from one IAM statement."""
+    actions = statement.get("Action", [])
+    if isinstance(actions, str):
+        actions = [actions]
+    return [str(action).strip().lower() for action in actions]
+
+
+def _statement_resources(statement: Dict[str, Any]) -> List[str]:
+    """Return normalized resource strings from one IAM statement."""
+    resources = statement.get("Resource", [])
+    if isinstance(resources, str):
+        resources = [resources]
+    return [str(resource) for resource in resources]
+
+
+def _is_agent_platform_action(action: str) -> bool:
+    """Return whether an IAM action grants AgentCore or Agent Registry access."""
+    if action == "*":
+        return True
+    action_parts = action.split(":", 1)
+    return len(action_parts) == 2 and action_parts[0] in AGENT_PLATFORM_IAM_NAMESPACES
+
+
+def _policy_has_wildcard_agent_platform_access(policy: Dict[str, Any]) -> bool:
+    """Return whether a policy grants wildcard platform actions on all resources."""
+    for statement in _allow_statements(policy):
+        if "*" not in _statement_resources(statement):
+            continue
+        for action in _statement_actions(statement):
+            if action == "*":
+                return True
+            action_parts = action.split(":", 1)
+            if len(action_parts) != 2:
+                continue
+            service_namespace, action_pattern = action_parts
+            if service_namespace in AGENT_PLATFORM_IAM_NAMESPACES and any(
+                wildcard in action_pattern for wildcard in ("*", "?")
+            ):
+                return True
+    return False
+
+
+def _permissions_include_agent_platform_access(
+    permissions: Dict[str, Any],
+    principal_label: str,
+) -> bool:
+    """Inspect attached and inline policies for AgentCore or Registry access."""
+    attached_policies = permissions.get("attached_policies", [])
+    inline_policies = permissions.get("inline_policies", [])
+
+    for policy in attached_policies:
+        policy_name_lower = str(policy.get("name", "")).lower()
+        if (
+            "agentcore" in policy_name_lower
+            or "agentregistry" in policy_name_lower
+            or "agent registry" in policy_name_lower
+        ):
+            return True
+
+    for policy in [*attached_policies, *inline_policies]:
+        try:
+            for statement in _allow_statements(policy):
+                if any(
+                    _is_agent_platform_action(action)
+                    for action in _statement_actions(statement)
+                ):
+                    return True
+        except Exception as error:
+            logger.warning(f"Error parsing policy for {principal_label}: {error}")
+
+    return False
+
+
 def check_agentcore_full_access_roles(
     permission_cache: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
@@ -719,8 +1192,8 @@ def check_agentcore_full_access_roles(
     Check for IAM roles with overly permissive AgentCore access.
 
     Identifies:
-    - Roles with BedrockAgentCoreFullAccess managed policy
-    - Roles with wildcard AgentCore permissions
+    - Roles with BedrockAgentCoreFullAccess or AgentRegistryFullAccess
+    - Roles with wildcard AgentCore or Agent Registry permissions
 
     Args:
         permission_cache: Cached IAM permissions data
@@ -751,58 +1224,34 @@ def check_agentcore_full_access_roles(
             return findings
 
         full_access_roles = []
-        wildcard_roles = []
+        wildcard_roles = set()
 
         # Iterate over role_permissions dict (role_name -> permissions)
         for role_name, permissions in role_permissions.items():
             attached_policies = permissions.get("attached_policies", [])
             inline_policies = permissions.get("inline_policies", [])
 
-            # Check for BedrockAgentCoreFullAccess managed policy
+            # Check for AgentCore or Agent Registry full-access managed policies
             for policy in attached_policies:
                 policy_name = policy.get("name", "")
                 if (
                     "BedrockAgentCoreFullAccess" in policy_name
                     or "AgentCoreFullAccess" in policy_name
+                    or "AgentRegistryFullAccess" in policy_name
                 ):
                     full_access_roles.append(role_name)
                     break
 
-            # Check for wildcard AgentCore permissions in inline policies
-            for policy in inline_policies:
-                policy_name = policy.get("name", "")
-                policy_doc = policy.get("document", {})
+            # Check attached and inline documents for wildcard AgentCore or
+            # Agent Registry permissions.
+            for policy in [*attached_policies, *inline_policies]:
                 try:
-                    if isinstance(policy_doc, str):
-                        policy_doc = json.loads(policy_doc)
-
-                    statements = policy_doc.get("Statement", [])
-                    if not isinstance(statements, list):
-                        statements = [statements]
-
-                    for statement in statements:
-                        if statement.get("Effect") == "Allow":
-                            actions = statement.get("Action", [])
-                            if isinstance(actions, str):
-                                actions = [actions]
-
-                            resources = statement.get("Resource", [])
-                            if isinstance(resources, str):
-                                resources = [resources]
-
-                            # Check for wildcard AgentCore permissions
-                            for action in actions:
-                                if (
-                                    "bedrock-agentcore:*" in action
-                                    or "bedrock-agentcore-control:*" in action
-                                ):
-                                    if "*" in resources:
-                                        wildcard_roles.append(role_name)
-                                        break
-
-                except Exception as e:
+                    if _policy_has_wildcard_agent_platform_access(policy):
+                        wildcard_roles.add(role_name)
+                        break
+                except Exception as error:
                     logger.warning(
-                        f"Error parsing inline policy for role {role_name}: {e}"
+                        f"Error parsing policy for role {role_name}: {error}"
                     )
 
         # Generate findings for full access roles
@@ -811,8 +1260,8 @@ def check_agentcore_full_access_roles(
                 create_finding(
                     check_id="AC-02",
                     finding_name="AgentCore IAM Full Access Policy",
-                    finding_details=f"The following roles have BedrockAgentCoreFullAccess policy: {', '.join(full_access_roles)}",
-                    resolution="Replace with least-privilege policies scoped to specific AgentCore resources and actions",
+                    finding_details=f"The following roles have AgentCore or Agent Registry full-access policies: {', '.join(full_access_roles)}",
+                    resolution="Replace with least-privilege policies scoped to specific AgentCore or Agent Registry resources and actions",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.FAILED,
@@ -825,8 +1274,8 @@ def check_agentcore_full_access_roles(
                 create_finding(
                     check_id="AC-02",
                     finding_name="AgentCore IAM Wildcard Permissions",
-                    finding_details=f"The following roles have wildcard AgentCore permissions on all resources: {', '.join(wildcard_roles)}",
-                    resolution="Scope permissions to specific AgentCore resources using resource ARNs",
+                    finding_details=f"The following roles have wildcard AgentCore or Agent Registry action patterns on all resources: {', '.join(sorted(wildcard_roles))}",
+                    resolution="Replace wildcard action patterns with the required AgentCore or Agent Registry actions and scope resources using ARNs",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.FAILED,
@@ -839,7 +1288,7 @@ def check_agentcore_full_access_roles(
                 create_finding(
                     check_id="AC-02",
                     finding_name="AgentCore IAM Full Access Check",
-                    finding_details="No roles with overly permissive AgentCore access found",
+                    finding_details="No roles with overly permissive AgentCore or Agent Registry access found",
                     resolution="No action required",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
                     severity=SeverityEnum.HIGH,
@@ -914,52 +1363,9 @@ def check_stale_agentcore_access(
         for role_name, permissions in role_permissions.items():
             # Build role ARN from role name
             role_arn = f"arn:aws:iam::{account_id}:role/{role_name}"
-            attached_policies = permissions.get("attached_policies", [])
-            inline_policies = permissions.get("inline_policies", [])
-
-            has_agentcore_permission = False
-
-            # Check attached policies
-            for policy in attached_policies:
-                policy_name = policy.get("name", "")
-                if "AgentCore" in policy_name or "agentcore" in policy_name.lower():
-                    has_agentcore_permission = True
-                    break
-
-            # Check inline policies
-            if not has_agentcore_permission:
-                for policy in inline_policies:
-                    policy_name = policy.get("name", "")
-                    policy_doc = policy.get("document", {})
-                    try:
-                        if isinstance(policy_doc, str):
-                            policy_doc = json.loads(policy_doc)
-
-                        statements = policy_doc.get("Statement", [])
-                        if not isinstance(statements, list):
-                            statements = [statements]
-
-                        for statement in statements:
-                            if statement.get("Effect") == "Allow":
-                                actions = statement.get("Action", [])
-                                if isinstance(actions, str):
-                                    actions = [actions]
-
-                                for action in actions:
-                                    if (
-                                        "bedrock-agentcore" in action.lower()
-                                        or "agentcore" in action.lower()
-                                    ):
-                                        has_agentcore_permission = True
-                                        break
-
-                                if has_agentcore_permission:
-                                    break
-
-                    except Exception as e:
-                        logger.warning(
-                            f"Error parsing inline policy for role {role_name}: {e}"
-                        )
+            has_agentcore_permission = _permissions_include_agent_platform_access(
+                permissions, f"role {role_name}"
+            )
 
             if has_agentcore_permission and role_arn:
                 agentcore_principals.append(
@@ -970,52 +1376,9 @@ def check_stale_agentcore_access(
         for user_name, permissions in user_permissions.items():
             # Build user ARN from user name
             user_arn = f"arn:aws:iam::{account_id}:user/{user_name}"
-            attached_policies = permissions.get("attached_policies", [])
-            inline_policies = permissions.get("inline_policies", [])
-
-            has_agentcore_permission = False
-
-            # Check attached policies
-            for policy in attached_policies:
-                policy_name = policy.get("name", "")
-                if "AgentCore" in policy_name or "agentcore" in policy_name.lower():
-                    has_agentcore_permission = True
-                    break
-
-            # Check inline policies
-            if not has_agentcore_permission:
-                for policy in inline_policies:
-                    policy_name = policy.get("name", "")
-                    policy_doc = policy.get("document", {})
-                    try:
-                        if isinstance(policy_doc, str):
-                            policy_doc = json.loads(policy_doc)
-
-                        statements = policy_doc.get("Statement", [])
-                        if not isinstance(statements, list):
-                            statements = [statements]
-
-                        for statement in statements:
-                            if statement.get("Effect") == "Allow":
-                                actions = statement.get("Action", [])
-                                if isinstance(actions, str):
-                                    actions = [actions]
-
-                                for action in actions:
-                                    if (
-                                        "bedrock-agentcore" in action.lower()
-                                        or "agentcore" in action.lower()
-                                    ):
-                                        has_agentcore_permission = True
-                                        break
-
-                                if has_agentcore_permission:
-                                    break
-
-                    except Exception as e:
-                        logger.warning(
-                            f"Error parsing inline policy for user {user_name}: {e}"
-                        )
+            has_agentcore_permission = _permissions_include_agent_platform_access(
+                permissions, f"user {user_name}"
+            )
 
             if has_agentcore_permission and user_arn:
                 agentcore_principals.append(
@@ -1080,7 +1443,7 @@ def check_stale_agentcore_access(
                         # Check for AgentCore service access
                         services = get_response.get("ServicesLastAccessed", [])
 
-                        agentcore_service = None
+                        matching_services = []
                         for service in services:
                             service_name = service.get("ServiceName", "")
                             service_namespace = service.get("ServiceNamespace", "")
@@ -1090,20 +1453,31 @@ def check_stale_agentcore_access(
                                 "agentcore" in service_name.lower()
                                 or "agentcore" in service_namespace.lower()
                                 or "bedrock-agentcore" in service_namespace.lower()
+                                or "agent registry" in service_name.lower()
+                                or "agent-registry" in service_namespace.lower()
                             ):
-                                agentcore_service = service
-                                break
+                                matching_services.append(service)
 
-                        if agentcore_service:
-                            last_authenticated = agentcore_service.get(
-                                "LastAuthenticated"
-                            )
+                        if matching_services:
+                            last_authenticated_values = [
+                                service.get("LastAuthenticated")
+                                for service in matching_services
+                                if service.get("LastAuthenticated")
+                            ]
 
-                            if last_authenticated:
+                            if last_authenticated_values:
                                 # Calculate days since last access
-                                last_access_date = datetime.fromisoformat(
-                                    str(last_authenticated).replace("Z", "+00:00")
-                                )
+                                last_access_dates = []
+                                for last_authenticated in last_authenticated_values:
+                                    last_access_date = datetime.fromisoformat(
+                                        str(last_authenticated).replace("Z", "+00:00")
+                                    )
+                                    if last_access_date.tzinfo is None:
+                                        last_access_date = last_access_date.replace(
+                                            tzinfo=timezone.utc
+                                        )
+                                    last_access_dates.append(last_access_date)
+                                last_access_date = max(last_access_dates)
                                 current_date = datetime.now(timezone.utc)
                                 days_since_access = (
                                     current_date - last_access_date
@@ -2048,6 +2422,1011 @@ def check_agentcore_online_evaluation_coverage() -> List[Dict[str, Any]]:
                 status=StatusEnum.NA,
             )
         ]
+
+
+def check_agent_registry_approval_governance(
+    registry_inventory: Dict[str, Any] = None,
+) -> List[Dict[str, Any]]:
+    """AC-18: Assess whether registry publication requires manual approval."""
+    inventory = (
+        registry_inventory
+        if registry_inventory is not None
+        else get_agent_registry_inventory()
+    )
+    finding_name = "Agent Registry Publication Approval Governance"
+
+    if inventory.get("unavailable"):
+        return [
+            create_finding(
+                check_id="AC-18",
+                finding_name=finding_name,
+                finding_details="AWS Agent Registry is not available in this region.",
+                resolution="No action required unless Agent Registry is expected.",
+                reference=AGENT_REGISTRY_APPROVAL_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    list_error = inventory.get("list_error")
+    if list_error:
+        return [
+            create_finding(
+                check_id="AC-18",
+                finding_name=f"{finding_name} Incomplete",
+                finding_details=(
+                    "Agent Registry approval governance could not be assessed "
+                    f"because {_agent_registry_inventory_failure_detail(inventory)}."
+                ),
+                resolution=_agent_registry_error_resolution(
+                    list_error, "agent-registry:ListRegistries"
+                ),
+                reference=AGENT_REGISTRY_APPROVAL_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    if not inventory.get("items") and not inventory.get("errors"):
+        return [
+            create_finding(
+                check_id="AC-18",
+                finding_name=finding_name,
+                finding_details="No AWS Agent Registry registries found.",
+                resolution="No action required",
+                reference=AGENT_REGISTRY_APPROVAL_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    required = os.environ.get("REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    findings = _agent_registry_incomplete_findings(
+        inventory,
+        "AC-18",
+        finding_name,
+        AGENT_REGISTRY_APPROVAL_REFERENCE_URL,
+    )
+    for item in inventory.get("items", []):
+        summary = item["summary"]
+        detail = item["detail"]
+        registry_id = detail.get("registryId") or summary.get("registryId") or "unknown"
+        registry_name = detail.get("name") or summary.get("name") or registry_id
+        status = detail.get("status") or summary.get("status")
+
+        if status != "READY":
+            findings.append(
+                create_finding(
+                    check_id="AC-18",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) is in "
+                        f"{status or 'an unknown'} state, so approval governance "
+                        "could not be assessed."
+                    ),
+                    resolution="Retry after the registry reaches READY state.",
+                    reference=AGENT_REGISTRY_APPROVAL_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+            continue
+
+        approval = detail.get("approvalConfiguration") or {}
+        auto_approval_rules = approval.get("autoApprovalRules") or []
+        if auto_approval_rules:
+            findings.append(
+                create_finding(
+                    check_id="AC-18",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) automatically "
+                        "approves submitted records."
+                    ),
+                    resolution=(
+                        "Remove auto-approval rules so submitted records require "
+                        "manual review."
+                    ),
+                    reference=AGENT_REGISTRY_APPROVAL_REFERENCE_URL,
+                    severity=(
+                        SeverityEnum.MEDIUM if required else SeverityEnum.INFORMATIONAL
+                    ),
+                    status=StatusEnum.FAILED if required else StatusEnum.NA,
+                )
+            )
+        else:
+            findings.append(
+                create_finding(
+                    check_id="AC-18",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) requires "
+                        "manual review for submitted records."
+                    ),
+                    resolution="No action required",
+                    reference=AGENT_REGISTRY_APPROVAL_REFERENCE_URL,
+                    severity=SeverityEnum.MEDIUM,
+                    status=StatusEnum.PASSED,
+                )
+            )
+
+    return findings
+
+
+def check_agent_registry_discovery_authorization(
+    registry_inventory: Dict[str, Any] = None,
+) -> List[Dict[str, Any]]:
+    """AC-19: Require IAM or constrained custom JWT registry authorization."""
+    inventory = (
+        registry_inventory
+        if registry_inventory is not None
+        else get_agent_registry_inventory()
+    )
+    finding_name = "Agent Registry Discovery Authorization"
+
+    if inventory.get("unavailable"):
+        return [
+            create_finding(
+                check_id="AC-19",
+                finding_name=finding_name,
+                finding_details="AWS Agent Registry is not available in this region.",
+                resolution="No action required unless Agent Registry is expected.",
+                reference=AGENT_REGISTRY_AUTHORIZATION_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    list_error = inventory.get("list_error")
+    if list_error:
+        return [
+            create_finding(
+                check_id="AC-19",
+                finding_name=f"{finding_name} Incomplete",
+                finding_details=(
+                    "Agent Registry discovery authorization could not be assessed "
+                    f"because {_agent_registry_inventory_failure_detail(inventory)}."
+                ),
+                resolution=_agent_registry_error_resolution(
+                    list_error, "agent-registry:ListRegistries"
+                ),
+                reference=AGENT_REGISTRY_AUTHORIZATION_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    if not inventory.get("items") and not inventory.get("errors"):
+        return [
+            create_finding(
+                check_id="AC-19",
+                finding_name=finding_name,
+                finding_details="No AWS Agent Registry registries found.",
+                resolution="No action required",
+                reference=AGENT_REGISTRY_AUTHORIZATION_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    findings = _agent_registry_incomplete_findings(
+        inventory,
+        "AC-19",
+        finding_name,
+        AGENT_REGISTRY_AUTHORIZATION_REFERENCE_URL,
+    )
+    for item in inventory.get("items", []):
+        summary = item["summary"]
+        detail = item["detail"]
+        registry_id = detail.get("registryId") or summary.get("registryId") or "unknown"
+        registry_name = detail.get("name") or summary.get("name") or registry_id
+        status = detail.get("status") or summary.get("status")
+
+        if status != "READY":
+            findings.append(
+                create_finding(
+                    check_id="AC-19",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) is in "
+                        f"{status or 'an unknown'} state, so discovery authorization "
+                        "could not be assessed."
+                    ),
+                    resolution="Retry after the registry reaches READY state.",
+                    reference=AGENT_REGISTRY_AUTHORIZATION_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+            continue
+
+        discovery = detail.get("discoveryConfiguration") or {}
+        authorizer_type = discovery.get("authorizerType")
+        if authorizer_type == "AWS_IAM":
+            findings.append(
+                create_finding(
+                    check_id="AC-19",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) uses AWS IAM "
+                        "authorization for discovery."
+                    ),
+                    resolution="No action required",
+                    reference=AGENT_REGISTRY_AUTHORIZATION_REFERENCE_URL,
+                    severity=SeverityEnum.HIGH,
+                    status=StatusEnum.PASSED,
+                )
+            )
+            continue
+
+        if authorizer_type != "CUSTOM_JWT":
+            findings.append(
+                create_finding(
+                    check_id="AC-19",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) has an "
+                        f"unrecognized discovery authorizer type: "
+                        f"{authorizer_type or 'unspecified'}."
+                    ),
+                    resolution="Review the registry discovery authorization settings.",
+                    reference=AGENT_REGISTRY_AUTHORIZATION_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+            continue
+
+        authorizer = discovery.get("authorizerConfiguration") or {}
+        jwt = authorizer.get("customJWTAuthorizer") or {}
+        discovery_url = jwt.get("discoveryUrl")
+        constraints = [
+            jwt.get("allowedAudience"),
+            jwt.get("allowedClients"),
+            jwt.get("allowedScopes"),
+            jwt.get("customClaims"),
+        ]
+        constrained = bool(discovery_url) and any(bool(value) for value in constraints)
+        findings.append(
+            create_finding(
+                check_id="AC-19",
+                finding_name=finding_name,
+                finding_details=(
+                    f"Registry '{registry_name}' ({registry_id}) uses a custom JWT "
+                    "authorizer with issuer discovery and caller constraints."
+                    if constrained
+                    else f"Registry '{registry_name}' ({registry_id}) uses a custom "
+                    "JWT authorizer without both issuer discovery and an audience, "
+                    "client, scope, or custom-claim constraint."
+                ),
+                resolution=(
+                    "No action required"
+                    if constrained
+                    else "Configure the OpenID Connect discovery URL and at least "
+                    "one allowed audience, client, scope, or custom claim."
+                ),
+                reference=AGENT_REGISTRY_AUTHORIZATION_REFERENCE_URL,
+                severity=SeverityEnum.HIGH,
+                status=StatusEnum.PASSED if constrained else StatusEnum.FAILED,
+            )
+        )
+
+    return findings
+
+
+def check_agent_registry_cmk_encryption(
+    registry_inventory: Dict[str, Any] = None,
+) -> List[Dict[str, Any]]:
+    """AC-20: Report or enforce customer-managed encryption for registries."""
+    inventory = (
+        registry_inventory
+        if registry_inventory is not None
+        else get_agent_registry_inventory()
+    )
+    finding_name = "Agent Registry Customer-Managed KMS Encryption"
+
+    if inventory.get("unavailable"):
+        return [
+            create_finding(
+                check_id="AC-20",
+                finding_name=finding_name,
+                finding_details="AWS Agent Registry is not available in this region.",
+                resolution="No action required unless Agent Registry is expected.",
+                reference=AGENT_REGISTRY_ENCRYPTION_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    list_error = inventory.get("list_error")
+    if list_error:
+        return [
+            create_finding(
+                check_id="AC-20",
+                finding_name=f"{finding_name} Incomplete",
+                finding_details=(
+                    "Agent Registry encryption could not be assessed because "
+                    f"{_agent_registry_inventory_failure_detail(inventory)}."
+                ),
+                resolution=_agent_registry_error_resolution(
+                    list_error, "agent-registry:ListRegistries"
+                ),
+                reference=AGENT_REGISTRY_ENCRYPTION_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    if not inventory.get("items") and not inventory.get("errors"):
+        return [
+            create_finding(
+                check_id="AC-20",
+                finding_name=finding_name,
+                finding_details="No AWS Agent Registry registries found.",
+                resolution="No action required",
+                reference=AGENT_REGISTRY_ENCRYPTION_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    required = os.environ.get("REQUIRE_AGENT_REGISTRY_CMK", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    findings = _agent_registry_incomplete_findings(
+        inventory,
+        "AC-20",
+        finding_name,
+        AGENT_REGISTRY_ENCRYPTION_REFERENCE_URL,
+    )
+    for item in inventory.get("items", []):
+        summary = item["summary"]
+        detail = item["detail"]
+        registry_id = detail.get("registryId") or summary.get("registryId") or "unknown"
+        registry_name = detail.get("name") or summary.get("name") or registry_id
+        status = detail.get("status") or summary.get("status")
+        if status != "READY":
+            findings.append(
+                create_finding(
+                    check_id="AC-20",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) is in "
+                        f"{status or 'an unknown'} state, so encryption could not "
+                        "be assessed."
+                    ),
+                    resolution="Retry after the registry reaches READY state.",
+                    reference=AGENT_REGISTRY_ENCRYPTION_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+            continue
+
+        kms_key_arn = (detail.get("encryptionConfiguration") or {}).get("kmsKeyArn")
+        if kms_key_arn:
+            findings.append(
+                create_finding(
+                    check_id="AC-20",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) uses a "
+                        "customer-managed KMS key for encryption at rest."
+                    ),
+                    resolution="No action required",
+                    reference=AGENT_REGISTRY_ENCRYPTION_REFERENCE_URL,
+                    severity=SeverityEnum.MEDIUM,
+                    status=StatusEnum.PASSED,
+                )
+            )
+        else:
+            findings.append(
+                create_finding(
+                    check_id="AC-20",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) uses the "
+                        "default AWS owned key for encryption at rest."
+                    ),
+                    resolution=(
+                        "Create a replacement registry with a customer-managed KMS "
+                        "key and migrate records because registry encryption is "
+                        "immutable after creation."
+                        if required
+                        else "No action required under the current baseline. Set "
+                        "REQUIRE_AGENT_REGISTRY_CMK=true to require a "
+                        "customer-managed KMS key."
+                    ),
+                    reference=AGENT_REGISTRY_ENCRYPTION_REFERENCE_URL,
+                    severity=(
+                        SeverityEnum.MEDIUM if required else SeverityEnum.INFORMATIONAL
+                    ),
+                    status=StatusEnum.FAILED if required else StatusEnum.NA,
+                )
+            )
+
+    return findings
+
+
+def check_agent_registry_auto_detection(
+    registry_inventory: Dict[str, Any] = None,
+) -> List[Dict[str, Any]]:
+    """AC-21: Assess organization-scoped registry auto-detection health."""
+    inventory = (
+        registry_inventory
+        if registry_inventory is not None
+        else get_agent_registry_inventory()
+    )
+    finding_name = "Agent Registry Organization Auto-Detection"
+
+    if inventory.get("unavailable"):
+        return [
+            create_finding(
+                check_id="AC-21",
+                finding_name=finding_name,
+                finding_details="AWS Agent Registry is not available in this region.",
+                resolution="No action required unless Agent Registry is expected.",
+                reference=AGENT_REGISTRY_AUTO_DETECTION_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    list_error = inventory.get("list_error")
+    if list_error:
+        return [
+            create_finding(
+                check_id="AC-21",
+                finding_name=f"{finding_name} Incomplete",
+                finding_details=(
+                    "Agent Registry auto-detection could not be assessed because "
+                    f"{_agent_registry_inventory_failure_detail(inventory)}."
+                ),
+                resolution=_agent_registry_error_resolution(
+                    list_error, "agent-registry:ListRegistries"
+                ),
+                reference=AGENT_REGISTRY_AUTO_DETECTION_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    if not inventory.get("items") and not inventory.get("errors"):
+        return [
+            create_finding(
+                check_id="AC-21",
+                finding_name=finding_name,
+                finding_details="No AWS Agent Registry registries found.",
+                resolution="No action required",
+                reference=AGENT_REGISTRY_AUTO_DETECTION_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    findings = _agent_registry_incomplete_findings(
+        inventory,
+        "AC-21",
+        finding_name,
+        AGENT_REGISTRY_AUTO_DETECTION_REFERENCE_URL,
+    )
+    for item in inventory.get("items", []):
+        summary = item["summary"]
+        detail = item["detail"]
+        registry_id = detail.get("registryId") or summary.get("registryId") or "unknown"
+        registry_name = detail.get("name") or summary.get("name") or registry_id
+        registry_status = detail.get("status") or summary.get("status")
+        if registry_status != "READY":
+            findings.append(
+                create_finding(
+                    check_id="AC-21",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) is in "
+                        f"{registry_status or 'an unknown'} state, so "
+                        "auto-detection could not be assessed."
+                    ),
+                    resolution="Retry after the registry reaches READY state.",
+                    reference=AGENT_REGISTRY_AUTO_DETECTION_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+            continue
+
+        auto_detection = detail.get("autoDetection")
+        if not isinstance(auto_detection, dict):
+            findings.append(
+                create_finding(
+                    check_id="AC-21",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) does not have "
+                        "organization auto-detection configured."
+                    ),
+                    resolution=(
+                        "Enable organization-scoped auto-detection if centralized "
+                        "visibility into AgentCore runtimes and gateways is required."
+                    ),
+                    reference=AGENT_REGISTRY_AUTO_DETECTION_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+            continue
+
+        configuration = auto_detection.get("configuration") or {}
+        enabled = configuration.get("enabled")
+        scope = configuration.get("scope")
+        detection_status = auto_detection.get("status")
+        active = (
+            enabled is True and scope == "ORGANIZATION" and detection_status == "ACTIVE"
+        )
+        if active:
+            findings.append(
+                create_finding(
+                    check_id="AC-21",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) has active "
+                        "organization-scoped auto-detection."
+                    ),
+                    resolution="No action required",
+                    reference=AGENT_REGISTRY_AUTO_DETECTION_REFERENCE_URL,
+                    severity=SeverityEnum.MEDIUM,
+                    status=StatusEnum.PASSED,
+                )
+            )
+        elif (
+            enabled is True
+            and scope == "ORGANIZATION"
+            and detection_status == "INACTIVE"
+        ):
+            findings.append(
+                create_finding(
+                    check_id="AC-21",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) requests "
+                        "organization auto-detection, but its required "
+                        "organizational preconditions are not currently met."
+                    ),
+                    resolution=(
+                        "Review the registry auto-detection status reason and "
+                        "complete the AWS Organizations prerequisites."
+                    ),
+                    reference=AGENT_REGISTRY_AUTO_DETECTION_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+        elif enabled is False and scope == "ORGANIZATION":
+            findings.append(
+                create_finding(
+                    check_id="AC-21",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) has "
+                        "organization auto-detection disabled."
+                    ),
+                    resolution=(
+                        "Enable organization-scoped auto-detection if centralized "
+                        "visibility into AgentCore runtimes and gateways is required."
+                    ),
+                    reference=AGENT_REGISTRY_AUTO_DETECTION_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+        else:
+            findings.append(
+                create_finding(
+                    check_id="AC-21",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) returned an "
+                        "unrecognized auto-detection configuration."
+                    ),
+                    resolution="Review the registry auto-detection configuration.",
+                    reference=AGENT_REGISTRY_AUTO_DETECTION_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+
+    return findings
+
+
+def _registry_record_context(item: Dict[str, Any]) -> Dict[str, str]:
+    """Return stable display fields for one registry-record inventory item."""
+    summary = item["summary"]
+    detail = item["detail"]
+    registry_summary = item["registry"]["summary"]
+    registry_detail = item["registry"]["detail"]
+    record_id = detail.get("recordId") or summary.get("recordId") or "unknown"
+    return {
+        "record_id": record_id,
+        "record_name": (
+            detail.get("displayName")
+            or detail.get("name")
+            or summary.get("displayName")
+            or summary.get("name")
+            or record_id
+        ),
+        "registry_name": (
+            registry_detail.get("name")
+            or registry_summary.get("name")
+            or registry_detail.get("registryId")
+            or registry_summary.get("registryId")
+            or "unknown"
+        ),
+    }
+
+
+def _agent_registry_record_check_start(
+    record_inventory: Dict[str, Any],
+    check_id: str,
+    finding_name: str,
+    reference: str,
+) -> List[Dict[str, Any]]:
+    """Return terminal precondition findings or an empty list to continue."""
+    registry_inventory = record_inventory["registry_inventory"]
+    if registry_inventory.get("unavailable"):
+        return [
+            create_finding(
+                check_id=check_id,
+                finding_name=finding_name,
+                finding_details="AWS Agent Registry is not available in this region.",
+                resolution="No action required unless Agent Registry is expected.",
+                reference=reference,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    list_error = registry_inventory.get("list_error")
+    if list_error:
+        return [
+            create_finding(
+                check_id=check_id,
+                finding_name=f"{finding_name} Incomplete",
+                finding_details=(
+                    "Agent Registry records could not be assessed because "
+                    f"{_agent_registry_inventory_failure_detail(registry_inventory)}."
+                ),
+                resolution=_agent_registry_error_resolution(
+                    list_error, "agent-registry:ListRegistries"
+                ),
+                reference=reference,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    if not registry_inventory.get("items") and not registry_inventory.get("errors"):
+        return [
+            create_finding(
+                check_id=check_id,
+                finding_name=finding_name,
+                finding_details="No AWS Agent Registry registries found.",
+                resolution="No action required",
+                reference=reference,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    return []
+
+
+def check_agent_registry_record_lifecycle(
+    record_inventory: Dict[str, Any] = None,
+    registry_inventory: Dict[str, Any] = None,
+) -> List[Dict[str, Any]]:
+    """AC-22: Validate that records occupy recognized governed lifecycle states."""
+    if record_inventory is not None:
+        inventory = record_inventory
+    else:
+        parent_inventory = (
+            registry_inventory
+            if registry_inventory is not None
+            else get_agent_registry_inventory()
+        )
+        inventory = get_agent_registry_record_inventory(parent_inventory)
+    finding_name = "Agent Registry Record Lifecycle Governance"
+    start_findings = _agent_registry_record_check_start(
+        inventory,
+        "AC-22",
+        finding_name,
+        AGENT_REGISTRY_RECORD_LIFECYCLE_REFERENCE_URL,
+    )
+    if start_findings:
+        return start_findings
+
+    findings = _agent_registry_record_incomplete_findings(
+        inventory,
+        "AC-22",
+        finding_name,
+        AGENT_REGISTRY_RECORD_LIFECYCLE_REFERENCE_URL,
+    )
+    if (
+        not inventory.get("items")
+        and not findings
+        and inventory["registry_inventory"].get("items")
+    ):
+        return [
+            create_finding(
+                check_id="AC-22",
+                finding_name=finding_name,
+                finding_details="No AWS Agent Registry records found.",
+                resolution="No action required",
+                reference=AGENT_REGISTRY_RECORD_LIFECYCLE_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    governed_states = {
+        "DRAFT",
+        "PENDING_APPROVAL",
+        "APPROVED",
+        "REJECTED",
+        "DEPRECATED",
+    }
+    transitional_states = {"CREATING", "UPDATING"}
+    failed_states = {"CREATE_FAILED", "UPDATE_FAILED"}
+    for item in inventory.get("items", []):
+        context = _registry_record_context(item)
+        detail = item["detail"]
+        summary = item["summary"]
+        record_status = detail.get("status") or summary.get("status")
+        if record_status in governed_states:
+            findings.append(
+                create_finding(
+                    check_id="AC-22",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry record '{context['record_name']}' "
+                        f"({context['record_id']}) in registry "
+                        f"'{context['registry_name']}' is in the governed "
+                        f"{record_status} lifecycle state."
+                    ),
+                    resolution="No action required",
+                    reference=AGENT_REGISTRY_RECORD_LIFECYCLE_REFERENCE_URL,
+                    severity=SeverityEnum.MEDIUM,
+                    status=StatusEnum.PASSED,
+                )
+            )
+        elif record_status in transitional_states:
+            findings.append(
+                create_finding(
+                    check_id="AC-22",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry record '{context['record_name']}' "
+                        f"({context['record_id']}) is currently "
+                        f"{record_status.lower()}, so lifecycle governance cannot "
+                        "yet be assessed."
+                    ),
+                    resolution="Retry after the record operation completes.",
+                    reference=AGENT_REGISTRY_RECORD_LIFECYCLE_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+        elif record_status in failed_states:
+            findings.append(
+                create_finding(
+                    check_id="AC-22",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry record '{context['record_name']}' "
+                        f"({context['record_id']}) is in the operational "
+                        f"{record_status} state, so its governed lifecycle could "
+                        "not be established."
+                    ),
+                    resolution=(
+                        "Review the record status reason, resolve the failed "
+                        "operation, and retry the assessment."
+                    ),
+                    reference=AGENT_REGISTRY_RECORD_LIFECYCLE_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+        else:
+            findings.append(
+                create_finding(
+                    check_id="AC-22",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry record '{context['record_name']}' "
+                        f"({context['record_id']}) returned the unrecognized "
+                        f"lifecycle state {record_status or 'unspecified'}."
+                    ),
+                    resolution="Review the record lifecycle state.",
+                    reference=AGENT_REGISTRY_RECORD_LIFECYCLE_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+
+    return findings
+
+
+def _valid_auto_detected_provenance(entries: Any) -> bool:
+    """Return whether an auto-detected record has attributable source lineage."""
+    if not isinstance(entries, list) or not entries:
+        return False
+
+    valid_source_types = {
+        "AWS::BedrockAgentCore::Runtime",
+        "AWS::BedrockAgentCore::Gateway",
+    }
+    source_arn_pattern = re.compile(
+        r"^arn:aws(?:-[^:]+)?:[A-Za-z0-9-]+:[a-z0-9-]*:[0-9]{12}:.+$"
+    )
+    return any(
+        isinstance(entry, dict)
+        and entry.get("relation") == "DETECTED_FROM"
+        and entry.get("sourceType") in valid_source_types
+        and isinstance(entry.get("sourceId"), str)
+        and source_arn_pattern.fullmatch(entry["sourceId"])
+        for entry in entries
+    )
+
+
+def check_agent_registry_record_provenance(
+    record_inventory: Dict[str, Any] = None,
+    registry_inventory: Dict[str, Any] = None,
+) -> List[Dict[str, Any]]:
+    """AC-23: Require attributable origin and lineage for registry records."""
+    if record_inventory is not None:
+        inventory = record_inventory
+    else:
+        parent_inventory = (
+            registry_inventory
+            if registry_inventory is not None
+            else get_agent_registry_inventory()
+        )
+        inventory = get_agent_registry_record_inventory(parent_inventory)
+    finding_name = "Agent Registry Record Provenance"
+    start_findings = _agent_registry_record_check_start(
+        inventory,
+        "AC-23",
+        finding_name,
+        AGENT_REGISTRY_PROVENANCE_REFERENCE_URL,
+    )
+    if start_findings:
+        return start_findings
+
+    findings = _agent_registry_record_incomplete_findings(
+        inventory,
+        "AC-23",
+        finding_name,
+        AGENT_REGISTRY_PROVENANCE_REFERENCE_URL,
+    )
+    if (
+        not inventory.get("items")
+        and not findings
+        and inventory["registry_inventory"].get("items")
+    ):
+        return [
+            create_finding(
+                check_id="AC-23",
+                finding_name=finding_name,
+                finding_details="No AWS Agent Registry records found.",
+                resolution="No action required",
+                reference=AGENT_REGISTRY_PROVENANCE_REFERENCE_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        ]
+
+    for item in inventory.get("items", []):
+        context = _registry_record_context(item)
+        detail = item["detail"]
+        summary = item["summary"]
+        created_by = detail.get("createdBy") or summary.get("createdBy")
+        auto_detected = detail.get("createdByAutoDetection")
+        if auto_detected is None:
+            auto_detected = summary.get("createdByAutoDetection")
+
+        if auto_detected is True:
+            provenance = detail.get("provenance")
+            if provenance is None:
+                provenance = summary.get("provenanceSummaryList")
+            valid = _valid_auto_detected_provenance(provenance)
+            findings.append(
+                create_finding(
+                    check_id="AC-23",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Auto-detected registry record "
+                        f"'{context['record_name']}' ({context['record_id']}) "
+                        "has attributable DETECTED_FROM provenance for an "
+                        "AgentCore runtime or gateway."
+                        if valid
+                        else f"Auto-detected registry record "
+                        f"'{context['record_name']}' ({context['record_id']}) "
+                        "does not include valid DETECTED_FROM provenance for an "
+                        "AgentCore runtime or gateway."
+                    ),
+                    resolution=(
+                        "No action required"
+                        if valid
+                        else "Refresh or recreate the auto-detected record so its "
+                        "source ARN, source type, and DETECTED_FROM relation are "
+                        "preserved."
+                    ),
+                    reference=AGENT_REGISTRY_PROVENANCE_REFERENCE_URL,
+                    severity=SeverityEnum.MEDIUM,
+                    status=StatusEnum.PASSED if valid else StatusEnum.FAILED,
+                )
+            )
+        elif auto_detected is False and re.fullmatch(r"[0-9]{12}", created_by or ""):
+            findings.append(
+                create_finding(
+                    check_id="AC-23",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Manually created registry record "
+                        f"'{context['record_name']}' ({context['record_id']}) "
+                        f"retains creator account attribution ({created_by})."
+                    ),
+                    resolution="No action required",
+                    reference=AGENT_REGISTRY_PROVENANCE_REFERENCE_URL,
+                    severity=SeverityEnum.MEDIUM,
+                    status=StatusEnum.PASSED,
+                )
+            )
+        elif auto_detected is False:
+            findings.append(
+                create_finding(
+                    check_id="AC-23",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Manually created registry record "
+                        f"'{context['record_name']}' ({context['record_id']}) "
+                        "does not include a valid 12-digit creator account ID."
+                    ),
+                    resolution=(
+                        "Recreate or update the manual registry record through an "
+                        "attributable AWS account so creator metadata is preserved."
+                    ),
+                    reference=AGENT_REGISTRY_PROVENANCE_REFERENCE_URL,
+                    severity=SeverityEnum.MEDIUM,
+                    status=StatusEnum.FAILED,
+                )
+            )
+        else:
+            findings.append(
+                create_finding(
+                    check_id="AC-23",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry record '{context['record_name']}' "
+                        f"({context['record_id']}) did not return enough origin "
+                        "metadata to determine whether it was manually created or "
+                        "auto-detected."
+                    ),
+                    resolution=(
+                        "Retry after the service returns creator and "
+                        "auto-detection metadata for the record."
+                    ),
+                    reference=AGENT_REGISTRY_PROVENANCE_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+
+    return findings
 
 
 def check_agentcore_memory_configuration() -> List[Dict[str, Any]]:
@@ -3444,6 +4823,7 @@ def lambda_handler(event, context):
     """
     global start_time, iam_client, ec2_client, ecr_client, logs_client
     global xray_client, cloudwatch_client, agentcore_client
+    global agent_registry_control_client
     start_time = time.time()
 
     try:
@@ -3512,6 +4892,118 @@ def lambda_handler(event, context):
                             severity=SeverityEnum.HIGH,
                             status=StatusEnum.FAILED,
                             region=GLOBAL_REGION_LABEL,
+                        )
+                    )
+
+        # Agent Registry uses a separate GA service namespace and can be available
+        # independently of Bedrock AgentCore Runtime. Assess it before the Runtime
+        # availability gate so Registry findings are not silently skipped.
+        agent_registry_control_client = None
+        agent_registry_initialization_error = None
+        try:
+            agent_registry_control_client = boto3.client(
+                "agent-registry-control",
+                config=boto3_config,
+                region_name=region,
+            )
+        except Exception as e:
+            agent_registry_initialization_error = e
+            logger.warning(f"Failed to initialize Agent Registry client: {e}")
+
+        registry_inventory = None
+        if check_timeout():
+            registry_inventory = get_agent_registry_inventory(
+                agent_registry_initialization_error
+            )
+            registry_checks = [
+                (
+                    "Registry Approval Governance",
+                    lambda: check_agent_registry_approval_governance(
+                        registry_inventory
+                    ),
+                ),
+                (
+                    "Registry Discovery Authorization",
+                    lambda: check_agent_registry_discovery_authorization(
+                        registry_inventory
+                    ),
+                ),
+                (
+                    "Registry Customer-Managed KMS Encryption",
+                    lambda: check_agent_registry_cmk_encryption(registry_inventory),
+                ),
+                (
+                    "Registry Organization Auto-Detection",
+                    lambda: check_agent_registry_auto_detection(registry_inventory),
+                ),
+            ]
+            for check_name, check_func in registry_checks:
+                if not check_timeout():
+                    logger.error(
+                        "Timeout approaching, skipping remaining Agent Registry "
+                        f"checks after {check_name}"
+                    )
+                    break
+                try:
+                    logger.info(f"Running check: {check_name}")
+                    all_findings.extend(check_func())
+                except Exception as e:
+                    logger.error(f"Error in check '{check_name}': {e}")
+                    all_findings.append(
+                        create_finding(
+                            check_id="AC-00",
+                            finding_name=f"AgentCore {check_name} Check Error",
+                            finding_details=f"Error during {check_name} check: {str(e)}",
+                            resolution="Investigate error and retry assessment",
+                            reference=AGENTCORE_STARTER_TOOLKIT_URL,
+                            severity=SeverityEnum.HIGH,
+                            status=StatusEnum.FAILED,
+                            region=region,
+                        )
+                    )
+
+        if registry_inventory is not None and check_timeout():
+            registry_record_inventory = get_agent_registry_record_inventory(
+                registry_inventory
+            )
+            registry_record_checks = [
+                (
+                    "Registry Record Lifecycle Governance",
+                    lambda: check_agent_registry_record_lifecycle(
+                        registry_record_inventory,
+                        registry_inventory,
+                    ),
+                ),
+                (
+                    "Registry Record Provenance",
+                    lambda: check_agent_registry_record_provenance(
+                        registry_record_inventory,
+                        registry_inventory,
+                    ),
+                ),
+            ]
+            for check_name, check_func in registry_record_checks:
+                if not check_timeout():
+                    logger.error(
+                        "Timeout approaching, skipping remaining Agent Registry "
+                        f"checks after {check_name}"
+                    )
+                    break
+                try:
+                    logger.info(f"Running check: {check_name}")
+                    all_findings.extend(check_func())
+                except Exception as e:
+                    logger.error(f"Error in check '{check_name}': {e}")
+                    all_findings.append(
+                        create_finding(
+                            check_id="AC-00",
+                            finding_name=f"AgentCore {check_name} Check Error",
+                            finding_details=f"Error during {check_name} check: {str(e)}",
+                            resolution="Investigate error and retry assessment",
+                            reference=AGENTCORE_STARTER_TOOLKIT_URL,
+                            severity=SeverityEnum.HIGH,
+                            status=StatusEnum.FAILED,
+                            region=region,
                         )
                     )
 

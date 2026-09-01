@@ -363,7 +363,7 @@ def get_html_template() -> str:
         .compliance-nav .nav-item .count {{ background: var(--success); color: #fff; padding: 2px 6px; font-size: 11px; }}
         .sidebar-footer {{ margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-3); }}
         .sidebar-footer a {{ color: var(--accent); text-decoration: none; }}
-        .main {{ padding: 32px 40px; max-width: 1400px; }}
+        .main {{ padding: 32px 40px; max-width: 1400px; min-width: 0; }}
         .page-header {{ margin-bottom: 32px; }}
         .page-header h2 {{ font-size: 24px; font-weight: 700; margin-bottom: 8px; }}
         .page-header-meta {{ display: flex; gap: 24px; font-size: 13px; color: var(--text-2); }}
@@ -454,7 +454,7 @@ def get_html_template() -> str:
         .assessment-summary-grid {{ display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 16px; margin-bottom: 16px; }}
         .assessment-actions {{ display: flex; flex-wrap: wrap; gap: 10px; }}
         @media (max-width: 1024px) {{ .layout {{ grid-template-columns: 1fr; }} .sidebar {{ display: none; }} .metrics {{ grid-template-columns: repeat(2, 1fr); }} }}
-        @media (max-width: 640px) {{ .metrics {{ grid-template-columns: 1fr; }} .main {{ padding: 20px; }} }}
+        @media (max-width: 640px) {{ .metrics, .assessment-summary-grid {{ grid-template-columns: 1fr; }} .main {{ padding: 20px; }} }}
         .page-footer {{ padding: 16px 40px; border-top: 1px solid var(--border); font-size: 10px; line-height: 1.6; color: var(--text-3); text-align: center; background: var(--surface); }}
         .page-footer a {{ color: var(--accent); text-decoration: none; }}
     </style>

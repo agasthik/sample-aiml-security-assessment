@@ -305,17 +305,29 @@ class TestOWASPMappings:
         }
         intentionally_unmapped = {
             "AC-17",
+            "AC-18",
+            "AC-19",
+            "AC-20",
+            "AC-21",
+            "AC-22",
+            "AC-23",
             "AG-28",
             "AG-29",
             "AG-30",
             "AG-31",
             "AG-32",
+            "AG-33",
+            "AG-34",
+            "AG-35",
+            "AG-36",
+            "AG-37",
+            "AG-38",
             "BR-35",
             "BR-36",
         }
         new_check_ids = set(expected_mappings) | intentionally_unmapped
 
-        assert len(new_check_ids) == 20
+        assert len(new_check_ids) == 32
         assert len(expected_mappings) == 12
         assert set(owasp_app.OWASP_CHECK_MAPPINGS) & new_check_ids == set(
             expected_mappings

@@ -24,6 +24,8 @@ Metadata:
           - RequireBedrockZeroDataRetention
           - RequireMarketplaceEndpointCMK
           - RequireAgentCoreOnlineEvaluation
+          - RequireAgentRegistryManualApproval
+          - RequireAgentRegistryCMK
           - AgentCoreTokenVaultId
           - ApprovedExternalAccountIds
           - ApprovedOrganizationIds
@@ -50,6 +52,10 @@ Metadata:
         default: Require Marketplace endpoint customer-managed keys
       RequireAgentCoreOnlineEvaluation:
         default: Require AgentCore online evaluation
+      RequireAgentRegistryManualApproval:
+        default: Require Agent Registry manual approval
+      RequireAgentRegistryCMK:
+        default: Require Agent Registry customer-managed keys
       AgentCoreTokenVaultId:
         default: AgentCore token vault ID
       ApprovedExternalAccountIds:
@@ -154,6 +160,18 @@ Parameters:
     Default: "false"
     AllowedValues: ["true", "false"]
     Description: Fail AC-17 when no complete active online evaluation configuration is found.
+
+  RequireAgentRegistryManualApproval:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Fail AC-18 when an Agent Registry automatically approves submitted records.
+
+  RequireAgentRegistryCMK:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Fail AC-20 when an Agent Registry uses the default AWS owned encryption key.
 
   AgentCoreTokenVaultId:
     Type: String
@@ -400,6 +418,16 @@ Resources:
                   - s3:GetBucketTagging
                   - s3:HeadBucket
                 Resource: "*"
+              # AWS Agent Registry Permissions (AC-18 through AC-23)
+              - Effect: Allow
+                Action:
+                  - agent-registry:ListRegistries
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - agent-registry:GetRegistry
+                  - agent-registry:ListRegistryRecords
+                Resource: !Sub "arn:${AWS::Partition}:agent-registry:*:${AWS::AccountId}:registry/*"
 
               # Responsible AI GRC Assessment Permissions (FS-01 to FS-69)
               # Read-only list/describe/get actions required by the 64
@@ -704,6 +732,12 @@ Resources:
             Type: PLAINTEXT
           - Name: REQUIRE_AGENTCORE_ONLINE_EVALUATION
             Value: !Ref RequireAgentCoreOnlineEvaluation
+            Type: PLAINTEXT
+          - Name: REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL
+            Value: !Ref RequireAgentRegistryManualApproval
+            Type: PLAINTEXT
+          - Name: REQUIRE_AGENT_REGISTRY_CMK
+            Value: !Ref RequireAgentRegistryCMK
             Type: PLAINTEXT
           - Name: AGENTCORE_TOKEN_VAULT_ID
             Value: !Ref AgentCoreTokenVaultId

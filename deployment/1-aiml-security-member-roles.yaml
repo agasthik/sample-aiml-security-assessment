@@ -137,6 +137,16 @@ Resources:
                   - bedrock-agentcore:GetOnlineEvaluationConfig
                   - bedrock-agentcore:ListPolicies
                 Resource: "*"
+              # AWS Agent Registry Permissions (AC-18 through AC-23)
+              - Effect: Allow
+                Action:
+                  - agent-registry:ListRegistries
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - agent-registry:GetRegistry
+                  - agent-registry:ListRegistryRecords
+                Resource: !Sub "arn:${AWS::Partition}:agent-registry:*:${AWS::AccountId}:registry/*"
               # SageMaker Assessment Permissions
               - Effect: Allow
                 Action:

@@ -1,10 +1,10 @@
 # Security Checks Reference
 
-This document provides a comprehensive reference for all 194 security checks performed by the AI/ML Security Assessment framework (86 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, 32 Agentic AI Security checks, 64 Responsible AI GRC checks, and 12 OWASP Top 10 for LLM checks).
+This document provides a comprehensive reference for all 206 security checks performed by the AI/ML Security Assessment framework (92 core checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, 38 Agentic AI Security checks, 64 Responsible AI GRC checks, and 12 OWASP Top 10 for LLM checks).
 
 Sources differ by bucket and are not interchangeable: the core Bedrock, SageMaker, and AgentCore checks derive from the AWS Well-Architected **Generative AI Lens** security best practices (`gensec*`); the Agentic AI Security checks from the AWS Well-Architected **Agentic AI Lens**; the `FS-*` **Responsible AI GRC** checks from the AWS GRC User Guide; and the `OW-*` checks from the OWASP Top 10 for LLM. The AWS Well-Architected **Responsible AI Lens** is not a source for any of them — see [Responsible AI GRC — scope, sources, and compatibility](RESPONSIBLE_AI_GRC_SCOPE.md).
 
-The 64 Responsible AI GRC checks occupy 69 `FS-*` numbers: 64 ship as standalone checks and 5 are merged into upstream Bedrock/SageMaker checks. The framework also emits `BR-00`, `SM-00`, `AC-00`, `FS-00`, and `OW-00` operational marker rows at runtime; these are not controls and are excluded from the 194-check total. Per-control provenance, including which controls are project extensions rather than guide-derived, is recorded in [`provenance.json`](../aiml-security-assessment/functions/security/responsible_ai_grc_assessments/provenance.json).
+The 64 Responsible AI GRC checks occupy 69 `FS-*` numbers: 64 ship as standalone checks and 5 are merged into upstream Bedrock/SageMaker checks. The framework also emits `BR-00`, `SM-00`, `AC-00`, `FS-00`, and `OW-00` operational marker rows at runtime; these are not controls and are excluded from the 206-check total. Per-control provenance, including which controls are project extensions rather than guide-derived, is recorded in [`provenance.json`](../aiml-security-assessment/functions/security/responsible_ai_grc_assessments/provenance.json).
 
 ## Table of Contents
 
@@ -14,8 +14,8 @@ The 64 Responsible AI GRC checks occupy 69 `FS-*` numbers: 64 ship as standalone
 - [Status Values](#status-values)
 - [Amazon SageMaker AI Security Checks (29)](#amazon-sagemaker-ai-security-checks-29)
 - [Amazon Bedrock Security Checks (40)](#amazon-bedrock-security-checks-40)
-- [Amazon Bedrock AgentCore Security Checks (17)](#amazon-bedrock-agentcore-security-checks-17)
-- [Agentic AI Security Checks (32)](#agentic-ai-security-checks-32)
+- [Amazon Bedrock AgentCore Security Checks (23)](#amazon-bedrock-agentcore-security-checks-23)
+- [Agentic AI Security Checks (38)](#agentic-ai-security-checks-38)
 - [Responsible AI GRC Checks (64)](#responsible-ai-grc-checks-64-additional-5-upstream-extensions)
 - [OWASP Top 10 for LLM Checks (12)](#owasp-top-10-for-llm-checks-12)
 
@@ -29,8 +29,8 @@ The framework evaluates your AI/ML workloads against AWS security best practices
 | --------- | ------------------ | ------------- |
 | Amazon SageMaker AI | 29 | Security Hub controls, encryption, network isolation, GuardDuty AI Protection, HyperPod, IAM, MLOps, Model Registry policy exposure |
 | Amazon Bedrock | 40 | Guardrails, prompt-attack/image filters, retention, inference profiles, automated reasoning and Marketplace endpoint governance, encryption, networking, IAM, logging, monitoring, and evaluation |
-| Amazon Bedrock AgentCore | 17 | Runtime/tool VPC isolation, encryption, browser recording, observability, resource policies, Identity token vaults, online evaluation |
-| Agentic AI Security | 32 | Bounded autonomy, agent identity, tool authorization, guardrail enforcement, prompt/input protection, memory privacy, auditability, continuous assurance, abuse protection |
+| Amazon Bedrock AgentCore and AWS Agent Registry | 23 | Runtime/tool VPC isolation, encryption, browser recording, observability, resource policies, Identity token vaults, online evaluation, Registry approval and discovery authorization, Registry encryption, organization auto-detection, record lifecycle, and provenance |
+| Agentic AI Security | 38 | Bounded autonomy, agent identity, tool authorization, Registry governance and provenance, guardrail enforcement, prompt/input protection, memory privacy, auditability, continuous assurance, abuse protection |
 | Responsible AI GRC | 64 | Unbounded consumption, excessive agency, supply chain, training data poisoning, vector weaknesses, non-compliant output, misinformation, harmful output, biased output, PII disclosure, hallucination, prompt injection, improper output handling, off-topic output, out-of-date training data |
 | OWASP Top 10 for LLM | 12 | LLM01 Prompt Injection, LLM02 Sensitive Info Disclosure, LLM03 Supply Chain, LLM04 Data/Model Poisoning, LLM05 Improper Output Handling, LLM06 Excessive Agency, LLM07 System Prompt Leakage, LLM08 Vector/Embedding Weaknesses, LLM09 Misinformation, LLM10 Unbounded Consumption |
 
@@ -44,8 +44,8 @@ Each security check has a unique identifier with a service prefix:
 | -------- | --------- | --------- |
 | **SM-XX** | Amazon SageMaker | SM-01, SM-30 (`SM-29` reserved) |
 | **BR-XX** | Amazon Bedrock | BR-01, BR-40 |
-| **AC-XX** | Amazon Bedrock AgentCore | AC-01, AC-17 |
-| **AG-XX** | Agentic AI Security | AG-01, AG-32 |
+| **AC-XX** | Amazon Bedrock AgentCore and AWS Agent Registry | AC-01, AC-23 |
+| **AG-XX** | Agentic AI Security | AG-01, AG-38 |
 | **FS-XX** | Responsible AI GRC | FS-01, FS-69 |
 | **OW-XX** | OWASP Top 10 for LLM | OW-01, OW-12 |
 
@@ -473,7 +473,7 @@ and `OW-00` in
 
 ---
 
-## Amazon Bedrock AgentCore Security Checks (17)
+## Amazon Bedrock AgentCore Security Checks (23)
 
 ### AC-01: Runtime Amazon VPC Configuration
 
@@ -483,12 +483,12 @@ and `OW-00` in
 ### AC-02: AWS IAM Full Access
 
 - **Severity:** High
-- **Description:** Checks for overly permissive AgentCore AWS IAM policies.
+- **Description:** Checks attached and inline policy documents for AgentCore or Agent Registry full-access managed policies and wildcard IAM action patterns, including prefix and embedded wildcards, when they apply to all resources. Only the valid `bedrock-agentcore` and `agent-registry` IAM namespaces are evaluated.
 
 ### AC-03: Stale Access
 
 - **Severity:** Low
-- **Description:** Detects unused AgentCore permissions.
+- **Description:** Detects unused AgentCore and Agent Registry permissions by inspecting both attached and inline policy documents before querying IAM service-last-accessed history.
 
 ### AC-04: Observability
 
@@ -560,9 +560,39 @@ and `OW-00` in
 - **Severity:** Informational by default; Medium when required
 - **Description:** Reports whether online evaluation configurations are active/enabled and include non-zero sampling, evaluators, CloudWatch input data, and output logging. Set the `RequireAgentCoreOnlineEvaluation` deployment parameter to `true` (`REQUIRE_AGENTCORE_ONLINE_EVALUATION` in the Lambda) to make incomplete coverage fail.
 
+### AC-18: Agent Registry Publication Approval Governance
+
+- **Severity:** Informational by default; Medium when required
+- **Description:** Uses the GA `agent-registry-control` API to verify whether each READY registry requires manual review for submitted records. Registries with `APPROVE_ALL` are informational by default. Set `RequireAgentRegistryManualApproval` to `true` (`REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL` in the Lambda) to make automatic approval fail.
+
+### AC-19: Agent Registry Discovery Authorization
+
+- **Severity:** High
+- **Description:** Verifies each READY registry uses AWS IAM discovery authorization or a custom JWT authorizer with an OpenID Connect discovery URL and at least one audience, client, scope, or custom-claim constraint. Unknown future authorizer types and inaccessible configuration are reported as informational N/A rather than failed.
+
+### AC-20: Agent Registry Customer-Managed KMS Encryption
+
+- **Severity:** Informational by default; Medium when required
+- **Description:** Reads `GetRegistry.encryptionConfiguration.kmsKeyArn`. Registries with a customer-managed KMS key pass. Registries using the default AWS owned key are informational by default because Agent Registry still encrypts them at rest. Set `RequireAgentRegistryCMK` to `true` (`REQUIRE_AGENT_REGISTRY_CMK` in the Lambda) to make the AWS owned key configuration fail. The registry encryption key is immutable after creation, so remediation requires a replacement registry and record migration.
+
+### AC-21: Agent Registry Organization Auto-Detection
+
+- **Severity:** Medium when active; otherwise Informational
+- **Description:** Verifies whether organization-scoped auto-detection is configured, enabled, and `ACTIVE`. A configured `INACTIVE` status means the required AWS Organizations preconditions are not met and is reported as informational N/A rather than failed. Disabled or absent auto-detection is also advisory because the feature is optional.
+
+### AC-22: Agent Registry Record Lifecycle Governance
+
+- **Severity:** Medium for governed states; otherwise Informational
+- **Description:** Paginates `ListRegistryRecords` and evaluates the lifecycle metadata returned in each record summary. Records in `DRAFT`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, or `DEPRECATED` pass because they occupy documented governance states. Transitional, failed-operation, unknown, inaccessible, and region-unavailable states are reported as informational N/A so operational conditions are not mislabeled as security failures.
+
+### AC-23: Agent Registry Record Provenance
+
+- **Severity:** Medium
+- **Description:** Verifies manually created records retain a 12-digit creator-account attribution and auto-detected records include a `DETECTED_FROM` provenance summary with a valid AWS source ARN and source type of `AWS::BedrockAgentCore::Runtime` or `AWS::BedrockAgentCore::Gateway`. Manual records without valid creator attribution and auto-detected records without valid lineage fail. Missing optional origin-mode metadata is reported as informational N/A.
+
 ---
 
-## Agentic AI Security Checks (32)
+## Agentic AI Security Checks (38)
 
 Agentic AI Security checks use the `AG-XX` namespace and are included with the
 default assessment. They follow a hybrid model:
@@ -801,6 +831,48 @@ with scope limited to the Security pillar.
 - **Source:** AC-17
 - **Domain:** Auditability & Continuous Assurance
 - **Description:** Maps AgentCore online evaluation configuration without claiming universal runtime trace coverage.
+
+### AG-33: Registry Publication Approval Governance
+
+- **Severity:** Source check severity
+- **Source:** AC-18
+- **Domain:** Agent Identity & Access
+- **Description:** Maps Agent Registry publication approval configuration into the Agentic AI Security view.
+
+### AG-34: Registry Discovery Authorization
+
+- **Severity:** Source check severity
+- **Source:** AC-19
+- **Domain:** Agent Identity & Access
+- **Description:** Maps Agent Registry IAM or constrained JWT discovery authorization into the Agentic AI Security view.
+
+### AG-35: Registry Metadata Encryption
+
+- **Severity:** Source check severity
+- **Source:** AC-20
+- **Domain:** Memory & Data Privacy
+- **Description:** Maps Agent Registry customer-managed KMS encryption into the Agentic AI Security view.
+
+### AG-36: Organization Discovery Coverage
+
+- **Severity:** Source check severity
+- **Source:** AC-21
+- **Domain:** Auditability & Continuous Assurance
+- **Description:** Maps organization-scoped Agent Registry auto-detection health into the Agentic AI Security view.
+
+### AG-37: Registry Record Lifecycle Governance
+
+- **Severity:** Source check severity
+- **Source:** AC-22
+- **Domain:** Agent Identity & Access
+- **Description:** Maps governed Agent Registry record lifecycle states into the Agentic AI Security view.
+
+### AG-38: Registry Record Provenance
+
+- **Severity:** Source check severity
+- **Source:** AC-23
+- **Domain:** Auditability & Continuous Assurance
+- **Description:** Maps Agent Registry creator attribution and auto-detected runtime or gateway lineage into the Agentic AI Security view.
 
 ### Runtime guardrail methodology note
 

@@ -36,6 +36,14 @@ EXPECTED_ENV_OWNERS = {
         "AgentCoreSecurityAssessmentFunction",
         "RequireAgentCoreOnlineEvaluation",
     ),
+    "REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL": (
+        "AgentCoreSecurityAssessmentFunction",
+        "RequireAgentRegistryManualApproval",
+    ),
+    "REQUIRE_AGENT_REGISTRY_CMK": (
+        "AgentCoreSecurityAssessmentFunction",
+        "RequireAgentRegistryCMK",
+    ),
 }
 CLEARABLE_SAM_PARAMETERS = {
     "SAM_TARGET_REGIONS_PARAMETER": "TargetRegions",
@@ -161,3 +169,51 @@ def test_readme_uses_json_for_comma_separated_cloudformation_parameters():
     assert '"ParameterKey": "ApprovedExternalAccountIds"' in readme
     assert '"ParameterValue": "111122223333,444455556666"' in readme
     assert '"ParameterKey": "ApprovedOrganizationIds"' in readme
+
+
+def test_agent_registry_manual_approval_baseline_reaches_every_deploy_path():
+    buildspec = (REPO_ROOT / "buildspec.yml").read_text(encoding="utf-8")
+    parameter_variable = "SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER"
+
+    assert (
+        f'{parameter_variable}="ParameterKey=RequireAgentRegistryManualApproval,'
+        'ParameterValue=${REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL:-false}"' in buildspec
+    )
+    deploy_commands = [
+        line for line in buildspec.splitlines() if "sam deploy --template-file" in line
+    ]
+    assert len(deploy_commands) == 3
+    assert all(f'"${parameter_variable}"' in line for line in deploy_commands)
+
+    for template_name in (
+        "deployment/aiml-security-single-account.yaml",
+        "deployment/2-aiml-security-codebuild.yaml",
+    ):
+        template = (REPO_ROOT / template_name).read_text(encoding="utf-8")
+        assert "RequireAgentRegistryManualApproval:" in template
+        assert "Name: REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL" in template
+        assert "Value: !Ref RequireAgentRegistryManualApproval" in template
+
+
+def test_agent_registry_cmk_baseline_reaches_every_deploy_path():
+    buildspec = (REPO_ROOT / "buildspec.yml").read_text(encoding="utf-8")
+    parameter_variable = "SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER"
+
+    assert (
+        f'{parameter_variable}="ParameterKey=RequireAgentRegistryCMK,'
+        'ParameterValue=${REQUIRE_AGENT_REGISTRY_CMK:-false}"' in buildspec
+    )
+    deploy_commands = [
+        line for line in buildspec.splitlines() if "sam deploy --template-file" in line
+    ]
+    assert len(deploy_commands) == 3
+    assert all(f'"${parameter_variable}"' in line for line in deploy_commands)
+
+    for template_name in (
+        "deployment/aiml-security-single-account.yaml",
+        "deployment/2-aiml-security-codebuild.yaml",
+    ):
+        template = (REPO_ROOT / template_name).read_text(encoding="utf-8")
+        assert "RequireAgentRegistryCMK:" in template
+        assert "Name: REQUIRE_AGENT_REGISTRY_CMK" in template
+        assert "Value: !Ref RequireAgentRegistryCMK" in template
