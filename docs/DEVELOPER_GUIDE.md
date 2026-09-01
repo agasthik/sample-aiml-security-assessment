@@ -1003,6 +1003,31 @@ After generating new screenshots, update the README to reference them:
 - **Test screenshots render correctly** in GitHub's markdown preview
 - **All screenshot tooling**: Located in `sample-reports/` for easy organization
 
+### Declaring Deployment Impact
+
+Every releasable behavior or deployment change must update the root
+`CHANGELOG.md` under `Unreleased`; a release does not need to be created for
+every merged change. Use one or more of these deployment-impact categories:
+
+- **No deployment required** — documentation, tests, examples, or CI-only changes.
+- **CodeBuild run required** — deployable assessment code, dependencies, AWS SAM
+  templates, state machine, buildspec, or multi-account report consolidator
+  changed.
+- **Single-account infrastructure update required** —
+  `deployment/aiml-security-single-account.yaml` changed.
+- **Multi-account member-role StackSet update required** —
+  `deployment/1-aiml-security-member-roles.yaml` changed. This update must
+  complete before CodeBuild runs.
+- **Multi-account central infrastructure update required** —
+  `deployment/2-aiml-security-codebuild.yaml` changed.
+
+The changelog should list the exact changed deployment templates and give the
+required order. When a release is pinned by tag or commit, it should also remind
+users to update the `GitHubBranch` stack parameter. When a version is tagged,
+move the accumulated entries into a dated version section and recreate an empty
+`Unreleased` section. The end-user procedure and repository-diff fallback are documented in
+[Upgrading to a New Release](TROUBLESHOOTING.md#upgrading-to-a-new-release).
+
 ## CI/CD Workflows
 
 GitHub Actions workflows run automatically to validate code quality and security on every pull request.

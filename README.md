@@ -69,6 +69,7 @@ The framework generates professional, interactive security assessment reports wi
 - [Prerequisites](#prerequisites)
 - [Single-Account Deployment](#single-account-deployment)
 - [Multi-Account Deployment](#multi-account-deployment)
+- [Upgrading an Existing Deployment](#upgrading-an-existing-deployment)
 - [How It Works](#how-it-works)
 - [Permissions Required](#permissions-required)
 - [Viewing Results](#viewing-results)
@@ -195,6 +196,106 @@ Deploy [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yam
 
 ---
 
+## Upgrading an Existing Deployment
+
+The required upgrade steps depend on which files changed. For a code-only fix,
+running the existing CodeBuild project is normally sufficient. The top-level
+CloudFormation templates and multi-account member-role StackSet only need to be
+updated when the corresponding templates changed.
+
+| Files changed in the target release | Required action |
+| --- | --- |
+| `aiml-security-assessment/functions/**`, `aiml-security-assessment/statemachine/**`, either AWS SAM `template*.yaml`, Lambda `requirements.txt`, `buildspec.yml`, or `consolidate_html_reports.py` | Run CodeBuild so it builds and updates the AWS SAM assessment stack |
+| `deployment/aiml-security-single-account.yaml` | Update the single-account infrastructure stack |
+| `deployment/1-aiml-security-member-roles.yaml` | Update every targeted multi-account member-role StackSet instance before running CodeBuild |
+| `deployment/2-aiml-security-codebuild.yaml` | Update the multi-account central infrastructure stack |
+| Only documentation, tests, examples, or GitHub workflow files | No deployed-resource update is required |
+
+Use the templates and source from the same release. `GitHubBranch` accepts a
+branch, tag, or commit; an immutable release tag or commit is recommended for
+reproducible deployments.
+
+### Determine what changed
+
+Check [CHANGELOG.md](CHANGELOG.md) first. Its `Unreleased` or target-version
+`Deployment impact` section identifies the required actions. If the changelog
+does not cover the exact revisions being compared, infer the actions directly
+from the repository by comparing the commit used by the last successful build
+with the target revision:
+
+```bash
+git diff --name-only <deployed-commit>..<target-tag-or-commit> -- \
+  deployment/ \
+  aiml-security-assessment/ \
+  buildspec.yml \
+  consolidate_html_reports.py
+```
+
+For a branch such as `main`, use the resolved source commit shown by the last
+successful CodeBuild execution—not merely the branch name—as
+`<deployed-commit>`.
+
+If the deployment is pinned to a tag or commit, update the infrastructure
+stack's `GitHubBranch` parameter before starting CodeBuild. When its
+CloudFormation template did not change, this can be a parameter-only update
+using the current template. A deployment tracking a moving branch such as
+`main` can pull the latest code by starting CodeBuild without a stack update.
+
+### Single-account upgrade
+
+1. If [aiml-security-single-account.yaml](deployment/aiml-security-single-account.yaml)
+   changed, update the existing infrastructure stack by replacing its template
+   with the target release's version. Do not create a second stack.
+2. If the source is pinned, update `GitHubRepoUrl` or `GitHubBranch` as needed.
+   If the infrastructure template did not change, use the current template and
+   change only these parameters.
+3. Preserve all other parameter values unless intentionally changing the
+   assessment configuration.
+4. For a template update, review the change set, including IAM changes,
+   acknowledge `CAPABILITY_NAMED_IAM`, and wait for `UPDATE_COMPLETE`.
+5. If deployable assessment code changed, manually start CodeBuild and confirm
+   that it updates the existing `aiml-sec-{account_id}` AWS SAM stack.
+
+### Multi-account upgrade
+
+Perform only the applicable steps, in this order:
+
+1. If [1-aiml-security-member-roles.yaml](deployment/1-aiml-security-member-roles.yaml)
+   changed, update the existing CloudFormation StackSet with the target
+   release's template. Preserve `ManagementAccountID`, deployment targets,
+   regions, and other settings. Wait until every targeted StackSet instance
+   reports success.
+2. If [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yaml)
+   changed, update the existing central infrastructure stack by replacing its
+   template with the target release's version.
+3. If the source is pinned, update `GitHubRepoUrl` or `GitHubBranch` as needed.
+   If the central template did not change, use the current template and change
+   only these parameters.
+4. Preserve all other parameter values unless deliberately changing the
+   deployment. For a template update, review IAM changes, acknowledge
+   `CAPABILITY_NAMED_IAM`, and wait for `UPDATE_COMPLETE`.
+5. If deployable assessment code changed, manually start CodeBuild and confirm
+   that it updates the existing per-account AWS SAM stacks.
+
+When the member-role template changed, it must be updated before CodeBuild runs
+so new assessment APIs have the required cross-account permissions.
+
+The custom resource in the infrastructure templates starts CodeBuild only when
+the infrastructure stack is initially created. It does not start a new build
+for stack updates, so manually start CodeBuild whenever deployable assessment
+code needs to be applied.
+
+Users who deployed the AWS SAM templates directly, without the top-level
+CloudFormation templates, must build and deploy the new release's
+`aiml-security-assessment/template.yaml` or
+`aiml-security-assessment/template-multi-account.yaml` to the existing stack
+name while preserving its parameter values.
+
+For verification and additional detail, see
+[Upgrading to a New Release](docs/TROUBLESHOOTING.md#upgrading-to-a-new-release).
+
+---
+
 ## Optional Security Policy Baselines
 
 The deployment templates expose organization-specific baselines for checks that
@@ -273,7 +374,10 @@ informational N/A finding.
 
 The HTML report includes a Region column, filter dropdown, and "Risk by Region / Scope" summary.
 
-> **Upgrading an existing deployment?** See [Troubleshooting](docs/TROUBLESHOOTING.md#12-upgrading-an-existing-deployment-to-multi-region) — it's a simple stack parameter update with no teardown.
+> **Changing an existing deployment to multi-region?** See
+> [Troubleshooting](docs/TROUBLESHOOTING.md#12-upgrading-an-existing-deployment-to-multi-region).
+> This is a parameter-only change. For a new software release, follow the full
+> [upgrade procedure](#upgrading-an-existing-deployment).
 
 ---
 
@@ -513,6 +617,7 @@ If you need to reduce scope, review the role policies in:
 
 | Document | Description |
 | --- | --- |
+| [Changelog](CHANGELOG.md) | User-facing changes and required deployment actions for unreleased work and tagged versions |
 | [Security Checks Reference](docs/SECURITY_CHECKS.md) | Complete reference for all 206 security checks with severity levels |
 | [OWASP Top 10 for LLM Checks](docs/SECURITY_CHECKS_OWASP.md) | Complete OW-01..12 reference: mapping-derived OWASP LLM01..LLM10 rows, native LLM07 checks, source dependencies, references, and status semantics |
 | [Responsible AI GRC Scope](docs/RESPONSIBLE_AI_GRC_SCOPE.md) | What Responsible AI GRC is and is not, its relationship to the AWS Well-Architected Responsible AI Lens, the per-bucket source catalog, check-count reconciliation, terminology, and the compatibility policy for preserved identifiers |
