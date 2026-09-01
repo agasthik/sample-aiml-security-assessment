@@ -3604,45 +3604,24 @@ class TestIsMissingBucketError:
 
 
 # =========================================================================
-# REQ-14: REQUIREMENTS.TXT VERSION FLOOR GUARD
+# REQ-14: REQUIREMENTS.TXT VERSION PIN GUARD
 # =========================================================================
 
 
-class TestRequirementVersionFloors:
+class TestRequirementVersionPins:
     """
-    REQ-14 — Guard against future regression that lowers the botocore/boto3 floor
-    below the minimum needed for:
+    REQ-14 — Guard the exact botocore/boto3 SDK contract required for
+    reproducible Lambda builds and the features used by:
       - FS-03: list_aws_default_service_quotas paginator
       - FS-06: describe_budgets(ShowFilterExpression=True)
 
-    Tests assert the floor in requirements.txt, not the installed version, so
+    Tests assert the pins in requirements.txt, not the installed version, so
     they catch a source-file regression regardless of what pip has resolved in
-    the dev environment. The dev environment may be behind the floor
-    (e.g., 1.42.70 installed vs 1.43.21 required) — run
-    `pip install --upgrade boto3 botocore` to reach the floor.
-
-    These tests do NOT hard-pin to 1.43.21; they assert a structural property
-    (floor >= minimum needed) so they stay valid as the floor is bumped over time.
+    the development environment. Security updates require a coordinated
+    repository-wide pin bump followed by the SDK contract and assessment tests.
     """
 
-    # Minimum versions required for the features used in this Lambda.
-    # Chosen because 1.43.x is the first series that reliably supports both
-    # describe_budgets(ShowFilterExpression=True) and list_aws_default_service_quotas.
-    MIN_BOTO3 = (1, 43, 0)
-    MIN_BOTOCORE = (1, 43, 0)
-
-    @staticmethod
-    def _parse_floor(line: str) -> tuple:
-        """
-        Parse a 'pkg>=X.Y.Z' line from requirements.txt into (X, Y, Z).
-        Returns None if the line doesn't match the expected pattern.
-        """
-        import re
-
-        m = re.match(r"^\s*(boto[3core]*)\s*>=\s*(\d+)\.(\d+)\.(\d+)", line)
-        if m:
-            return (int(m.group(2)), int(m.group(3)), int(m.group(4)))
-        return None
+    REQUIRED_SDK_VERSION = "1.43.85"
 
     @staticmethod
     def _load_requirements() -> str:
@@ -3656,38 +3635,21 @@ class TestRequirementVersionFloors:
         with open(req_path) as f:
             return f.read()
 
-    def test_boto3_floor_meets_minimum(self):
-        """requirements.txt must floor boto3 at >= 1.43.0."""
+    def test_boto3_exact_pin_matches_sdk_contract(self):
+        """requirements.txt must pin boto3 to the tested SDK contract."""
         content = self._load_requirements()
-        boto3_floor = None
-        for line in content.splitlines():
-            if line.strip().startswith("boto3>="):
-                boto3_floor = self._parse_floor(line)
-                break
-        assert boto3_floor is not None, (
-            "boto3 floor not found in requirements.txt — expected 'boto3>=X.Y.Z'"
-        )
-        assert boto3_floor >= self.MIN_BOTO3, (
-            f"boto3 floor {boto3_floor} is below minimum {self.MIN_BOTO3}; "
-            "FS-06 describe_budgets(ShowFilterExpression=True) requires boto3>=1.43.0. "
-            "Bump the floor in responsible_ai_grc_assessments/requirements.txt."
+        expected = f"boto3=={self.REQUIRED_SDK_VERSION}"
+        assert expected in content.splitlines(), (
+            f"Expected exact SDK pin '{expected}' in "
+            "responsible_ai_grc_assessments/requirements.txt."
         )
 
-    def test_botocore_floor_meets_minimum(self):
-        """requirements.txt must floor botocore at >= 1.43.0."""
+    def test_botocore_exact_pin_matches_sdk_contract(self):
+        """requirements.txt must pin botocore to the tested SDK contract."""
         content = self._load_requirements()
-        botocore_floor = None
-        for line in content.splitlines():
-            if line.strip().startswith("botocore>="):
-                botocore_floor = self._parse_floor(line)
-                break
-        assert botocore_floor is not None, (
-            "botocore floor not found in requirements.txt — expected 'botocore>=X.Y.Z'"
-        )
-        assert botocore_floor >= self.MIN_BOTOCORE, (
-            f"botocore floor {botocore_floor} is below minimum {self.MIN_BOTOCORE}; "
-            "FS-03 list_aws_default_service_quotas and FS-06 ShowFilterExpression "
-            "require botocore>=1.43.0. Bump the floor in "
+        expected = f"botocore=={self.REQUIRED_SDK_VERSION}"
+        assert expected in content.splitlines(), (
+            f"Expected exact SDK pin '{expected}' in "
             "responsible_ai_grc_assessments/requirements.txt."
         )
 
@@ -3699,19 +3661,11 @@ class TestRequirementVersionFloors:
             "for the Finding model in schema.py."
         )
 
-    def test_no_exact_pins_on_aws_sdk(self):
-        """
-        boto3 and botocore must use >= floors, not exact pins (==).
-        Exact pins would block Lambda from resolving security patches.
-        """
+    def test_no_floating_aws_sdk_constraints(self):
+        """boto3 and botocore must not use floating minimum constraints."""
         content = self._load_requirements()
-        import re
-
-        exact_pins = re.findall(r"boto(?:3|core)==\S+", content)
-        assert not exact_pins, (
-            f"Exact version pins found for AWS SDK: {exact_pins}. "
-            "Use >= floors instead so the Lambda can receive security patches."
-        )
+        assert "boto3>=" not in content
+        assert "botocore>=" not in content
 
 
 class TestFinservRegionalFootprint:
