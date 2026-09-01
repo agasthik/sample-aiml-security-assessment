@@ -31,6 +31,10 @@ section.
 - Added end-user guidance for determining whether an upgrade requires only a
   CodeBuild run, a top-level infrastructure stack update, or a multi-account
   member-role StackSet update.
+- Updated the screenshot capture tool to enforce the repository-root `.venv`,
+  install its optional Python dependencies when missing, and verify a
+  venv-local Playwright Chromium browser before capturing screenshots. Capture
+  height now expands dynamically so every left-navigation section is visible.
 
 ### Fixed
 

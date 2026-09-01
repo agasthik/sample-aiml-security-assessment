@@ -907,17 +907,24 @@ The fixture reports are written under `aiml-security-assessment/functions/securi
 The repository includes an automated screenshot capture tool:
 
 ```bash
-# Install dependencies (first time only)
-.venv/bin/pip install -r sample-reports/dev-requirements.txt
-.venv/bin/playwright install chromium
+# Prepare or verify the optional screenshot environment without changing files
+./sample-reports/scripts/capture_screenshots.py --check-dependencies
 
 # Capture and optimize screenshots
-.venv/bin/python sample-reports/scripts/capture_screenshots.py
+./sample-reports/scripts/capture_screenshots.py
 ```
+
+The repository-root `.venv` must already exist and use Python 3.12. The script
+re-launches itself with `.venv/bin/python`, installs
+`sample-reports/dev-requirements.txt` into that environment when needed, and
+installs Chromium under `.venv/playwright-browsers`.
 
 **What the script does:**
 
+- Verifies the repository Python environment and screenshot dependencies
 - Opens HTML reports in a headless browser
+- Expands the viewport to include every left-navigation section, including
+  compliance standards
 - Captures key views (dashboard, findings table, dark mode)
 - Automatically optimizes images (target: 200-300KB each)
 - Converts large PNGs to JPEG if needed
@@ -932,7 +939,7 @@ The script captures 4 screenshots:
 - `findings-table.png` - Detailed findings table with filters
 - `multi-account-summary.png` - Multi-account consolidated view
 
-All screenshots are automatically optimized (target: 200-300KB each, ~600KB total).
+All screenshots are automatically optimized (target: 200-300KB each, ~700KB total).
 
 **Customization:**
 
@@ -974,7 +981,8 @@ SCREENSHOTS = [
 
 | Issue | Solution |
 | ------- | ---------- |
-| `playwright not installed` | `.venv/bin/pip install playwright && .venv/bin/playwright install chromium` |
+| `.venv` not found | Create it with `python3.12 -m venv .venv`, then bootstrap the repository dependencies |
+| Playwright or Chromium missing | Run `./sample-reports/scripts/capture_screenshots.py --check-dependencies` |
 | Sample reports not found | Run from repository root |
 | Screenshots too large | Lower `JPEG_QUALITY` or reduce viewport size |
 | Browser launch fails | Run `playwright install-deps` (Linux only) |

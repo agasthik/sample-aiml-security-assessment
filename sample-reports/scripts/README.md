@@ -16,30 +16,33 @@ Captures screenshots from the HTML sample reports for use in the README and docu
 
 ### Installation
 
+The repository-root Python 3.12 `.venv` must already exist. The screenshot
+script installs its optional Python packages and Chromium browser automatically
+when they are missing.
+
 ```bash
-# Activate virtual environment
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r sample-reports/dev-requirements.txt
-
-# Install Playwright browser
-playwright install chromium
+# Prepare and verify dependencies without capturing screenshots
+./sample-reports/scripts/capture_screenshots.py --check-dependencies
 ```
+
+Python packages are installed from `sample-reports/dev-requirements.txt` into
+the root `.venv`. Chromium is installed under
+`.venv/playwright-browsers`.
 
 ### Usage
 
 ```bash
 # Run the script
-python sample-reports/scripts/capture_screenshots.py
+./sample-reports/scripts/capture_screenshots.py
 ```
 
 The script will:
 1. Launch Chromium in headless mode
 2. Load each HTML report from `sample-reports/`
-3. Capture screenshots based on configuration
-4. Optimize and compress images
-5. Save to `sample-reports/` folder
+3. Expand the viewport to include the complete left navigation
+4. Capture screenshots based on configuration
+5. Optimize and compress images
+6. Save to `sample-reports/` folder
 
 ### Configuration
 
@@ -91,9 +94,17 @@ All images are automatically optimized to keep file sizes under 300KB while main
 ### Troubleshooting
 
 **Error: playwright not installed**
+
+The script normally installs Playwright automatically. Verify the environment:
+
 ```bash
-pip install playwright
-playwright install chromium
+./sample-reports/scripts/capture_screenshots.py --check-dependencies
+```
+
+If `.venv` does not exist, create it first:
+
+```bash
+python3.12 -m venv .venv
 ```
 
 **Error: Sample reports not found**
