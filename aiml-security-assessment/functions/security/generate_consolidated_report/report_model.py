@@ -73,6 +73,10 @@ OWASP_CATEGORY_BY_CHECK = {
 # their details, which is preferred over the check-ID table when present.
 OWASP_CATEGORY_PATTERN = re.compile(r"OWASP category:\s*(LLM\d{2}:\d{4}[^.]*)")
 
+# Splits "LLM06:2025 Excessive Agency" into its code and name so the year can be
+# dropped where space is tight.
+OWASP_CATEGORY_LABEL_PATTERN = re.compile(r"^(LLM\d{2}):\d{4}\s*(.*)$")
+
 ARN_PATTERN = re.compile(
     r"arn:[a-z0-9-]*:(?P<service>[a-z0-9-]+):[a-z0-9-]*:\d*:(?P<resource>[^\s,;]+)"
 )
@@ -1017,6 +1021,73 @@ def _build_owasp_rollup(
     )
 
 
+def owasp_short_label(category: str) -> str:
+    """Drop the revision year so a category fits an executive summary bullet."""
+    match = OWASP_CATEGORY_LABEL_PATTERN.match(category)
+    if not match:
+        return category
+    return f"{match.group(1)} {match.group(2)}".strip()
+
+
+def _affected_names(
+    entries: Sequence[Dict[str, Any]],
+    name_key: str,
+    formatter: Optional[Any] = None,
+) -> List[str]:
+    """Name the entries carrying failed rows, most affected first."""
+    affected = [entry for entry in entries if entry["failed"]]
+    affected.sort(
+        key=lambda entry: (
+            -_weighted_severity_score(entry["high"], entry["medium"], entry["low"]),
+            entry[name_key],
+        )
+    )
+    return [
+        formatter(entry[name_key]) if formatter else entry[name_key]
+        for entry in affected
+    ]
+
+
+def _build_standard_summaries(
+    owasp_rollup: Sequence[Dict[str, Any]],
+    compliance_frameworks: Sequence[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Summarize each compliance standard the findings represent.
+
+    Compliance rows are contextual re-mappings of direct findings, so they are
+    deliberately excluded from posture totals to avoid counting one gap twice.
+    That also leaves the executive summary silent on whether a standard was
+    assessed at all, so these summaries restate the standard's own coverage
+    without introducing a second score.
+    """
+    summaries = []
+    if owasp_rollup:
+        affected = _affected_names(owasp_rollup, "category", owasp_short_label)
+        summaries.append(
+            {
+                "standard": "OWASP Top 10 for LLM",
+                "unit": "category",
+                "unit_plural": "categories",
+                "represented": len(owasp_rollup),
+                "affected": len(affected),
+                "names": affected,
+            }
+        )
+    if compliance_frameworks:
+        affected = _affected_names(compliance_frameworks, "framework")
+        summaries.append(
+            {
+                "standard": "Framework references",
+                "unit": "reference",
+                "unit_plural": "references",
+                "represented": len(compliance_frameworks),
+                "affected": len(affected),
+                "names": affected,
+            }
+        )
+    return summaries
+
+
 def _build_area_severity(
     direct_findings: Sequence[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
@@ -1366,6 +1437,8 @@ def build_report_model(
 
     total_scopes = len(discovered_regions) + (1 if has_global_scope else 0)
     sorted_findings = sorted(all_findings, key=_finding_sort_key)
+    compliance_frameworks = _build_compliance_frameworks(all_findings)
+    owasp_rollup = _build_owasp_rollup(all_findings)
 
     return {
         "mode": mode,
@@ -1434,8 +1507,11 @@ def build_report_model(
         "account_scorecard": _build_account_scorecard(direct_findings),
         "na_reasons": _build_na_reasons(direct_findings),
         "coverage": _build_coverage(all_findings, service_stats),
-        "compliance_frameworks": _build_compliance_frameworks(all_findings),
-        "owasp_rollup": _build_owasp_rollup(all_findings),
+        "compliance_frameworks": compliance_frameworks,
+        "owasp_rollup": owasp_rollup,
+        "standard_summaries": _build_standard_summaries(
+            owasp_rollup, compliance_frameworks
+        ),
         "area_severity": _build_area_severity(direct_findings),
         "theme_matrix": _build_theme_service_matrix(direct_findings),
         "services": services,

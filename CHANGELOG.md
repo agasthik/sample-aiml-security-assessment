@@ -24,6 +24,12 @@ section.
   action, a breakdown of why rows were reported as N/A, catalog coverage per
   assessment area, and compliance-framework and OWASP category rollups. No
   finding text, severity, or status is inferred or re-scored.
+- The PDF executive summary now names each compliance standard the assessment
+  produced results for - such as the OWASP Top 10 for LLM - and reports how
+  many of its categories or framework references carry a failed finding, so a
+  standard that ran cleanly is no longer indistinguishable from one that was
+  never assessed. Compliance rows remain excluded from posture totals so a
+  single gap is not counted twice.
 - PDF reports are now navigable, with a contents page and matching PDF
   bookmarks, and repeated findings are grouped by check across accounts and
   regions so multi-account reports no longer restate near-identical rows.

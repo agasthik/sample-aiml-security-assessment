@@ -461,6 +461,13 @@ def _posture_callout(model: Dict[str, Any], styles: Dict[str, ParagraphStyle]) -
     return table
 
 
+def _name_list(names: List[str], limit: int = 3) -> str:
+    """Join names for a sentence, summarizing the tail past ``limit``."""
+    if len(names) <= limit:
+        return ", ".join(names)
+    return f"{', '.join(names[:limit])}, and {len(names) - limit} more"
+
+
 def _key_takeaways(
     model: Dict[str, Any], styles: Dict[str, ParagraphStyle]
 ) -> List[Paragraph]:
@@ -499,6 +506,21 @@ def _key_takeaways(
         f"compliance views across {metrics['contextual_rows']} rows; these are not "
         "double-counted in direct posture totals."
     )
+    for summary in model["standard_summaries"]:
+        unit = (
+            summary["unit"] if summary["represented"] == 1 else summary["unit_plural"]
+        )
+        if summary["affected"]:
+            takeaways.append(
+                f"{summary['standard']}: {summary['affected']} of "
+                f"{summary['represented']} represented {unit} carry at least one "
+                f"failed finding ({_name_list(summary['names'])})."
+            )
+        else:
+            takeaways.append(
+                f"{summary['standard']}: no failed findings across "
+                f"{summary['represented']} represented {unit}."
+            )
     return [
         Paragraph(f"&#8226;&nbsp; {_pdf_text(takeaway)}", styles["body"])
         for takeaway in takeaways

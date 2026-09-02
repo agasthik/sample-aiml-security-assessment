@@ -829,6 +829,12 @@ finding text are never re-interpreted, re-scored, or inferred.
   previously regressed.
 - N/A rows are bucketed by reason in a fixed order so an access problem is
   never reported as "no resources found".
+- Compliance rows are contextual, so they are excluded from posture totals to
+  avoid counting one gap twice. `_build_standard_summaries()` exists so the
+  executive summary still names each standard that produced rows and how many
+  of its categories or framework references carry a failed finding - a standard
+  that ran cleanly must never read as though it was not assessed. Adding a new
+  compliance standard means adding it there too.
 
 ### PDF Layout Notes
 
@@ -927,14 +933,26 @@ end-to-end. Concrete steps:
    `service_findings` and to route by Check_ID prefix, so appending a new
    entry in step 6 is sufficient — no edits needed in these files.
 
-8. **Update docs**: add a `SECURITY_CHECKS_<STANDARD>.md` in the OWASP
-   style, bump the check count in `README.md` and `docs/SECURITY_CHECKS.md`.
+8. **Wire the PDF report** in `report_model.py`. Unlike the HTML sidebar,
+   this part is not fully data-driven:
+   - Add the standard's catalog size to `CHECK_CATALOG_TOTALS` so the
+     coverage table reports it.
+   - Add it to `_build_standard_summaries()` so the executive summary names
+     the standard and how many of its categories carry a failed finding.
+     Without this the standard is silently absent from the summary, since
+     compliance rows are excluded from posture totals by design.
+   - Add a rollup table in `pdf_report.py` if the standard needs a
+     per-category view, following `_owasp_table()`.
 
-9. **Add tests**: mapping emission, native-check behavior, routing, and
+9. **Update docs**: add a `SECURITY_CHECKS_<STANDARD>.md` in the OWASP
+   style, bump the check count in `README.md`, `docs/SECURITY_CHECKS.md`, and
+   `CHECK_CATALOG_TOTALS`.
+
+10. **Add tests**: mapping emission, native-check behavior, routing, and
    report-template rendering. See `tests/test_owasp_checks.py` and
    `tests/test_report_template_owasp.py` as templates.
 
-10. **Generate and verify the HTML report** (mandatory before opening a PR): Follow the Report Verification steps in the [Testing Your Extensions](#4-report-verification-required-before-opening-a-pr) section. Because new standards are data-driven through `COMPLIANCE_STANDARDS`, confirm that the new prefix routes correctly into the "By Compliance Standard" sidebar, that findings appear with the expected severity, and that the report renders cleanly in both single- and multi-account modes.
+11. **Generate and verify the HTML and PDF reports** (mandatory before opening a PR): Follow the Report Verification steps in the [Testing Your Extensions](#4-report-verification-required-before-opening-a-pr) section. Because new standards are data-driven through `COMPLIANCE_STANDARDS`, confirm that the new prefix routes correctly into the "By Compliance Standard" sidebar, that findings appear with the expected severity, and that the report renders cleanly in both single- and multi-account modes.
 
 ## Documentation and Screenshots
 

@@ -598,6 +598,77 @@ def test_report_model_rolls_up_frameworks_and_owasp_categories():
     assert categories["LLM05:2025 Improper Output Handling"]["checks"] == ["OW-05"]
 
 
+def test_report_model_summarizes_each_compliance_standard():
+    findings, stats = _report_data()
+    model = _single_account_model(findings, stats)
+
+    summaries = {entry["standard"]: entry for entry in model["standard_summaries"]}
+    owasp = summaries["OWASP Top 10 for LLM"]
+    assert owasp["represented"] == 3
+    assert owasp["affected"] == 2
+    # Most affected first: LLM06 carries a high, LLM05 a medium.  The revision
+    # year is dropped so the label fits an executive bullet.
+    assert owasp["names"] == [
+        "LLM06 Excessive Agency",
+        "LLM05 Improper Output Handling",
+    ]
+
+    frameworks = summaries["Framework references"]
+    assert frameworks["represented"] == 3
+    assert frameworks["affected"] == 3
+    assert frameworks["names"] == ["FFIEC CAT", "ISO 27001 A.12.6", "SR 11-7"]
+
+
+def test_report_model_reports_a_standard_with_no_failed_mappings():
+    findings = [
+        _finding(
+            "BR-05",
+            "Bedrock guardrails enforce content safeguards",
+            service="bedrock",
+            status="Passed",
+            severity="High",
+            resolution="No action required.",
+        ),
+        _finding(
+            "OW-01",
+            "OWASP prompt injection safeguards mapping",
+            service="owasp",
+            status="Passed",
+            severity="High",
+            details="Contextual mapping of BR-05: guardrail safeguards are enabled.",
+            resolution="No action required.",
+        ),
+    ]
+    stats = {
+        "bedrock": {"passed": 1, "failed": 0, "na": 0},
+        "owasp": {"passed": 1, "failed": 0, "na": 0},
+    }
+    model = _single_account_model(findings, stats)
+
+    summaries = model["standard_summaries"]
+    # A standard that ran cleanly must still be named, so the summary never
+    # reads as though the standard was not assessed.
+    assert [entry["standard"] for entry in summaries] == ["OWASP Top 10 for LLM"]
+    assert summaries[0]["represented"] == 1
+    assert summaries[0]["affected"] == 0
+    assert summaries[0]["names"] == []
+
+
+def test_report_model_omits_standards_that_produced_no_rows():
+    findings = [
+        _finding(
+            "BR-04",
+            "Bedrock API activity is not fully logged",
+            service="bedrock",
+            status="Failed",
+            severity="Medium",
+        )
+    ]
+    stats = {"bedrock": {"passed": 0, "failed": 1, "na": 0}}
+
+    assert _single_account_model(findings, stats)["standard_summaries"] == []
+
+
 def test_report_model_groups_shared_remediation_across_checks():
     shared = (
         "Replace wildcard grants with resource-scoped permissions and add "
