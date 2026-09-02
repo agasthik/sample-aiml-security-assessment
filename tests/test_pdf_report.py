@@ -17,7 +17,15 @@ REPORT_DIR = os.path.abspath(
 if REPORT_DIR not in sys.path:
     sys.path.insert(0, REPORT_DIR)
 
-from pdf_report import generate_pdf_report  # noqa: E402
+from reportlab.platypus import KeepTogether  # noqa: E402
+
+import pdf_report  # noqa: E402
+from pdf_report import (  # noqa: E402
+    _compact_findings_table,
+    _finding_flowables,
+    _styles,
+    generate_pdf_report,
+)
 from report_model import build_report_model, classify_theme  # noqa: E402
 
 
@@ -857,3 +865,184 @@ def test_pdf_renderer_emits_navigable_outline():
 
     assert b"/Outlines" in pdf
     assert pdf.count(b"/Title") > 10
+
+
+def _group_for(findings):
+    """Build the single grouped entry the model produces for one check."""
+    model = _single_account_model(
+        findings, {"bedrock": {"passed": 0, "failed": len(findings), "na": 0}}
+    )
+    groups = model["finding_groups"]
+    assert len(groups) == 1
+    return groups[0]
+
+
+def _paragraph_texts(flowables):
+    """Flatten the rendered flowables to the paragraph text they carry."""
+    texts = []
+    for flowable in flowables:
+        inner = getattr(flowable, "_content", None)
+        if inner is not None:
+            texts.extend(_paragraph_texts(inner))
+        elif hasattr(flowable, "text"):
+            texts.append(flowable.text)
+    return texts
+
+
+def test_finding_flowables_print_a_shared_resolution_once():
+    """One remediation repeated across scopes is the multi-account page hog.
+
+    The same check assessed in three regions carries the same resolution text
+    three times; printing it once per check keeps the evidence per scope while
+    removing the duplication.
+    """
+    findings = [
+        _finding(
+            "BR-05",
+            "Bedrock model invocation logging is disabled",
+            service="bedrock",
+            status="Failed",
+            severity="High",
+            region=region,
+            details=f"Model invocation logging is disabled in {region}.",
+            resolution="Enable model invocation logging.",
+        )
+        for region in ("us-east-1", "us-west-2", "eu-west-1")
+    ]
+    group = _group_for(findings)
+    assert len(group["variants"]) == 3
+
+    texts = _paragraph_texts(_finding_flowables(group, _styles()))
+    details = [text for text in texts if text.startswith("<b>Finding details:</b>")]
+    resolutions = [text for text in texts if "Resolution" in text]
+    assert len(details) == 3
+    assert len(resolutions) == 1
+    assert resolutions[0].startswith("<b>Resolution (all scopes):</b>")
+    assert "Enable model invocation logging." in resolutions[0]
+
+
+def test_finding_flowables_keep_divergent_resolutions_per_scope():
+    """Distinct remediation per scope is real evidence and must not collapse."""
+    findings = [
+        _finding(
+            "BR-05",
+            "Bedrock model invocation logging is disabled",
+            service="bedrock",
+            status="Failed",
+            severity="High",
+            region=region,
+            details=f"Model invocation logging is disabled in {region}.",
+            resolution=f"Enable model invocation logging in {region}.",
+        )
+        for region in ("us-east-1", "us-west-2")
+    ]
+    texts = _paragraph_texts(_finding_flowables(_group_for(findings), _styles()))
+    resolutions = [text for text in texts if text.startswith("<b>Resolution:</b>")]
+    assert len(resolutions) == 2
+    assert any("us-east-1" in text for text in resolutions)
+    assert any("us-west-2" in text for text in resolutions)
+
+
+def test_finding_flowables_glue_only_the_header_to_the_first_paragraph():
+    """A tall finding must be allowed to break across a page boundary.
+
+    Wrapping the whole block in ``KeepTogether`` pushed multi-scope findings to a
+    fresh page and abandoned the tail of the previous one, which was the single
+    largest source of page count in a multi-account report.
+    """
+    findings = [
+        _finding(
+            "BR-05",
+            "Bedrock model invocation logging is disabled",
+            service="bedrock",
+            status="Failed",
+            severity="High",
+            region=region,
+            details=f"Model invocation logging is disabled in {region}.",
+        )
+        for region in ("us-east-1", "us-west-2", "eu-west-1")
+    ]
+    flowables = _finding_flowables(_group_for(findings), _styles())
+
+    glued = [item for item in flowables if isinstance(item, KeepTogether)]
+    assert len(glued) == 1
+    assert flowables[0] is glued[0]
+    # Heading, metadata band, spacer and the first body paragraph only.
+    assert len(glued[0]._content) == 4
+    # The remaining scopes, the shared resolution and the reference flow freely.
+    assert len(flowables) > 2
+
+
+def test_compact_findings_table_uses_one_row_per_check():
+    findings = [
+        _finding(
+            "BR-01",
+            "Bedrock guardrails are attached",
+            service="bedrock",
+            status="Passed",
+            severity="High",
+            region="us-east-1",
+        ),
+        _finding(
+            "SM-20",
+            "No SageMaker model package groups were found",
+            service="sagemaker",
+            status="N/A",
+            severity="Informational",
+            region="us-west-2",
+        ),
+    ]
+    model = _single_account_model(
+        findings,
+        {
+            "bedrock": {"passed": 1, "failed": 0, "na": 0},
+            "sagemaker": {"passed": 0, "failed": 0, "na": 1},
+        },
+    )
+    table = _compact_findings_table(model["finding_groups"], _styles())
+
+    rows = table._cellvalues
+    assert len(rows) == 3  # header plus one row per grouped check
+    assert [cell.text for cell in rows[1]][:4] == [
+        "BR-01",
+        "Bedrock guardrails are attached",
+        "Passed",
+        "High",
+    ]
+    assert "us-west-2" in rows[2][4].text
+
+
+def test_detailed_findings_render_failed_in_full_and_the_rest_compactly(monkeypatch):
+    """Only failed checks earn the full per-scope prose treatment.
+
+    Passed and N/A checks carry no remediation action, so the detailed section
+    summarizes them in a table; their reported text stays in the CSV and HTML.
+    """
+    findings, stats = _report_data()
+    rendered = []
+    original = pdf_report._finding_flowables
+
+    def _spy(group, styles):
+        rendered.append(group)
+        return original(group, styles)
+
+    monkeypatch.setattr(pdf_report, "_finding_flowables", _spy)
+    pdf = generate_pdf_report(
+        all_findings=findings,
+        service_stats=stats,
+        mode="single",
+        account_ids=["111122223333"],
+        timestamp="September 02, 2026 12:00:00 UTC",
+        regions=["us-east-1"],
+        contextual_services={"agentic", "owasp"},
+    )
+
+    assert pdf.startswith(b"%PDF-")
+    assert rendered, "failed findings must still be rendered in full"
+    assert {group["status"] for group in rendered} == {"failed"}
+    model = _single_account_model(findings, stats)
+    failed_groups = [
+        group for group in model["finding_groups"] if group["status"] == "failed"
+    ]
+    assert len(rendered) == len(failed_groups)
+    assert any(group["status"] != "failed" for group in model["finding_groups"])

@@ -1297,7 +1297,7 @@ def _finding_flowables(
     else:
         reference_markup = _pdf_text(group["reference"] or "No reference reported.")
 
-    finding_block = [
+    header = [
         Paragraph(
             f"{_pdf_text(check_id)} - {_pdf_text(title)}",
             styles["finding_title"],
@@ -1305,7 +1305,13 @@ def _finding_flowables(
         metadata,
         Spacer(1, 4),
     ]
+    body: List[Any] = []
     variants = group["variants"]
+    # A check assessed across many scopes repeats its remediation text on every
+    # scope, so hoist it when it is identical everywhere.  Without this a
+    # multi-account run prints the same resolution once per account and region.
+    resolutions = {variant["resolution"] for variant in variants}
+    shared_resolution = resolutions.pop() if len(resolutions) == 1 else None
     for variant in variants:
         details = variant["details"] or "No additional details were reported."
         resolution = variant["resolution"] or "No remediation guidance was reported."
@@ -1322,28 +1328,97 @@ def _finding_flowables(
                 )
                 if part
             )
-            finding_block.append(
+            body.append(
                 Paragraph(
                     f"<b>Reported for {_pdf_text(scope_label or 'the assessed scope')}"
                     "</b>",
                     styles["small"],
                 )
             )
-        finding_block.append(
+        body.append(
             Paragraph(f"<b>Finding details:</b> {_pdf_text(details)}", styles["body"])
         )
-        finding_block.append(
-            Paragraph(f"<b>Resolution:</b> {_pdf_text(resolution)}", styles["body"])
+        if shared_resolution is None:
+            body.append(
+                Paragraph(f"<b>Resolution:</b> {_pdf_text(resolution)}", styles["body"])
+            )
+    if shared_resolution is not None:
+        label = "Resolution" if len(variants) == 1 else "Resolution (all scopes)"
+        body.append(
+            Paragraph(
+                f"<b>{label}:</b> "
+                f"{_pdf_text(shared_resolution or 'No remediation guidance was reported.')}",
+                styles["body"],
+            )
         )
-    finding_block.append(
-        Paragraph(f"<b>Reference:</b> {reference_markup}", styles["reference"])
-    )
+    body.append(Paragraph(f"<b>Reference:</b> {reference_markup}", styles["reference"]))
     return [
-        KeepTogether(finding_block),
+        # Only the heading, metadata band and first paragraph are glued
+        # together.  Keeping the whole block intact pushed tall multi-scope
+        # findings onto a fresh page and abandoned the rest of the previous one.
+        KeepTogether(header + body[:1]),
+        *body[1:],
         HRFlowable(
             width="100%", thickness=0.4, color=BORDER, spaceBefore=2, spaceAfter=2
         ),
     ]
+
+
+def _compact_findings_table(
+    groups: List[Dict[str, Any]], styles: Dict[str, ParagraphStyle]
+) -> Table:
+    """Render checks needing no remediation as one row each.
+
+    Passed and N/A checks outnumber failed ones roughly two to one, and their
+    reported prose adds no action for the reader.  One row per check keeps the
+    outcome and scope on the record while the full text stays in the CSV and
+    HTML report.
+    """
+    rows = [
+        [
+            _header_cell("Check", styles),
+            _header_cell("Finding", styles),
+            _header_cell("Status", styles),
+            _header_cell("Severity", styles),
+            _header_cell("Accounts and regions", styles),
+        ]
+    ]
+    commands: List[Any] = []
+    for group in groups:
+        scope = " / ".join(
+            part
+            for part in (
+                _scope_phrase(group["accounts"], limit=3) if group["accounts"] else "",
+                _scope_phrase(group["regions"], limit=3) if group["regions"] else "",
+            )
+            if part
+        )
+        rows.append(
+            [
+                Paragraph(_pdf_text(group["check_id"] or "-"), styles["small"]),
+                Paragraph(
+                    _pdf_text(group["finding"] or "Unnamed finding"), styles["small"]
+                ),
+                Paragraph(_pdf_text(group["status"].title()), styles["small"]),
+                Paragraph(_pdf_text(group["severity"].title()), styles["small"]),
+                Paragraph(_pdf_text(scope or "Not reported"), styles["small"]),
+            ]
+        )
+        commands.append(
+            (
+                "BACKGROUND",
+                (2, len(rows) - 1),
+                (2, len(rows) - 1),
+                _status_color(group["status"]),
+            )
+        )
+    table = _styled_table(
+        rows, [0.7 * inch, 2.9 * inch, 0.7 * inch, 0.8 * inch, 2.3 * inch]
+    )
+    # Applied after the shared style so the status tint wins over row banding.
+    for command in commands:
+        table.setStyle(TableStyle([command]))
+    return table
 
 
 def generate_pdf_report(
@@ -1645,18 +1720,34 @@ def generate_pdf_report(
                 "including passed, failed, and N/A findings. Rows that repeat the same "
                 "check and outcome across accounts or regions are shown once with the "
                 f"scopes they cover ({len(model['finding_groups'])} grouped entries). "
-                "Where reported text differs between scopes, each version is listed. "
-                "Finding details and resource identifiers are reproduced as reported "
-                "by the scanners.",
+                "Failed findings are reported in full, with the reported detail for "
+                "each scope, remediation, and references. Passed and not-applicable "
+                "checks are summarized one row per check, because they carry no "
+                "remediation action; their full reported text remains in the CSV "
+                "findings and the HTML report.",
                 styles["body"],
             ),
         ]
     )
 
+    # Groups arrive sorted failed, then passed, then N/A within each service, so
+    # the compact tier is flushed when the service changes or the section ends.
     current_service = None
+    compact: List[Dict[str, Any]] = []
+
+    def _flush_compact() -> None:
+        if not compact:
+            return
+        story.append(
+            Paragraph("Passed and not-applicable checks", styles["h3"]),
+        )
+        story.append(_compact_findings_table(compact, styles))
+        compact.clear()
+
     for group in model["finding_groups"]:
         service = group["service"]
         if service != current_service:
+            _flush_compact()
             if current_service is not None:
                 story.append(Spacer(1, 6))
             story.append(
@@ -1666,7 +1757,11 @@ def generate_pdf_report(
                 )
             )
             current_service = service
-        story.extend(_finding_flowables(group, styles))
+        if group["status"] == "failed":
+            story.extend(_finding_flowables(group, styles))
+        else:
+            compact.append(group)
+    _flush_compact()
 
     story.extend(
         [

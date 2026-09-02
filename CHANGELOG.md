@@ -45,6 +45,14 @@ section.
 
 ### Changed
 
+- Reduced PDF report length substantially - roughly 60 percent for a
+  single-account report and 80 percent for a multi-account one - without
+  dropping any failed finding evidence. Failed findings still report the
+  detail for every account and region, remediation, and references. Remediation
+  text that is identical across scopes is now printed once per check, and
+  passed and not-applicable checks are summarized one row per check in the
+  detailed findings section. The full reported text for passed and
+  not-applicable rows remains available in the CSV findings and the HTML report.
 - Shared normalized report inputs between the HTML and PDF renderers so
   service routing, deduplication, contextual Agentic/OWASP treatment, account
   scope, and region scope remain consistent across formats.

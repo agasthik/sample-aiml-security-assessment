@@ -846,6 +846,19 @@ finding text are never re-interpreted, re-scored, or inferred.
 - The contents page and the PDF bookmarks are produced by the same
   `afterFlowable` pass, so they cannot drift apart. Any new heading style that
   should appear in both must be registered in `_TOC_LEVELS`.
+- The detailed findings section is two-tiered. `Failed` groups get full prose
+  through `_finding_flowables()`; `Passed` and `N/A` groups accumulate into one
+  compact table per assessment area through `_compact_findings_table()`. This
+  relies on `_finding_sort_key` ordering failed rows ahead of passed and N/A
+  within a service, so the compact tier is always contiguous at the tail of each
+  section - if that ordering changes, the flush points must change with it.
+- `KeepTogether` covers only a finding's heading, metadata band and first
+  paragraph. Gluing a whole multi-scope finding pushed it to a fresh page and
+  abandoned the tail of the previous one, which dominated total page count in a
+  multi-account report. Do not widen the glued span.
+- Remediation text identical across every scope of a check is printed once. Only
+  divergent resolutions repeat per scope, so a page-count regression here
+  usually means variant text stopped comparing equal.
 - Charts use `reportlab.graphics` only - no additional dependency. The severity
   chart uses a single-hue sequential ramp because the report's status red and
   amber are too close to distinguish as touching segments of one stacked bar,
