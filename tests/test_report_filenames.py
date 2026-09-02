@@ -38,6 +38,9 @@ def test_single_account_report_filename_does_not_include_execution_id():
     key = single_report_app.build_single_account_report_key("20260614_120000")
     assert key == "security_assessment_single_account_20260614_120000.html"
     assert "exec" not in key
+    pdf_key = single_report_app.build_single_account_pdf_key("20260614_120000")
+    assert pdf_key == "security_assessment_single_account_20260614_120000.pdf"
+    assert "exec" not in pdf_key
 
 
 def test_multi_account_report_filename_uses_consistent_prefix():
@@ -45,4 +48,9 @@ def test_multi_account_report_filename_uses_consistent_prefix():
     assert (
         key
         == "consolidated-reports/security_assessment_multi_account_20260614_120000.html"
+    )
+    pdf_key = multi_report_app.build_multi_account_pdf_key("20260614_120000")
+    assert (
+        pdf_key
+        == "consolidated-reports/security_assessment_multi_account_20260614_120000.pdf"
     )

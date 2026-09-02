@@ -12,6 +12,7 @@ from report_template import (
     COMPLIANCE_STANDARDS,
     generate_html_report as generate_report_from_template,
 )
+from pdf_report import generate_pdf_report as generate_pdf_from_template
 
 # Sentinel region label used by the per-service assessments to tag findings that
 # are derived purely from global (IAM) data and run once per execution rather
@@ -200,14 +201,14 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
         raise
 
 
-def generate_html_report(
+def prepare_report_inputs(
     assessment_results: Dict[str, Any], show_finserv: bool = True
-) -> str:
+) -> Dict[str, Any]:
     """
-    Generate HTML report from assessment results.
+    Transform assessment results into shared renderer inputs.
 
-    This function transforms the assessment_results structure into the format
-    expected by the shared report_template module.
+    Both the HTML and PDF renderers consume this structure so routing,
+    deduplication, service statistics, and region handling stay identical.
 
     Args:
         assessment_results: Dict containing bedrock, sagemaker, agentcore,
@@ -219,7 +220,7 @@ def generate_html_report(
             still power OW-* mappings but are not surfaced in the UI.
 
     Returns:
-        HTML report string
+        Keyword arguments shared by the report renderers
     """
     # Transform assessment_results into flat findings lists. Bedrock/SageMaker/
     # AgentCore/Agentic/Responsible AI GRC are fixed report categories;
@@ -314,19 +315,53 @@ def generate_html_report(
         "timestamp", datetime.now(timezone.utc).strftime("%B %d, %Y %H:%M:%S UTC")
     )
 
+    return {
+        "all_findings": all_findings,
+        "service_findings": service_findings,
+        "service_stats": service_stats,
+        "mode": "single",
+        "account_id": account_id,
+        "timestamp": timestamp,
+        "regions": sorted(regions) if regions else None,
+    }
+
+
+def generate_html_report(
+    assessment_results: Dict[str, Any], show_finserv: bool = True
+) -> str:
+    """Generate the interactive single-account HTML report."""
     try:
         return generate_report_from_template(
-            all_findings=all_findings,
-            service_findings=service_findings,
-            service_stats=service_stats,
-            mode="single",
-            account_id=account_id,
-            timestamp=timestamp,
-            regions=sorted(regions) if regions else None,
+            **prepare_report_inputs(
+                assessment_results,
+                show_finserv=show_finserv,
+            )
         )
     except Exception as e:
         logger.error(f"Error generating HTML report: {str(e)}", exc_info=True)
         return f"""<!DOCTYPE html><html><body><h1>Error Generating Report</h1><p>An error occurred: {str(e)}</p></body></html>"""
+
+
+def generate_pdf_report(
+    assessment_results: Dict[str, Any], show_finserv: bool = True
+) -> bytes:
+    """Generate the complete single-account PDF report."""
+    report_inputs = prepare_report_inputs(
+        assessment_results,
+        show_finserv=show_finserv,
+    )
+    return generate_pdf_from_template(
+        all_findings=report_inputs["all_findings"],
+        service_stats=report_inputs["service_stats"],
+        mode=report_inputs["mode"],
+        account_id=report_inputs["account_id"],
+        timestamp=report_inputs["timestamp"],
+        regions=report_inputs["regions"],
+        contextual_services={
+            "agentic",
+            *(standard["slug"] for standard in COMPLIANCE_STANDARDS),
+        },
+    )
 
 
 def get_current_utc_date():
@@ -338,8 +373,17 @@ def build_single_account_report_key(timestamp: str) -> str:
     return f"security_assessment_single_account_{timestamp}.html"
 
 
+def build_single_account_pdf_key(timestamp: str) -> str:
+    """Build the single-account PDF report object key."""
+    return f"security_assessment_single_account_{timestamp}.pdf"
+
+
 def write_html_to_s3(
-    html_content: str, s3_bucket: str, execution_id: str, account_id: str = None
+    html_content: str,
+    s3_bucket: str,
+    execution_id: str,
+    account_id: str = None,
+    timestamp: str = None,
 ) -> Optional[str]:
     """
     Write HTML report to S3
@@ -356,7 +400,7 @@ def write_html_to_s3(
         s3_client = boto3.client("s3", config=boto3_config)
 
         # Generate the S3 key for local bucket (no account folder needed)
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = timestamp or datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         s3_key = build_single_account_report_key(timestamp)
 
         # Upload the HTML file
@@ -376,11 +420,37 @@ def write_html_to_s3(
         return None
 
 
+def write_pdf_to_s3(
+    pdf_content: bytes,
+    s3_bucket: str,
+    execution_id: str,
+    account_id: str = None,
+    timestamp: str = None,
+) -> Optional[str]:
+    """Write the single-account PDF report to S3."""
+    try:
+        s3_client = boto3.client("s3", config=boto3_config)
+        timestamp = timestamp or datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        s3_key = build_single_account_pdf_key(timestamp)
+        s3_client.put_object(
+            Bucket=s3_bucket,
+            Key=s3_key,
+            Body=pdf_content,
+            ContentType="application/pdf",
+            Metadata={"execution-id": execution_id},
+        )
+        logger.info(f"Successfully wrote PDF report to s3://{s3_bucket}/{s3_key}")
+        return s3_key
+    except Exception as e:
+        logger.error(f"Error writing PDF report to S3: {str(e)}", exc_info=True)
+        return None
+
+
 def lambda_handler(event, context):
     """
     Main Lambda handler
     """
-    logger.info("Generating Consolidated HTML Report")
+    logger.info("Generating Consolidated HTML and PDF Reports")
     logger.info(f"Event: {event}")
 
     try:
@@ -410,20 +480,49 @@ def lambda_handler(event, context):
         if not assessment_results:
             raise ValueError(f"No assessment results found: {execution_id}")
 
-        # Generate HTML report
-        html_content = generate_html_report(
-            assessment_results, show_finserv=show_finserv
+        # Prepare the normalized inputs once so both report formats use exactly
+        # the same findings, counts, and routing.
+        report_inputs = prepare_report_inputs(
+            assessment_results,
+            show_finserv=show_finserv,
+        )
+        html_content = generate_report_from_template(**report_inputs)
+        pdf_content = generate_pdf_from_template(
+            all_findings=report_inputs["all_findings"],
+            service_stats=report_inputs["service_stats"],
+            mode=report_inputs["mode"],
+            account_id=report_inputs["account_id"],
+            timestamp=report_inputs["timestamp"],
+            regions=report_inputs["regions"],
+            contextual_services={
+                "agentic",
+                *(standard["slug"] for standard in COMPLIANCE_STANDARDS),
+            },
         )
 
-        # Write HTML report to S3
-        s3_key = write_html_to_s3(html_content, s3_bucket, execution_id, account_id)
+        # Use one timestamp for the paired HTML and PDF object names.
+        report_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        html_key = write_html_to_s3(
+            html_content,
+            s3_bucket,
+            execution_id,
+            account_id,
+            timestamp=report_timestamp,
+        )
+        pdf_key = write_pdf_to_s3(
+            pdf_content,
+            s3_bucket,
+            execution_id,
+            account_id,
+            timestamp=report_timestamp,
+        )
 
-        if not s3_key:
-            raise Exception("Failed to write HTML report to S3")
+        if not html_key or not pdf_key:
+            raise Exception("Failed to write HTML and PDF reports to S3")
 
         # Note: Multi-account consolidation is handled by consolidate_html_reports.py
         # in the CodeBuild post-build phase, not here. This Lambda only generates
-        # the per-account security_assessment_*.html report.
+        # the per-account security_assessment_*.html and *.pdf reports.
 
         # Delete the IAM permissions cache file — it contains full policy documents
         # and should not persist in S3 after the assessment completes
@@ -439,8 +538,9 @@ def lambda_handler(event, context):
             "statusCode": 200,
             "executionId": execution_id,
             "body": {
-                "message": "Successfully generated HTML report",
-                "report_location": f"s3://{s3_bucket}/{s3_key}",
+                "message": "Successfully generated HTML and PDF reports",
+                "html_report_location": f"s3://{s3_bucket}/{html_key}",
+                "pdf_report_location": f"s3://{s3_bucket}/{pdf_key}",
             },
         }
 

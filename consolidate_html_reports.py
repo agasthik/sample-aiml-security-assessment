@@ -31,6 +31,7 @@ sys.path.insert(
     ),
 )
 
+from pdf_report import generate_pdf_report
 from report_template import COMPLIANCE_STANDARDS, generate_html_report
 
 # Sentinel region label used by the per-service assessments to tag IAM-only
@@ -42,6 +43,11 @@ GLOBAL_REGION_LABEL = "Global"
 def build_multi_account_report_key(timestamp: str) -> str:
     """Build the consolidated multi-account HTML report object key."""
     return f"consolidated-reports/security_assessment_multi_account_{timestamp}.html"
+
+
+def build_multi_account_pdf_key(timestamp: str) -> str:
+    """Build the consolidated multi-account PDF report object key."""
+    return f"consolidated-reports/security_assessment_multi_account_{timestamp}.pdf"
 
 
 def _account_files_dir():
@@ -229,7 +235,7 @@ def consolidate_html_reports():
     if all_findings:
         timestamp_display = datetime.now().strftime("%B %d, %Y %H:%M:%S UTC")
 
-        # Use shared template to generate report
+        # Use shared inputs to generate paired HTML and PDF reports.
         consolidated_html = generate_html_report(
             all_findings=all_findings,
             service_findings=service_findings,
@@ -239,18 +245,38 @@ def consolidate_html_reports():
             timestamp=timestamp_display,
             regions=sorted(regions) if regions else None,
         )
+        consolidated_pdf = generate_pdf_report(
+            all_findings=all_findings,
+            service_stats=service_stats,
+            mode="multi",
+            account_ids=list(account_ids),
+            timestamp=timestamp_display,
+            regions=sorted(regions) if regions else None,
+            contextual_services={
+                "agentic",
+                *(standard["slug"] for standard in COMPLIANCE_STANDARDS),
+            },
+        )
 
         timestamp_file = datetime.now().strftime("%Y%m%d_%H%M%S")
-        s3_key = build_multi_account_report_key(timestamp_file)
+        html_key = build_multi_account_report_key(timestamp_file)
+        pdf_key = build_multi_account_pdf_key(timestamp_file)
 
         try:
             s3.put_object(
                 Bucket=bucket,
-                Key=s3_key,
+                Key=html_key,
                 Body=consolidated_html,
                 ContentType="text/html",
             )
-            print(f"Consolidated report saved to s3://{bucket}/{s3_key}")
+            s3.put_object(
+                Bucket=bucket,
+                Key=pdf_key,
+                Body=consolidated_pdf,
+                ContentType="application/pdf",
+            )
+            print(f"Consolidated HTML report saved to s3://{bucket}/{html_key}")
+            print(f"Consolidated PDF report saved to s3://{bucket}/{pdf_key}")
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code == "NoSuchBucket":

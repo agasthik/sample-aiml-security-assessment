@@ -20,6 +20,13 @@ phases:
           exit 1
         fi
       - |
+        # The multi-account consolidator runs directly in CodeBuild rather than
+        # inside the report Lambda, so install its PDF renderer dependency here.
+        if ! pip install -q -r consolidate_report_requirements.txt; then
+          echo "ERROR: Failed to install report generation dependencies"
+          exit 1
+        fi
+      - |
         # Verify jq is available (used for parsing JSON credentials)
         if ! command -v jq &> /dev/null; then
           echo "ERROR: jq is not installed"
@@ -426,7 +433,7 @@ phases:
                 echo "WARNING: Failed to list bucket contents for $accountId"
               fi
 
-              if ! aws s3 cp s3://$ACCOUNT_BUCKET/ /tmp/account-files/$accountId/ --recursive --exclude "*" --include "*.csv" --include "*.html" --exclude "*/" "${fs_exclude_args[@]}"; then
+              if ! aws s3 cp s3://$ACCOUNT_BUCKET/ /tmp/account-files/$accountId/ --recursive --exclude "*" --include "*.csv" --include "*.html" --include "*.pdf" --exclude "*/" "${fs_exclude_args[@]}"; then
                 echo "WARNING: No files to copy or copy failed from $accountId"
               fi
 
@@ -435,7 +442,7 @@ phases:
               ls -la /tmp/account-files/$accountId/ 2>/dev/null || echo "No files in directory"
 
               # Flatten any nested directories
-              find /tmp/account-files/$accountId -type f \( -name "*.csv" -o -name "*.html" \) -exec mv {} /tmp/account-files/$accountId/ \; 2>/dev/null || true
+              find /tmp/account-files/$accountId -type f \( -name "*.csv" -o -name "*.html" -o -name "*.pdf" \) -exec mv {} /tmp/account-files/$accountId/ \; 2>/dev/null || true
               find /tmp/account-files/$accountId -type d -empty -delete 2>/dev/null || true
             else
               echo "WARNING: No assessment bucket found for $accountId (STACK_NAME: $STACK_NAME)"
@@ -543,7 +550,7 @@ phases:
             # Sync results to BUCKET_REPORT for consistent access
             if [[ $ACCOUNT_BUCKET != $BUCKET_REPORT ]]; then
               echo "Syncing results to consolidated bucket: $BUCKET_REPORT"
-              if ! aws s3 sync s3://$ACCOUNT_BUCKET/ s3://$BUCKET_REPORT/$AWS_ACCOUNT_ID/ --exclude "*" --include "*.csv" --include "*.html" "${fs_exclude_args[@]}"; then
+              if ! aws s3 sync s3://$ACCOUNT_BUCKET/ s3://$BUCKET_REPORT/$AWS_ACCOUNT_ID/ --exclude "*" --include "*.csv" --include "*.html" --include "*.pdf" "${fs_exclude_args[@]}"; then
                 echo "WARNING: Failed to sync results to $BUCKET_REPORT"
               else
                 echo "Results synced successfully to s3://$BUCKET_REPORT/$AWS_ACCOUNT_ID/"

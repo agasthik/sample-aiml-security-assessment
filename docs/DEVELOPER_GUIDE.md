@@ -65,7 +65,7 @@ additional compatibility syntax.
 
 ## Architecture Overview
 
-The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 92 core security checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, plus 38 always-on Agentic AI Security checks, with optional 64-check Responsible AI GRC and 12-check OWASP Top 10 for LLM assessments, generating interactive HTML reports with findings and remediation guidance.
+The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 92 core security checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, plus 38 always-on Agentic AI Security checks, with optional 64-check Responsible AI GRC and 12-check OWASP Top 10 for LLM assessments, generating interactive HTML reports and professional PDF reports with findings and remediation guidance.
 
 ### Security Design Principles
 
@@ -136,7 +136,7 @@ sample-aiml-security-assessment/
 │   │   ├── iam_permission_caching/   # AWS IAM permissions cache
 │   │   ├── cleanup_bucket/           # Amazon S3 cleanup
 │   │   ├── resolve_regions/          # Multi-region resolution Lambda
-│   │   └── generate_consolidated_report/  # HTML/CSV report generation
+│   │   └── generate_consolidated_report/  # HTML/PDF/CSV report generation
 │   ├── statemachine/                 # AWS Step Functions definition
 │   ├── images/                       # SAM application images
 │   ├── template.yaml                 # AWS SAM template (single-account)
@@ -755,18 +755,21 @@ For detailed troubleshooting guidance, common issues, and debugging tips, see th
 - Multi-region scans use a Step Functions Map state with configurable `MaxRegionConcurrency`
 - Responsible AI GRC checks are opt-in through `EnableResponsibleAIGRCAssessment`; the Lambda is deployed by default and also runs as a hidden OWASP source dependency when `EnableOWASPAssessment` is enabled
 - OWASP checks are opt-in through `EnableOWASPAssessment`; the Lambda is deployed by default but invoked only when enabled
-- Results are consolidated into a single HTML/CSV report
+- Results are consolidated into paired HTML/PDF reports plus source CSV files
 - AWS CodeBuild orchestrates deployment and execution across multiple accounts
 
 ## Report Generation Architecture
 
 ### Shared Template Module
 
-Report generation uses a single shared template (`report_template.py`) for both deployment modes:
+Report generation uses shared normalized inputs for both deployment modes and
+separate renderers for the interactive HTML and paginated PDF formats:
 
 ```text
 aiml-security-assessment/functions/security/generate_consolidated_report/
 ├── app.py              # Lambda handler (single-account)
+├── report_model.py     # Deterministic metrics and executive themes
+├── pdf_report.py       # ReportLab PDF renderer
 ├── report_template.py  # Shared HTML/CSS/JS template
 └── ...
 
@@ -777,21 +780,71 @@ consolidate_html_reports.py  # CodeBuild script (multi-account)
 
 | Component | Mode | Description |
 | --- | --- | --- |
-| `app.py` (AWS Lambda) | `mode='single'` | Generates per-account HTML reports during AWS Step Functions execution |
-| `consolidate_html_reports.py` | `mode='multi'` | Consolidates all account reports in AWS CodeBuild post-build phase |
+| `app.py` (AWS Lambda) | `mode='single'` | Generates paired per-account HTML and PDF reports during AWS Step Functions execution |
+| `consolidate_html_reports.py` | `mode='multi'` | Consolidates all account findings into paired HTML and PDF reports during the AWS CodeBuild post-build phase |
 
-Both call `generate_html_report()` from `report_template.py` with different parameters.
+Both modes use the same normalized findings, service statistics, account scope,
+and region scope. The HTML path calls `generate_html_report()` from
+`report_template.py`; the PDF path calls `generate_pdf_report()` from
+`pdf_report.py`.
 
 ### Modifying the Report Template
 
 To update report styling, layout, or features:
 
-1. Edit `report_template.py` only - changes apply to both single and multi-account reports
+1. Edit `report_template.py` for interactive HTML changes, `pdf_report.py` for
+   paginated PDF changes, or `report_model.py` for metrics and deterministic
+   executive-theme changes. Each renderer is shared by single- and
+   multi-account modes.
 2. Run the report generator tests from the report package directory: `../../../../.venv/bin/python -m pytest test_generate_report.py -v`
-3. Key functions:
+3. Run `.venv/bin/python -m pytest tests/test_pdf_report.py -v` for PDF model
+   and renderer coverage.
+4. Key functions:
    - `get_html_template()` - HTML/CSS/JS structure
    - `generate_table_rows()` - Finding row generation
    - `generate_html_report()` - Main entry point with `mode` parameter ('single' or 'multi')
+   - `build_report_model()` - Direct/contextual metrics, broad themes, and priorities
+   - `generate_pdf_report()` - PDF entry point with `mode` parameter (`single` or `multi`)
+
+### Deterministic Analysis Rules
+
+`report_model.py` is the only place report analysis lives, and every value it
+returns must be derivable from the finding rows alone. Severity, status, and
+finding text are never re-interpreted, re-scored, or inferred.
+
+- The weighted severity score (`high*9 + medium*3 + low*1`) exists **only** to
+  order lists. Never present it as an absolute or comparable risk score.
+- Prevalence (`Systemic` / `Widespread` / `Isolated`) is derived from the
+  account and region values on the rows, so it describes how widely a gap was
+  observed - not how severe it is.
+- `CHECK_CATALOG_TOTALS` in `report_model.py` records the published catalog
+  size per assessment area and drives the coverage table. **Update it in the
+  same change that adds or removes checks**, alongside `README.md`,
+  `docs/SECURITY_CHECKS*.md`, and this guide.
+- `classify_theme()` weights the check ID and finding name above the longer
+  detail and resolution prose, because remediation text routinely mentions
+  adjacent controls (an encryption finding whose fix mentions key
+  *permissions*). New theme keywords must be specific enough not to fire on
+  incidental wording; `tests/test_pdf_report.py` pins the classifications that
+  previously regressed.
+- N/A rows are bucketed by reason in a fixed order so an access problem is
+  never reported as "no resources found".
+
+### PDF Layout Notes
+
+- `pdf_report.py` uses `BaseDocTemplate` with `multiBuild`, not
+  `SimpleDocTemplate`. The story is laid out twice so headings can report the
+  page they landed on; page chrome is attached through
+  `PageTemplate(onPage=...)` because `multiBuild` does not accept the
+  `onFirstPage`/`onLaterPages` arguments.
+- The contents page and the PDF bookmarks are produced by the same
+  `afterFlowable` pass, so they cannot drift apart. Any new heading style that
+  should appear in both must be registered in `_TOC_LEVELS`.
+- Charts use `reportlab.graphics` only - no additional dependency. The severity
+  chart uses a single-hue sequential ramp because the report's status red and
+  amber are too close to distinguish as touching segments of one stacked bar,
+  and every bar carries a direct total label so no value depends on color
+  alone.
 
 ## Extending or Adding Lenses
 
@@ -900,7 +953,27 @@ After making changes to `report_template.py`, regenerate sample reports from a f
     -k "generate_viewable_report or generate_multi_account_report" -s)
 ```
 
-The fixture reports are written under `aiml-security-assessment/functions/security/generate_consolidated_report/test_reports/`. Use them to validate report rendering before refreshing the canonical files in `sample-reports/`.
+The fixture reports are written under
+`aiml-security-assessment/functions/security/generate_consolidated_report/test_reports/`.
+The selected tests generate paired single-account and multi-account `.html`
+and `.pdf` files. Use them to validate report rendering before refreshing the
+canonical files in `sample-reports/`.
+
+Render the PDF fixtures before review so pagination defects are visible:
+
+```bash
+mkdir -p /tmp/aiml-security-pdf-review
+pdftoppm -png \
+  aiml-security-assessment/functions/security/generate_consolidated_report/test_reports/security_report.pdf \
+  /tmp/aiml-security-pdf-review/single
+pdftoppm -png \
+  aiml-security-assessment/functions/security/generate_consolidated_report/test_reports/multi_account_report.pdf \
+  /tmp/aiml-security-pdf-review/multi
+```
+
+Verify the executive section, page headers and footers, finding-card
+pagination, long identifiers, remediation text, and reference links in both
+outputs.
 
 #### 2. Capture Screenshots
 

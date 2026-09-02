@@ -133,7 +133,7 @@ When reviewing a diff that touches assessment code or policies, verify, in order
   - "Extending or Adding Lenses"
   - "Adding a Compliance Standard (OWASP-style)" — lists the seven wire-up sites for new OW-/NR-/EU-style standards
   - "Report Verification (Required Before Opening a PR)" — mandatory HTML report generation and visual verification for any new check, lens, or compliance standard
-- `docs/SECURITY_CHECKS.md` / `docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md` / `docs/SECURITY_CHECKS_OWASP.md` — authoritative check inventory; update counts in README and DEVELOPER_GUIDE in lockstep.
+- `docs/SECURITY_CHECKS.md` / `docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md` / `docs/SECURITY_CHECKS_OWASP.md` — authoritative check inventory; update counts in README, DEVELOPER_GUIDE, and `CHECK_CATALOG_TOTALS` in `generate_consolidated_report/report_model.py` in lockstep — a stale total silently misreports the PDF report's per-area coverage rate rather than failing.
 - `docs/RESPONSIBLE_AI_GRC_SCOPE.md` / `docs/RESPONSIBLE_AI_GRC_ALIAS_MIGRATION.md` — scope and legacy FinServ alias behavior.
 - `docs/TROUBLESHOOTING.md` — runtime/deployment debugging.
 - `CHANGELOG.md` — user-facing release history and the authoritative deployment actions for `Unreleased` and tagged versions.

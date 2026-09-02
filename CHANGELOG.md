@@ -12,6 +12,21 @@ section.
 
 ### Added
 
+- Added professional PDF reports for both single-account and multi-account
+  assessments. PDFs include a deterministic executive section covering
+  direct-control posture, broad control themes, priority improvements, and
+  assessment-area results, followed by all passed, failed, and N/A findings
+  with account, region, resource detail, remediation, and references.
+- PDF reports add deterministic analysis derived only from the findings
+  themselves: severity mix and failed-row charts by assessment area and control
+  theme, per-account scorecards, prevalence labelling that separates systemic
+  gaps from isolated ones, grouping of findings that share a single remediation
+  action, a breakdown of why rows were reported as N/A, catalog coverage per
+  assessment area, and compliance-framework and OWASP category rollups. No
+  finding text, severity, or status is inferred or re-scored.
+- PDF reports are now navigable, with a contents page and matching PDF
+  bookmarks, and repeated findings are grouped by check across accounts and
+  regions so multi-account reports no longer restate near-identical rows.
 - Added six AWS Agent Registry security checks (`AC-18` through `AC-23`) for
   publication approval, discovery authorization, customer-managed encryption,
   organization auto-detection, record lifecycle, and provenance.
@@ -24,6 +39,11 @@ section.
 
 ### Changed
 
+- Shared normalized report inputs between the HTML and PDF renderers so
+  service routing, deduplication, contextual Agentic/OWASP treatment, account
+  scope, and region scope remain consistent across formats.
+- Updated CodeBuild report collection to install the PDF renderer dependency
+  and copy PDF artifacts into the customer-facing report bucket.
 - Standardized all AWS SDK dependencies on exact `boto3==1.43.85` and
   `botocore==1.43.85` pins.
 - Expanded the AgentCore assessment to inventory AWS Agent Registry resources
@@ -51,8 +71,8 @@ section.
 ### Deployment impact
 
 - **CodeBuild run required** to build and deploy the updated assessment code,
-  dependencies, AWS SAM templates, state machine inputs, and build
-  orchestration.
+  PDF dependency, AWS SAM templates, state machine inputs, and build
+  orchestration. The run begins generating paired HTML and PDF reports.
 - **Single-account infrastructure update required** because
   `deployment/aiml-security-single-account.yaml` changed.
 - **Multi-account member-role StackSet update required first** because

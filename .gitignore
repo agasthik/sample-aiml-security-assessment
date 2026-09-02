@@ -42,5 +42,9 @@ samples/
 # Test output
 **/test_reports/
 
+# Local report artifacts and visual-QA intermediates
+/output/
+/tmp/
+
 .ruff_cache/
 .ash/

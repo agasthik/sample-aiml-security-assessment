@@ -117,7 +117,7 @@ Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), 
 
 1. Deploy through AWS CloudFormation (one-click deployment)
 2. Framework automatically scans your AI/ML resources
-3. Generates interactive HTML reports stored in your Amazon S3 bucket
+3. Generates interactive HTML and professional PDF reports stored in your Amazon S3 bucket
 4. All data stays in your AWS account - no external dependencies
 
 ---
@@ -386,7 +386,7 @@ The HTML report includes a Region column, filter dropdown, and "Risk by Region /
 1. **Deploy** — CloudFormation creates CodeBuild, S3, IAM roles, and a Lambda trigger
 2. **CodeBuild runs** — builds and deploys the SAM assessment stack (per account in multi-account mode)
 3. **Step Functions execute** — orchestrates: S3 cleanup → IAM permission caching → resolve regions → Map state fans out across regions. Within each region, Bedrock, SageMaker, and AgentCore run in parallel; Responsible AI GRC runs once from the first region when either Responsible AI GRC or OWASP requires its source rows; OWASP then runs per region when enabled → generate consolidated report
-4. **Results** — HTML and CSV reports are stored in your S3 bucket
+4. **Results** — HTML, PDF, and CSV reports are stored in your S3 bucket
 
 ### Optional: Responsible AI GRC Checks (`EnableResponsibleAIGRCAssessment`)
 
@@ -457,8 +457,11 @@ For detailed architecture, execution flow, and extension guidance, see the [Deve
 
 1. Open your **infrastructure stack** in CloudFormation → **Outputs** tab → copy `AssessmentBucket`
 2. Navigate to that S3 bucket
-3. For single-account, open `{account_id}/security_assessment_single_account_*.html`
-4. For multi-account, open `consolidated-reports/security_assessment_multi_account_*.html`
+3. For single-account, open the paired
+   `{account_id}/security_assessment_single_account_*.html` or `.pdf` report
+4. For multi-account, open the paired
+   `consolidated-reports/security_assessment_multi_account_*.html` or `.pdf`
+   report
 
 ### Assessment Execution Process
 
@@ -486,7 +489,7 @@ For detailed architecture, execution flow, and extension guidance, see the [Deve
 4. **Assessment Execution**: AWS Step Functions orchestrate parallel AWS Lambda execution
 5. **Results Collection**: Individual AWS Lambda functions store results in local Amazon S3 buckets
 6. **Consolidation**: AWS CodeBuild collects and consolidates results from all accounts
-7. **Reporting**: Generates multi-account HTML and CSV reports
+7. **Reporting**: Generates multi-account HTML, PDF, and CSV reports
 8. **Notification**: Sends completion notification through Amazon SNS (if configured)
 
 ## Monitoring and Results
@@ -514,7 +517,9 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
 
    - Go to **Amazon S3** in the AWS Console
    - Search for and open your assessment bucket
-   - For single-account deployments, open the `{account_id}/` folder and then open the `security_assessment_single_account_YYYYMMDD_HHMMSS.html` report
+   - For single-account deployments, open the `{account_id}/` folder and then
+     open the paired `security_assessment_single_account_YYYYMMDD_HHMMSS.html`
+     or `.pdf` report
    - For multi-account deployments, follow the [Report Structure](#report-structure) guidance below
 
 ### Report Structure
@@ -522,11 +527,15 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
 #### Consolidated Reports
 
 - **Location**: `consolidated-reports/` folder in the bucket
-- **Content**: Multi-account HTML report combining all account assessments
-- **File Format**: `security_assessment_multi_account_YYYYMMDD_HHMMSS.html`
+- **Content**: Paired multi-account HTML and PDF reports combining all account assessments
+- **File Formats**:
+  `security_assessment_multi_account_YYYYMMDD_HHMMSS.html` and
+  `security_assessment_multi_account_YYYYMMDD_HHMMSS.pdf`
 - **Features**:
 
   - Executive summary with metrics (Total, High, Medium, Low severity counts)
+  - Deterministic PDF executive narrative organized into broad control themes
+  - Complete PDF findings section containing passed, failed, and N/A rows
   - Service, Agentic AI lens, Responsible AI GRC, and OWASP compliance views
   - Priority recommendations
   - Light/dark mode toggle (persists through localStorage)
@@ -537,7 +546,7 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
 #### Individual Account Reports
 
 - **Location**: Folders named with account IDs (for example, `123456789012/`)
-- **Content**: Account-specific CSV and HTML files for AI/ML assessments
+- **Content**: Account-specific CSV, HTML, and PDF files for AI/ML assessments
 - **Files Include**:
 
   - `bedrock_security_report_{execution_id}_{region}.csv` - Amazon Bedrock security assessment results
@@ -551,6 +560,8 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
     `EnableOWASPAssessment` is enabled)
   - `permissions_cache_{execution_id}.json` - IAM permissions cache
   - `security_assessment_single_account_{timestamp}.html` - Consolidated HTML report (same features as multi-account report)
+  - `security_assessment_single_account_{timestamp}.pdf` - Professional
+    executive report and complete finding details
 
 ### Understanding Results
 

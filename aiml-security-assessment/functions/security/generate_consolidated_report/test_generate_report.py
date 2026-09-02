@@ -36,6 +36,8 @@ finally:
 
 generate_html_report = generate_report_app.generate_html_report
 generate_report_direct = generate_report_template.generate_html_report
+generate_pdf_report = generate_report_app.generate_pdf_report
+generate_pdf_direct = generate_report_app.generate_pdf_from_template
 
 
 class TestHtmlReportGeneration(unittest.TestCase):
@@ -259,13 +261,18 @@ class TestHtmlReportGeneration(unittest.TestCase):
             ]
         )
         html_content = generate_html_report(report_data)
+        pdf_content = generate_pdf_report(report_data)
 
-        # Save the HTML content to a file
+        # Save the paired report formats.
         report_path = os.path.join(self.test_dir, "security_report.html")
         with open(report_path, "w") as f:
             f.write(html_content)
+        pdf_report_path = os.path.join(self.test_dir, "security_report.pdf")
+        with open(pdf_report_path, "wb") as f:
+            f.write(pdf_content)
 
         print(f"\nReport generated at: {os.path.abspath(report_path)}")
+        print(f"PDF report generated at: {os.path.abspath(pdf_report_path)}")
 
         # Optionally open the report in the default browser
         # webbrowser.open('file://' + os.path.abspath(report_path))
@@ -273,6 +280,8 @@ class TestHtmlReportGeneration(unittest.TestCase):
         # Verify file exists and has content
         self.assertTrue(os.path.exists(report_path))
         self.assertTrue(os.path.getsize(report_path) > 0)
+        self.assertTrue(os.path.exists(pdf_report_path))
+        self.assertTrue(pdf_content.startswith(b"%PDF-"))
 
         # Basic content checks
         with open(report_path, "r") as f:
@@ -423,14 +432,28 @@ class TestHtmlReportGeneration(unittest.TestCase):
             mode="multi",
             account_ids=["111122223333", "444455556666"],
         )
+        pdf_content = generate_pdf_direct(
+            all_findings=all_findings,
+            service_stats=service_stats,
+            mode="multi",
+            account_ids=["111122223333", "444455556666"],
+            timestamp="April 17, 2026 10:00:00 UTC",
+            contextual_services={"agentic"},
+        )
 
         report_path = os.path.join(self.test_dir, "multi_account_report.html")
         with open(report_path, "w") as f:
             f.write(html_content)
+        pdf_report_path = os.path.join(self.test_dir, "multi_account_report.pdf")
+        with open(pdf_report_path, "wb") as f:
+            f.write(pdf_content)
 
         print(f"\nMulti-account report generated at: {os.path.abspath(report_path)}")
+        print(f"Multi-account PDF generated at: {os.path.abspath(pdf_report_path)}")
 
         self.assertTrue(os.path.exists(report_path))
+        self.assertTrue(os.path.exists(pdf_report_path))
+        self.assertTrue(pdf_content.startswith(b"%PDF-"))
         self.assertIn("Agent Registry Publication Approval Governance", html_content)
         self.assertIn("Agentic AI Registry Discovery Authorization", html_content)
 
