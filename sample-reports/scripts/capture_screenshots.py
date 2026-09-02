@@ -453,6 +453,31 @@ def capture_screenshot(browser, screenshot_config: dict) -> Path:
     return optimized_path
 
 
+def capture_all_screenshots(browser, screenshot_configs=None) -> list[Path]:
+    """Capture every configured screenshot and fail if any capture fails."""
+    configs = SCREENSHOTS if screenshot_configs is None else screenshot_configs
+    captured_files = []
+    failures = []
+
+    for screenshot_config in configs:
+        try:
+            output_path = capture_screenshot(browser, screenshot_config)
+            if output_path:
+                captured_files.append(output_path)
+        except Exception as error:
+            screenshot_name = screenshot_config.get("name", "unnamed")
+            print(f"  ERROR: Failed to capture screenshot '{screenshot_name}': {error}")
+            failures.append((screenshot_name, error))
+
+    if failures:
+        failed_names = ", ".join(name for name, _ in failures)
+        raise RuntimeError(
+            f"Failed to capture {len(failures)} screenshot(s): {failed_names}"
+        ) from failures[0][1]
+
+    return captured_files
+
+
 def main():
     """Main function to capture all screenshots."""
     unexpected_arguments = [
@@ -502,19 +527,10 @@ def main():
             )
             anonymize_account_ids(report_files)
 
-            captured_files = []
-
-            # Capture each screenshot
-            for screenshot_config in SCREENSHOTS:
-                try:
-                    output_path = capture_screenshot(browser, screenshot_config)
-                    if output_path:
-                        captured_files.append(output_path)
-                except Exception as e:
-                    print(f"  ERROR: Failed to capture screenshot: {e}")
-                    continue
-
-            browser.close()
+            try:
+                captured_files = capture_all_screenshots(browser)
+            finally:
+                browser.close()
 
             # Summary
             print("\n" + "=" * 70)

@@ -13,6 +13,7 @@ import logging
 import os
 import re
 import time
+from fnmatch import fnmatchcase
 from io import StringIO
 from datetime import datetime, timezone
 from typing import Dict, List, Any
@@ -124,6 +125,8 @@ AGENT_REGISTRY_PROVENANCE_REFERENCE_URL = (
     "https://docs.aws.amazon.com/agent-registry-control/latest/APIReference/"
     "API_Provenance.html"
 )
+AGENT_REGISTRY_INVENTORY_PAGE_SIZE = 100
+AGENT_REGISTRY_RECORD_INVENTORY_LIMIT = 1000
 
 AGENTIC_AGENTCORE_CHECK_MAPPINGS = {
     "AC-01": {
@@ -228,8 +231,8 @@ AGENTIC_AGENTCORE_CHECK_MAPPINGS = {
         "check_id": "AG-34",
         "finding": "Agentic AI Registry Discovery Authorization",
         "lens_domain": "Agent Identity & Access",
-        "agentic_context": "Registry discovery authorization should bind callers to an intended IAM principal or constrained JWT audience, client, scope, or claim.",
-        "resolution": "Use AWS IAM authorization or constrain custom JWT authorization to approved audiences, clients, scopes, or claims.",
+        "agentic_context": "Registry discovery authorizer configuration is inventory evidence; effective IAM access and the suitability of JWT constraints require review against intended callers.",
+        "resolution": "Review effective IAM access or compare custom JWT audiences, clients, scopes, and claims with approved registry consumers.",
     },
     "AC-20": {
         "check_id": "AG-35",
@@ -249,8 +252,8 @@ AGENTIC_AGENTCORE_CHECK_MAPPINGS = {
         "check_id": "AG-37",
         "finding": "Agentic AI Registry Record Lifecycle Governance",
         "lens_domain": "Agent Identity & Access",
-        "agentic_context": "Registry records should remain in explicit draft, review, approved, rejected, or deprecated lifecycle states so discoverability is governed.",
-        "resolution": "Resolve failed or unknown record states and use the registry approval workflow before publishing records.",
+        "agentic_context": "Explicit registry lifecycle states provide operational visibility, but the state alone does not prove a security control.",
+        "resolution": "No action required for recognized lifecycle states; review failed or unknown states operationally.",
     },
     "AC-23": {
         "check_id": "AG-38",
@@ -261,14 +264,68 @@ AGENTIC_AGENTCORE_CHECK_MAPPINGS = {
     },
 }
 
-# Error codes returned when a region exists but is not enabled/usable for the
-# account (opt-in regions, disabled regions). The availability probe treats
-# these the same as an endpoint connection failure.
+REGIONAL_AGENTCORE_CHECK_IDS = (
+    "AC-01",
+    "AC-04",
+    "AC-05",
+    "AC-06",
+    "AC-07",
+    "AC-08",
+    "AC-10",
+    "AC-11",
+    "AC-12",
+    "AC-13",
+    "AC-14",
+    "AC-15",
+    "AC-16",
+    "AC-17",
+    "AC-18",
+    "AC-19",
+    "AC-20",
+    "AC-21",
+    "AC-22",
+    "AC-23",
+)
+
+AGENTCORE_RUNTIME_CHECK_IDS = (
+    "AC-01",
+    "AC-04",
+    "AC-05",
+    "AC-06",
+    "AC-07",
+    "AC-08",
+    "AC-10",
+    "AC-11",
+    "AC-12",
+    "AC-13",
+    "AC-14",
+    "AC-15",
+    "AC-16",
+    "AC-17",
+)
+
+NATIVE_AGENTIC_AGENTCORE_CHECK_NAMES = {
+    "AG-24": "Agentic AI Gateway Authentication",
+    "AG-25": "Agentic AI Gateway Policy Enforcement",
+    "AG-26": "Agentic AI Gateway Exception Handling",
+    "AG-27": "Agentic AI Gateway WAF Protection",
+}
+
+# Error codes that specifically establish the target region is not enabled for
+# the account. Transport and authentication errors remain indeterminate because
+# they do not prove regional service availability.
 REGION_UNAVAILABLE_ERROR_CODES = {
-    "UnrecognizedClientException",
-    "InvalidClientTokenId",
-    "AuthFailure",
     "OptInRequired",
+}
+
+AUTHENTICATION_ERROR_CODES = {
+    "AuthFailure",
+    "ExpiredToken",
+    "ExpiredTokenException",
+    "InvalidClientTokenId",
+    "InvalidSignatureException",
+    "SignatureDoesNotMatch",
+    "UnrecognizedClientException",
 }
 
 # Execution tracking
@@ -392,6 +449,8 @@ def get_agent_registry_inventory(
         "list_error": None,
         "initialization_error": initialization_error,
         "unavailable": False,
+        "timed_out": False,
+        "timeout_stage": None,
     }
     if agent_registry_control_client is None:
         if initialization_error is not None:
@@ -403,12 +462,24 @@ def get_agent_registry_inventory(
     try:
         paginator = agent_registry_control_client.get_paginator("list_registries")
         summaries = []
-        for page in paginator.paginate():
+        page_iterator = iter(
+            paginator.paginate(
+                PaginationConfig={"PageSize": AGENT_REGISTRY_INVENTORY_PAGE_SIZE}
+            )
+        )
+        while True:
+            if not check_timeout():
+                inventory["timed_out"] = True
+                inventory["timeout_stage"] = "listing registries"
+                break
+            try:
+                page = next(page_iterator)
+            except StopIteration:
+                break
             page_registries = page.get("registries", [])
             if isinstance(page_registries, list):
                 summaries.extend(page_registries)
     except EndpointConnectionError as error:
-        inventory["unavailable"] = True
         inventory["list_error"] = error
         return inventory
     except ClientError as error:
@@ -420,7 +491,15 @@ def get_agent_registry_inventory(
         inventory["list_error"] = error
         return inventory
 
+    if inventory["timed_out"]:
+        return inventory
+
     for summary in summaries:
+        if not check_timeout():
+            inventory["timed_out"] = True
+            inventory["timeout_stage"] = "retrieving registry details"
+            break
+
         registry_id = summary.get("registryId") or summary.get("registryArn")
         if not registry_id:
             inventory["errors"].append(
@@ -452,11 +531,24 @@ def get_agent_registry_record_inventory(
         "list_errors": [],
         "skipped_registries": [],
         "registry_inventory": registry_inventory,
+        "timed_out": False,
+        "timeout_stage": None,
+        "truncated": False,
+        "record_limit": AGENT_REGISTRY_RECORD_INVENTORY_LIMIT,
+        "records_seen": 0,
     }
     if agent_registry_control_client is None:
         return inventory
 
     for registry_item in registry_inventory.get("items", []):
+        if inventory["records_seen"] >= AGENT_REGISTRY_RECORD_INVENTORY_LIMIT:
+            inventory["truncated"] = True
+            break
+        if not check_timeout():
+            inventory["timed_out"] = True
+            inventory["timeout_stage"] = "listing registry records"
+            break
+
         registry_summary = registry_item["summary"]
         registry_detail = registry_item["detail"]
         registry_id = (
@@ -476,38 +568,68 @@ def get_agent_registry_record_inventory(
             paginator = agent_registry_control_client.get_paginator(
                 "list_registry_records"
             )
-            record_summaries = []
-            for page in paginator.paginate(registryId=registry_id):
+            remaining_items = (
+                AGENT_REGISTRY_RECORD_INVENTORY_LIMIT - inventory["records_seen"]
+            )
+            page_iterator = paginator.paginate(
+                registryId=registry_id,
+                PaginationConfig={
+                    "MaxItems": remaining_items,
+                    "PageSize": min(
+                        AGENT_REGISTRY_INVENTORY_PAGE_SIZE,
+                        remaining_items,
+                    ),
+                },
+            )
+            page_iterator_iter = iter(page_iterator)
+            while True:
+                if not check_timeout():
+                    inventory["timed_out"] = True
+                    inventory["timeout_stage"] = "listing registry records"
+                    break
+                try:
+                    page = next(page_iterator_iter)
+                except StopIteration:
+                    break
+
                 page_records = page.get("registryRecords", [])
-                if isinstance(page_records, list):
-                    record_summaries.extend(page_records)
+                if not isinstance(page_records, list):
+                    continue
+
+                for record_summary in page_records:
+                    inventory["records_seen"] += 1
+                    record_id = record_summary.get("recordId") or record_summary.get(
+                        "recordArn"
+                    )
+                    if not record_id:
+                        inventory["errors"].append(
+                            {
+                                "registry": registry_item,
+                                "summary": record_summary,
+                                "error": ValueError(
+                                    "Registry record summary did not include an "
+                                    "identifier"
+                                ),
+                            }
+                        )
+                        continue
+
+                    inventory["items"].append(
+                        {
+                            "registry": registry_item,
+                            "summary": record_summary,
+                            "detail": record_summary,
+                        }
+                    )
+
+            if inventory["timed_out"]:
+                break
+            if getattr(page_iterator, "resume_token", None):
+                inventory["truncated"] = True
+                break
         except Exception as error:
             inventory["list_errors"].append({"registry": registry_item, "error": error})
             continue
-
-        for record_summary in record_summaries:
-            record_id = record_summary.get("recordId") or record_summary.get(
-                "recordArn"
-            )
-            if not record_id:
-                inventory["errors"].append(
-                    {
-                        "registry": registry_item,
-                        "summary": record_summary,
-                        "error": ValueError(
-                            "Registry record summary did not include an identifier"
-                        ),
-                    }
-                )
-                continue
-
-            inventory["items"].append(
-                {
-                    "registry": registry_item,
-                    "summary": record_summary,
-                    "detail": record_summary,
-                }
-            )
 
     return inventory
 
@@ -531,11 +653,21 @@ def _agent_registry_inventory_failure_detail(inventory: Dict[str, Any]) -> str:
 def _agent_registry_error_resolution(error: Exception, action: str) -> str:
     """Return remediation appropriate to an Agent Registry inventory error."""
     if isinstance(error, EndpointConnectionError):
-        return "Retry in a region where the AWS Agent Registry endpoint is available."
+        return (
+            "Verify DNS resolution, proxy settings, VPC routing, NAT or endpoint "
+            "connectivity, and retry the assessment."
+        )
 
     if isinstance(error, ClientError):
         error_code = error.response.get("Error", {}).get("Code", "ClientError")
         normalized_code = error_code.lower()
+        if normalized_code in {
+            error_code.lower() for error_code in AUTHENTICATION_ERROR_CODES
+        }:
+            return (
+                "Verify the assessment credentials, session token, signing region, "
+                "and system clock, then retry."
+            )
         if "accessdenied" in normalized_code or "unauthorized" in normalized_code:
             return f"Grant {action} and retry the assessment."
         if (
@@ -568,6 +700,25 @@ def _agent_registry_incomplete_findings(
 ) -> List[Dict[str, Any]]:
     """Build N/A rows for registry detail calls that could not be completed."""
     findings = []
+    if inventory.get("timed_out"):
+        findings.append(
+            create_finding(
+                check_id=check_id,
+                finding_name=f"{finding_name} Incomplete",
+                finding_details=(
+                    "Agent Registry inventory stopped while "
+                    f"{inventory.get('timeout_stage') or 'collecting registry data'} "
+                    "because the Lambda timeout was approaching. "
+                    f"{len(inventory.get('items', []))} registry detail(s) were "
+                    "collected before the cutoff."
+                ),
+                resolution="Re-run the assessment to evaluate the remaining registries.",
+                reference=reference,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        )
+
     for item in inventory.get("errors", []):
         summary = item.get("summary", {})
         registry_name = summary.get("name") or summary.get("registryId") or "unknown"
@@ -608,6 +759,44 @@ def _agent_registry_record_incomplete_findings(
             reference,
         )
     )
+
+    if inventory.get("timed_out"):
+        findings.append(
+            create_finding(
+                check_id=check_id,
+                finding_name=f"{finding_name} Incomplete",
+                finding_details=(
+                    "Agent Registry record inventory stopped while "
+                    f"{inventory.get('timeout_stage') or 'listing records'} because "
+                    "the Lambda timeout was approaching. "
+                    f"{inventory.get('records_seen', len(inventory.get('items', [])))} "
+                    "record(s) were inspected before the cutoff."
+                ),
+                resolution="Re-run the assessment to evaluate the remaining registry records.",
+                reference=reference,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        )
+
+    if inventory.get("truncated"):
+        record_limit = inventory.get(
+            "record_limit", AGENT_REGISTRY_RECORD_INVENTORY_LIMIT
+        )
+        findings.append(
+            create_finding(
+                check_id=check_id,
+                finding_name=f"{finding_name} Incomplete",
+                finding_details=(
+                    f"Agent Registry record inventory reached the assessment limit "
+                    f"of {record_limit} records. Additional records were not assessed."
+                ),
+                resolution="Review the remaining records separately or split the assessment scope and re-run.",
+                reference=reference,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+            )
+        )
 
     for registry_item in inventory.get("skipped_registries", []):
         summary = registry_item["summary"]
@@ -873,6 +1062,170 @@ def build_agentic_agentcore_unavailable_findings(
     return unavailable_findings
 
 
+def build_agentcore_timeout_findings(
+    region: str, existing_findings: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Create N/A AC-* and native AG-* rows skipped near the deadline."""
+    existing_check_ids = {finding.get("Check_ID") for finding in existing_findings}
+    timeout_findings = []
+
+    for check_id in REGIONAL_AGENTCORE_CHECK_IDS:
+        if check_id in existing_check_ids:
+            continue
+        timeout_findings.append(
+            create_finding(
+                check_id=check_id,
+                finding_name="AgentCore Assessment Incomplete",
+                finding_details=(
+                    f"{check_id} could not be assessed because the Lambda timeout "
+                    f"was approaching in region {region}."
+                ),
+                resolution="Re-run the assessment to complete the skipped AgentCore checks.",
+                reference=AGENTCORE_STARTER_TOOLKIT_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+                region=region,
+            )
+        )
+
+    for check_id, finding_name in NATIVE_AGENTIC_AGENTCORE_CHECK_NAMES.items():
+        if check_id in existing_check_ids:
+            continue
+        timeout_findings.append(
+            create_finding(
+                check_id=check_id,
+                finding_name=finding_name,
+                finding_details=(
+                    "This AgentCore gateway control could not be assessed because "
+                    f"the Lambda timeout was approaching in region {region}."
+                ),
+                resolution="Re-run the assessment to complete the skipped AgentCore checks.",
+                reference=AGENTIC_AI_LENS_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+                region=region,
+            )
+        )
+
+    return timeout_findings
+
+
+def build_agentic_agentcore_timeout_findings(
+    region: str, existing_findings: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Create N/A mapped AG-* rows still missing after timeout backfill."""
+    existing_check_ids = {finding.get("Check_ID") for finding in existing_findings}
+    timeout_findings = []
+
+    for mapping in AGENTIC_AGENTCORE_CHECK_MAPPINGS.values():
+        if mapping["check_id"] in existing_check_ids:
+            continue
+        timeout_findings.append(
+            create_finding(
+                check_id=mapping["check_id"],
+                finding_name=mapping["finding"],
+                finding_details=(
+                    f"Agentic AI security domain: {mapping['lens_domain']}. "
+                    "This AgentCore-derived control could not be assessed because "
+                    f"the Lambda timeout was approaching in region {region}."
+                ),
+                resolution="Re-run the assessment to complete the skipped AgentCore checks.",
+                reference=AGENTIC_AI_LENS_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+                region=region,
+            )
+        )
+
+    return timeout_findings
+
+
+def prepare_agentcore_timeout_report_findings(
+    findings: List[Dict[str, Any]], region: str
+) -> None:
+    """Backfill deadline-skipped checks and synthesize their Agentic AI rows."""
+    findings.extend(build_agentcore_timeout_findings(region, findings))
+    for finding in findings:
+        if not finding.get("Region"):
+            finding["Region"] = region
+    findings.extend(build_agentic_agentcore_security_findings(findings))
+    findings.extend(build_agentic_agentcore_timeout_findings(region, findings))
+    for finding in findings:
+        if not finding.get("Region"):
+            finding["Region"] = region
+
+
+def prepare_agentcore_runtime_incomplete_report_findings(
+    findings: List[Dict[str, Any]],
+    region: str,
+    error_code: str,
+) -> None:
+    """Backfill Runtime checks skipped after an indeterminate credential probe."""
+    resolution = (
+        "Verify the assessment credentials, session token, signing region, and "
+        "system clock, then retry."
+    )
+    existing_check_ids = {finding.get("Check_ID") for finding in findings}
+
+    for check_id in AGENTCORE_RUNTIME_CHECK_IDS:
+        if check_id in existing_check_ids:
+            continue
+        findings.append(
+            create_finding(
+                check_id=check_id,
+                finding_name="AgentCore Runtime Assessment Incomplete",
+                finding_details=(
+                    f"{check_id} could not be assessed in region {region} because "
+                    "the AgentCore Runtime availability probe returned credential "
+                    f"or authentication error {error_code}."
+                ),
+                resolution=resolution,
+                reference=AGENTCORE_STARTER_TOOLKIT_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+                region=region,
+            )
+        )
+
+    for check_id, finding_name in NATIVE_AGENTIC_AGENTCORE_CHECK_NAMES.items():
+        if check_id in existing_check_ids:
+            continue
+        findings.append(
+            create_finding(
+                check_id=check_id,
+                finding_name=finding_name,
+                finding_details=(
+                    "This AgentCore gateway control could not be assessed in "
+                    f"region {region} because the AgentCore Runtime availability "
+                    "probe returned credential or authentication error "
+                    f"{error_code}."
+                ),
+                resolution=resolution,
+                reference=AGENTIC_AI_LENS_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+                region=region,
+            )
+        )
+
+    for finding in findings:
+        if not finding.get("Region"):
+            finding["Region"] = region
+    runtime_agentic_check_ids = {
+        AGENTIC_AGENTCORE_CHECK_MAPPINGS[check_id]["check_id"]
+        for check_id in AGENTCORE_RUNTIME_CHECK_IDS
+        if check_id in AGENTIC_AGENTCORE_CHECK_MAPPINGS
+    }
+    agentic_findings = build_agentic_agentcore_security_findings(findings)
+    for finding in agentic_findings:
+        if finding.get("Check_ID") in runtime_agentic_check_ids:
+            finding["Resolution"] = resolution
+    findings.extend(agentic_findings)
+    for finding in findings:
+        if not finding.get("Region"):
+            finding["Region"] = region
+
+
 def write_to_s3(
     execution_id: str, csv_content: str, bucket_name: str, region: str = ""
 ) -> str:
@@ -1119,6 +1472,14 @@ def _statement_actions(statement: Dict[str, Any]) -> List[str]:
     return [str(action).strip().lower() for action in actions]
 
 
+def _statement_not_actions(statement: Dict[str, Any]) -> List[str]:
+    """Return normalized NotAction strings from one IAM statement."""
+    not_actions = statement.get("NotAction", [])
+    if isinstance(not_actions, str):
+        not_actions = [not_actions]
+    return [str(action).strip().lower() for action in not_actions]
+
+
 def _statement_resources(statement: Dict[str, Any]) -> List[str]:
     """Return normalized resource strings from one IAM statement."""
     resources = statement.get("Resource", [])
@@ -1129,20 +1490,42 @@ def _statement_resources(statement: Dict[str, Any]) -> List[str]:
 
 def _is_agent_platform_action(action: str) -> bool:
     """Return whether an IAM action grants AgentCore or Agent Registry access."""
-    if action == "*":
-        return True
     action_parts = action.split(":", 1)
     return len(action_parts) == 2 and action_parts[0] in AGENT_PLATFORM_IAM_NAMESPACES
 
 
+def _not_action_excludes_namespace(pattern: str, namespace: str) -> bool:
+    """Return whether one NotAction pattern excludes every action in a service."""
+    if pattern == "*":
+        return True
+    pattern_parts = pattern.split(":", 1)
+    if len(pattern_parts) != 2:
+        return False
+    service_pattern, action_pattern = pattern_parts
+    return action_pattern == "*" and fnmatchcase(namespace, service_pattern)
+
+
+def _not_action_allows_agent_platform_access(statement: Dict[str, Any]) -> bool:
+    """Return whether an Allow/NotAction statement still grants platform access."""
+    if "NotAction" not in statement:
+        return False
+    exclusions = _statement_not_actions(statement)
+    return any(
+        not any(
+            _not_action_excludes_namespace(pattern, namespace) for pattern in exclusions
+        )
+        for namespace in AGENT_PLATFORM_IAM_NAMESPACES
+    )
+
+
 def _policy_has_wildcard_agent_platform_access(policy: Dict[str, Any]) -> bool:
-    """Return whether a policy grants wildcard platform actions on all resources."""
+    """Return whether a policy grants broad platform access on all resources."""
     for statement in _allow_statements(policy):
         if "*" not in _statement_resources(statement):
             continue
+        if _not_action_allows_agent_platform_access(statement):
+            return True
         for action in _statement_actions(statement):
-            if action == "*":
-                return True
             action_parts = action.split(":", 1)
             if len(action_parts) != 2:
                 continue
@@ -1162,19 +1545,10 @@ def _permissions_include_agent_platform_access(
     attached_policies = permissions.get("attached_policies", [])
     inline_policies = permissions.get("inline_policies", [])
 
-    for policy in attached_policies:
-        policy_name_lower = str(policy.get("name", "")).lower()
-        if (
-            "agentcore" in policy_name_lower
-            or "agentregistry" in policy_name_lower
-            or "agent registry" in policy_name_lower
-        ):
-            return True
-
     for policy in [*attached_policies, *inline_policies]:
         try:
             for statement in _allow_statements(policy):
-                if any(
+                if _not_action_allows_agent_platform_access(statement) or any(
                     _is_agent_platform_action(action)
                     for action in _statement_actions(statement)
                 ):
@@ -1193,7 +1567,7 @@ def check_agentcore_full_access_roles(
 
     Identifies:
     - Roles with BedrockAgentCoreFullAccess or AgentRegistryFullAccess
-    - Roles with wildcard AgentCore or Agent Registry permissions
+    - Roles with wildcard or allow-except AgentCore or Agent Registry permissions
 
     Args:
         permission_cache: Cached IAM permissions data
@@ -1242,8 +1616,8 @@ def check_agentcore_full_access_roles(
                     full_access_roles.append(role_name)
                     break
 
-            # Check attached and inline documents for wildcard AgentCore or
-            # Agent Registry permissions.
+            # Check attached and inline documents for wildcard or allow-except
+            # AgentCore and Agent Registry permissions.
             for policy in [*attached_policies, *inline_policies]:
                 try:
                     if _policy_has_wildcard_agent_platform_access(policy):
@@ -1274,8 +1648,8 @@ def check_agentcore_full_access_roles(
                 create_finding(
                     check_id="AC-02",
                     finding_name="AgentCore IAM Wildcard Permissions",
-                    finding_details=f"The following roles have wildcard AgentCore or Agent Registry action patterns on all resources: {', '.join(sorted(wildcard_roles))}",
-                    resolution="Replace wildcard action patterns with the required AgentCore or Agent Registry actions and scope resources using ARNs",
+                    finding_details=f"The following roles have wildcard or allow-except AgentCore or Agent Registry permissions on all resources: {', '.join(sorted(wildcard_roles))}",
+                    resolution="Replace wildcard or allow-except permissions with the required AgentCore or Agent Registry actions and scope resources using ARNs",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.FAILED,
@@ -1408,10 +1782,34 @@ def check_stale_agentcore_access(
         stale_principals = []
         never_accessed_principals = []
 
-        for principal in agentcore_principals:
+        for principal_index, principal in enumerate(agentcore_principals):
             principal_arn = principal["arn"]
             principal_name = principal["name"]
             principal_type = principal["type"]
+
+            if not check_timeout():
+                remaining_principals = len(agentcore_principals) - principal_index
+                logger.warning(
+                    "Stopping stale-access checks with "
+                    f"{remaining_principals} principal(s) remaining because the "
+                    "Lambda timeout is approaching"
+                )
+                findings.append(
+                    create_finding(
+                        check_id="AC-03",
+                        finding_name="AgentCore Stale Access Check Incomplete",
+                        finding_details=(
+                            f"Stopped before completing the assessment of "
+                            f"{remaining_principals} IAM principal(s) because the "
+                            "Lambda timeout was approaching"
+                        ),
+                        resolution="Re-run the assessment to evaluate the remaining principals",
+                        reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
+                        severity=SeverityEnum.INFORMATIONAL,
+                        status=StatusEnum.NA,
+                    )
+                )
+                break
 
             try:
                 # Generate service last accessed details
@@ -1429,10 +1827,19 @@ def check_stale_agentcore_access(
                 wait_interval = 2
                 elapsed_time = 0
                 job_status = "IN_PROGRESS"
+                lambda_timeout_approaching = False
 
                 while job_status == "IN_PROGRESS" and elapsed_time < max_wait_time:
+                    if not check_timeout():
+                        lambda_timeout_approaching = True
+                        break
+
                     time.sleep(wait_interval)  # nosemgrep: arbitrary-sleep
                     elapsed_time += wait_interval
+
+                    if not check_timeout():
+                        lambda_timeout_approaching = True
+                        break
 
                     get_response = iam_client.get_service_last_accessed_details(
                         JobId=job_id
@@ -1519,6 +1926,31 @@ def check_stale_agentcore_access(
                         )
                         break
 
+                if lambda_timeout_approaching:
+                    remaining_principals = len(agentcore_principals) - principal_index
+                    logger.warning(
+                        "Stopping stale-access checks while assessing "
+                        f"{principal_type} {principal_name}, with "
+                        f"{remaining_principals} principal(s) incomplete, because "
+                        "the Lambda timeout is approaching"
+                    )
+                    findings.append(
+                        create_finding(
+                            check_id="AC-03",
+                            finding_name="AgentCore Stale Access Check Incomplete",
+                            finding_details=(
+                                f"Stopped before completing the assessment of "
+                                f"{remaining_principals} IAM principal(s) because "
+                                "the Lambda timeout was approaching"
+                            ),
+                            resolution="Re-run the assessment to evaluate the remaining principals",
+                            reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
+                            severity=SeverityEnum.INFORMATIONAL,
+                            status=StatusEnum.NA,
+                        )
+                    )
+                    break
+
                 if job_status == "IN_PROGRESS":
                     logger.warning(
                         f"Job timed out for {principal_type} {principal_name} after {max_wait_time}s"
@@ -1530,8 +1962,8 @@ def check_stale_agentcore_access(
                             finding_details=f"Could not determine last access for {principal_type} '{principal_name}' — IAM job timed out after {max_wait_time}s",
                             resolution="Re-run the assessment or manually check service last accessed details for this principal",
                             reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
-                            severity=SeverityEnum.LOW,
-                            status=StatusEnum.FAILED,
+                            severity=SeverityEnum.INFORMATIONAL,
+                            status=StatusEnum.NA,
                         )
                     )
 
@@ -2467,7 +2899,11 @@ def check_agent_registry_approval_governance(
             )
         ]
 
-    if not inventory.get("items") and not inventory.get("errors"):
+    if (
+        not inventory.get("items")
+        and not inventory.get("errors")
+        and not inventory.get("timed_out")
+    ):
         return [
             create_finding(
                 check_id="AC-18",
@@ -2530,6 +2966,10 @@ def check_agent_registry_approval_governance(
                     resolution=(
                         "Remove auto-approval rules so submitted records require "
                         "manual review."
+                        if required
+                        else "No action required under the current baseline. Set "
+                        "REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL=true to require "
+                        "manual review for registry publication."
                     ),
                     reference=AGENT_REGISTRY_APPROVAL_REFERENCE_URL,
                     severity=(
@@ -2600,7 +3040,11 @@ def check_agent_registry_discovery_authorization(
             )
         ]
 
-    if not inventory.get("items") and not inventory.get("errors"):
+    if (
+        not inventory.get("items")
+        and not inventory.get("errors")
+        and not inventory.get("timed_out")
+    ):
         return [
             create_finding(
                 check_id="AC-19",
@@ -2646,6 +3090,25 @@ def check_agent_registry_discovery_authorization(
 
         discovery = detail.get("discoveryConfiguration") or {}
         authorizer_type = discovery.get("authorizerType")
+        if authorizer_type is None:
+            findings.append(
+                create_finding(
+                    check_id="AC-19",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) does not have "
+                        "discovery authorization configured."
+                    ),
+                    resolution=(
+                        "No action required unless registry discovery is intended."
+                    ),
+                    reference=AGENT_REGISTRY_AUTHORIZATION_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+            continue
+
         if authorizer_type == "AWS_IAM":
             findings.append(
                 create_finding(
@@ -2653,12 +3116,18 @@ def check_agent_registry_discovery_authorization(
                     finding_name=finding_name,
                     finding_details=(
                         f"Registry '{registry_name}' ({registry_id}) uses AWS IAM "
-                        "authorization for discovery."
+                        "authorization for discovery, but the assessment cannot "
+                        "establish the effective principals or policy boundaries "
+                        "permitted to discover records."
                     ),
-                    resolution="No action required",
+                    resolution=(
+                        "Review IAM policies, permissions boundaries, session "
+                        "policies, and organization controls to confirm discovery "
+                        "access is limited to intended principals."
+                    ),
                     reference=AGENT_REGISTRY_AUTHORIZATION_REFERENCE_URL,
-                    severity=SeverityEnum.HIGH,
-                    status=StatusEnum.PASSED,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
                 )
             )
             continue
@@ -2670,8 +3139,7 @@ def check_agent_registry_discovery_authorization(
                     finding_name=finding_name,
                     finding_details=(
                         f"Registry '{registry_name}' ({registry_id}) has an "
-                        f"unrecognized discovery authorizer type: "
-                        f"{authorizer_type or 'unspecified'}."
+                        f"unrecognized discovery authorizer type: {authorizer_type}."
                     ),
                     resolution="Review the registry discovery authorization settings.",
                     reference=AGENT_REGISTRY_AUTHORIZATION_REFERENCE_URL,
@@ -2697,21 +3165,26 @@ def check_agent_registry_discovery_authorization(
                 finding_name=finding_name,
                 finding_details=(
                     f"Registry '{registry_name}' ({registry_id}) uses a custom JWT "
-                    "authorizer with issuer discovery and caller constraints."
+                    "authorizer with issuer discovery and caller constraints, but "
+                    "the assessment cannot determine whether the configured values "
+                    "match the intended callers."
                     if constrained
                     else f"Registry '{registry_name}' ({registry_id}) uses a custom "
                     "JWT authorizer without both issuer discovery and an audience, "
                     "client, scope, or custom-claim constraint."
                 ),
                 resolution=(
-                    "No action required"
+                    "Review the allowed audiences, clients, scopes, and custom "
+                    "claims against the approved registry consumer identities."
                     if constrained
                     else "Configure the OpenID Connect discovery URL and at least "
                     "one allowed audience, client, scope, or custom claim."
                 ),
                 reference=AGENT_REGISTRY_AUTHORIZATION_REFERENCE_URL,
-                severity=SeverityEnum.HIGH,
-                status=StatusEnum.PASSED if constrained else StatusEnum.FAILED,
+                severity=(
+                    SeverityEnum.INFORMATIONAL if constrained else SeverityEnum.HIGH
+                ),
+                status=StatusEnum.NA if constrained else StatusEnum.FAILED,
             )
         )
 
@@ -2761,7 +3234,11 @@ def check_agent_registry_cmk_encryption(
             )
         ]
 
-    if not inventory.get("items") and not inventory.get("errors"):
+    if (
+        not inventory.get("items")
+        and not inventory.get("errors")
+        and not inventory.get("timed_out")
+    ):
         return [
             create_finding(
                 check_id="AC-20",
@@ -2897,7 +3374,11 @@ def check_agent_registry_auto_detection(
             )
         ]
 
-    if not inventory.get("items") and not inventory.get("errors"):
+    if (
+        not inventory.get("items")
+        and not inventory.get("errors")
+        and not inventory.get("timed_out")
+    ):
         return [
             create_finding(
                 check_id="AC-21",
@@ -3109,7 +3590,11 @@ def _agent_registry_record_check_start(
             )
         ]
 
-    if not registry_inventory.get("items") and not registry_inventory.get("errors"):
+    if (
+        not registry_inventory.get("items")
+        and not registry_inventory.get("errors")
+        and not registry_inventory.get("timed_out")
+    ):
         return [
             create_finding(
                 check_id=check_id,
@@ -3129,7 +3614,7 @@ def check_agent_registry_record_lifecycle(
     record_inventory: Dict[str, Any] = None,
     registry_inventory: Dict[str, Any] = None,
 ) -> List[Dict[str, Any]]:
-    """AC-22: Validate that records occupy recognized governed lifecycle states."""
+    """AC-22: Report record lifecycle states as advisory observations."""
     if record_inventory is not None:
         inventory = record_inventory
     else:
@@ -3199,8 +3684,8 @@ def check_agent_registry_record_lifecycle(
                     ),
                     resolution="No action required",
                     reference=AGENT_REGISTRY_RECORD_LIFECYCLE_REFERENCE_URL,
-                    severity=SeverityEnum.MEDIUM,
-                    status=StatusEnum.PASSED,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
                 )
             )
         elif record_status in transitional_states:
@@ -3260,24 +3745,48 @@ def check_agent_registry_record_lifecycle(
     return findings
 
 
+AGENTCORE_PROVENANCE_RESOURCE_PREFIXES = {
+    "AWS::BedrockAgentCore::Runtime": "runtime/",
+    "AWS::BedrockAgentCore::Gateway": "gateway/",
+}
+
+
+def _source_arn_matches_provenance_type(source_id: Any, source_type: Any) -> bool:
+    """Return whether an AgentCore source ARN matches its declared source type."""
+    expected_resource_prefix = AGENTCORE_PROVENANCE_RESOURCE_PREFIXES.get(source_type)
+    if expected_resource_prefix is None or not isinstance(source_id, str):
+        return False
+
+    arn_parts = source_id.split(":", 5)
+    if len(arn_parts) != 6:
+        return False
+
+    arn_label, partition, service, region, account_id, resource = arn_parts
+    if (
+        arn_label != "arn"
+        or not re.fullmatch(r"aws(?:-[a-z0-9-]+)*", partition)
+        or service != "bedrock-agentcore"
+        or not re.fullmatch(r"[a-z0-9-]+", region)
+        or not re.fullmatch(r"[0-9]{12}", account_id)
+        or not resource.startswith(expected_resource_prefix)
+    ):
+        return False
+
+    resource_id = resource[len(expected_resource_prefix) :]
+    return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]*", resource_id))
+
+
 def _valid_auto_detected_provenance(entries: Any) -> bool:
     """Return whether an auto-detected record has attributable source lineage."""
     if not isinstance(entries, list) or not entries:
         return False
 
-    valid_source_types = {
-        "AWS::BedrockAgentCore::Runtime",
-        "AWS::BedrockAgentCore::Gateway",
-    }
-    source_arn_pattern = re.compile(
-        r"^arn:aws(?:-[^:]+)?:[A-Za-z0-9-]+:[a-z0-9-]*:[0-9]{12}:.+$"
-    )
     return any(
         isinstance(entry, dict)
         and entry.get("relation") == "DETECTED_FROM"
-        and entry.get("sourceType") in valid_source_types
-        and isinstance(entry.get("sourceId"), str)
-        and source_arn_pattern.fullmatch(entry["sourceId"])
+        and _source_arn_matches_provenance_type(
+            entry.get("sourceId"), entry.get("sourceType")
+        )
         for entry in entries
     )
 
@@ -4910,11 +5419,13 @@ def lambda_handler(event, context):
             agent_registry_initialization_error = e
             logger.warning(f"Failed to initialize Agent Registry client: {e}")
 
+        deadline_reached = False
         registry_inventory = None
         if check_timeout():
             registry_inventory = get_agent_registry_inventory(
                 agent_registry_initialization_error
             )
+            deadline_reached = registry_inventory.get("timed_out", False)
             registry_checks = [
                 (
                     "Registry Approval Governance",
@@ -4938,11 +5449,12 @@ def lambda_handler(event, context):
                 ),
             ]
             for check_name, check_func in registry_checks:
-                if not check_timeout():
+                if not registry_inventory.get("timed_out") and not check_timeout():
                     logger.error(
                         "Timeout approaching, skipping remaining Agent Registry "
                         f"checks after {check_name}"
                     )
+                    deadline_reached = True
                     break
                 try:
                     logger.info(f"Running check: {check_name}")
@@ -4961,11 +5473,47 @@ def lambda_handler(event, context):
                             region=region,
                         )
                     )
+        else:
+            deadline_reached = True
 
-        if registry_inventory is not None and check_timeout():
-            registry_record_inventory = get_agent_registry_record_inventory(
-                registry_inventory
-            )
+        registry_record_inventory = None
+        if registry_inventory is not None:
+            if registry_inventory.get("timed_out"):
+                registry_record_inventory = {
+                    "items": [],
+                    "errors": [],
+                    "list_errors": [],
+                    "skipped_registries": [],
+                    "registry_inventory": registry_inventory,
+                    "timed_out": False,
+                    "timeout_stage": None,
+                    "truncated": False,
+                    "record_limit": AGENT_REGISTRY_RECORD_INVENTORY_LIMIT,
+                    "records_seen": 0,
+                }
+            elif check_timeout():
+                registry_record_inventory = get_agent_registry_record_inventory(
+                    registry_inventory
+                )
+                deadline_reached = deadline_reached or registry_record_inventory.get(
+                    "timed_out", False
+                )
+            else:
+                deadline_reached = True
+                registry_record_inventory = {
+                    "items": [],
+                    "errors": [],
+                    "list_errors": [],
+                    "skipped_registries": [],
+                    "registry_inventory": registry_inventory,
+                    "timed_out": True,
+                    "timeout_stage": "starting registry record inventory",
+                    "truncated": False,
+                    "record_limit": AGENT_REGISTRY_RECORD_INVENTORY_LIMIT,
+                    "records_seen": 0,
+                }
+
+        if registry_record_inventory is not None:
             registry_record_checks = [
                 (
                     "Registry Record Lifecycle Governance",
@@ -4983,11 +5531,15 @@ def lambda_handler(event, context):
                 ),
             ]
             for check_name, check_func in registry_record_checks:
-                if not check_timeout():
+                inventory_incomplete = registry_record_inventory.get(
+                    "timed_out"
+                ) or registry_inventory.get("timed_out")
+                if not inventory_incomplete and not check_timeout():
                     logger.error(
                         "Timeout approaching, skipping remaining Agent Registry "
                         f"checks after {check_name}"
                     )
+                    deadline_reached = True
                     break
                 try:
                     logger.info(f"Running check: {check_name}")
@@ -5007,9 +5559,31 @@ def lambda_handler(event, context):
                         )
                     )
 
+        if deadline_reached:
+            logger.warning(
+                "AgentCore assessment deadline reached during Agent Registry "
+                "processing; writing a partial report with N/A backfill"
+            )
+            prepare_agentcore_timeout_report_findings(all_findings, region)
+            csv_content = generate_csv_report(all_findings)
+            s3_url = write_to_s3(execution_id, csv_content, BUCKET_NAME, region=region)
+            return {
+                "statusCode": 200,
+                "body": json.dumps(
+                    {
+                        "message": (
+                            "AgentCore assessment stopped before the Lambda timeout "
+                            f"in {region}; a partial report was written"
+                        ),
+                        "s3_url": s3_url,
+                    }
+                ),
+            }
+
         # Reset per-invocation so a warm container cannot leak a previous
         # region's client if creation below fails.
         agentcore_client = None
+        runtime_probe_auth_error_code = None
         try:
             agentcore_client = boto3.client(
                 "bedrock-agentcore-control", config=boto3_config, region_name=region
@@ -5040,6 +5614,13 @@ def lambda_handler(event, context):
                         f"AgentCore not accessible in region {region} ({error_code}), skipping"
                     )
                     agentcore_client = None
+                elif error_code in AUTHENTICATION_ERROR_CODES:
+                    runtime_probe_auth_error_code = error_code
+                    logger.warning(
+                        "AgentCore Runtime availability probe returned credential "
+                        f"or authentication error {error_code}; writing an "
+                        "incomplete assessment"
+                    )
                 else:
                     # Service is reachable but returned another API error (e.g. access
                     # denied) — proceed; individual checks handle their own errors.
@@ -5057,6 +5638,47 @@ def lambda_handler(event, context):
                     f"AgentCore availability probe raised an unexpected error, "
                     f"proceeding with checks: {e}"
                 )
+
+        if runtime_probe_auth_error_code is not None:
+            all_findings.append(
+                create_finding(
+                    check_id="AC-00",
+                    finding_name="AgentCore Runtime Assessment Incomplete",
+                    finding_details=(
+                        "Amazon Bedrock AgentCore Runtime checks could not be "
+                        f"assessed in region {region} because the availability "
+                        "probe returned credential or authentication error "
+                        f"{runtime_probe_auth_error_code}."
+                    ),
+                    resolution=(
+                        "Verify the assessment credentials, session token, signing "
+                        "region, and system clock, then retry."
+                    ),
+                    reference=AGENTCORE_STARTER_TOOLKIT_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                    region=region,
+                )
+            )
+            prepare_agentcore_runtime_incomplete_report_findings(
+                all_findings,
+                region,
+                runtime_probe_auth_error_code,
+            )
+            csv_content = generate_csv_report(all_findings)
+            s3_url = write_to_s3(execution_id, csv_content, BUCKET_NAME, region=region)
+            return {
+                "statusCode": 200,
+                "body": json.dumps(
+                    {
+                        "message": (
+                            "AgentCore Runtime assessment was incomplete because "
+                            f"the credentials were rejected in {region}"
+                        ),
+                        "s3_url": s3_url,
+                    }
+                ),
+            }
 
         # If AgentCore not available, produce an N/A report (plus any global IAM
         # findings already collected on the primary region) and exit early
@@ -5140,6 +5762,7 @@ def lambda_handler(event, context):
                 logger.error(
                     f"Timeout approaching, skipping remaining checks after {check_name}"
                 )
+                deadline_reached = True
                 break
 
             try:
@@ -5169,16 +5792,23 @@ def lambda_handler(event, context):
                     )
                 )
 
-        # Inject region into all findings that don't have it set
-        for finding in all_findings:
-            if not finding.get("Region"):
-                finding["Region"] = region
+        if deadline_reached:
+            logger.warning(
+                "AgentCore regional checks stopped near the Lambda timeout; "
+                "backfilling skipped controls as N/A"
+            )
+            prepare_agentcore_timeout_report_findings(all_findings, region)
+        else:
+            # Inject region into all findings that don't have it set
+            for finding in all_findings:
+                if not finding.get("Region"):
+                    finding["Region"] = region
 
-        logger.info("Building Agentic AI Security findings from AgentCore results")
-        all_findings.extend(build_agentic_agentcore_security_findings(all_findings))
-        for finding in all_findings:
-            if not finding.get("Region"):
-                finding["Region"] = region
+            logger.info("Building Agentic AI Security findings from AgentCore results")
+            all_findings.extend(build_agentic_agentcore_security_findings(all_findings))
+            for finding in all_findings:
+                if not finding.get("Region"):
+                    finding["Region"] = region
 
         # Generate CSV report
         logger.info(f"Generating CSV report with {len(all_findings)} total findings")

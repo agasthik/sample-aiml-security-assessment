@@ -9,11 +9,6 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 _INSPECTOR_ACTIONS = {"inspector2:BatchGetAccountStatus"}  # BR-33
 _KMS_ACTIONS = {"kms:DescribeKey"}  # BR-40
-_AGENT_REGISTRY_ACTIONS = {
-    "agent-registry:ListRegistries",
-    "agent-registry:GetRegistry",
-    "agent-registry:ListRegistryRecords",
-}
 
 
 _SECTION_CHECKS = [
@@ -225,21 +220,3 @@ def test_br33_inspector_actions_granted(template):
         f"{os.path.basename(template)} is missing required Inspector IAM action(s): "
         f"{missing}. Grant them or BR-33 will surface as AccessDenied / N/A."
     )
-
-
-@pytest.mark.parametrize(
-    "template",
-    _ALL_POLICY_TEMPLATES,
-    ids=lambda p: os.path.basename(p),
-)
-def test_agent_registry_actions_and_resource_scope_are_granted(template):
-    """AC-18 through AC-23 require the GA Agent Registry read actions."""
-    with open(template, encoding="utf-8") as fh:
-        text = fh.read()
-
-    missing = sorted(action for action in _AGENT_REGISTRY_ACTIONS if action not in text)
-    assert not missing, (
-        f"{os.path.basename(template)} is missing required Agent Registry IAM "
-        f"action(s): {missing}."
-    )
-    assert "agent-registry:*:${AWS::AccountId}:registry/*" in text

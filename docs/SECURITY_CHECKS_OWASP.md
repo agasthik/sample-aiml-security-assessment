@@ -56,8 +56,11 @@ coverage row instead of silently omitting all derived rows from that source.
 
 ### Mapping scope for recent catalog expansions
 
-Twelve of the 20 checks added in the 194-check catalog expansion have direct
-OWASP mappings. The remaining eight are intentionally unmapped:
+The OWASP mapping regression coverage tracks 32 check IDs added across the
+recent catalog expansions: the 20 checks that increased the catalog to 194,
+plus the 12 Agent Registry and corresponding Agentic AI checks that increased
+it to 206. Twelve of these 32 checks have direct OWASP mappings. The remaining
+20 are intentionally unmapped:
 
 - `BR-35` checks harmful-content image modality coverage. It does not verify
   image-borne prompt-injection defenses or downstream output validation, so

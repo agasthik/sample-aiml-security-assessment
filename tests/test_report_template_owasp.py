@@ -65,6 +65,21 @@ def _owasp_finding(check_id, status="Passed"):
     }
 
 
+def _direct_finding(check_id, status, severity, details):
+    service = "agentcore" if check_id.startswith("AC-") else "bedrock"
+    return {
+        "Check_ID": check_id,
+        "Finding": f"{check_id} test",
+        "Finding_Details": details,
+        "Resolution": "r",
+        "Reference": "https://docs.aws.amazon.com/bedrock/",
+        "Severity": severity,
+        "Status": status,
+        "Region": "us-east-1",
+        "_service": service,
+    }
+
+
 class TestOWASPSectionRendering:
     def test_no_owasp_findings_hides_compliance_section(self):
         html = report_template.generate_html_report(**_base_kwargs())
@@ -128,8 +143,86 @@ class TestOWASPSectionRendering:
         )
         assert (
             '<div class="metric"><div class="metric-label">Overall</div><div class="metric-value">0.0%</div>'
-            '<div class="metric-sub">0 of 1 scored rows passed</div>' in html
+            '<div class="metric-sub">0 of 1 scored controls passed</div>' in html
         )
+
+    def test_repeated_resource_passes_count_as_one_scored_control(self):
+        kwargs = _base_kwargs()
+        failed_control = _direct_finding(
+            "BR-01", "Failed", "High", "One unrelated control failed."
+        )
+        record_passes = [
+            _direct_finding(
+                "AC-23",
+                "Passed",
+                "Medium",
+                f"Registry record {record_index} has valid provenance.",
+            )
+            for record_index in range(100)
+        ]
+        kwargs["all_findings"] = [failed_control, *record_passes]
+        kwargs["service_findings"]["bedrock"] = [failed_control]
+        kwargs["service_findings"]["agentcore"] = record_passes
+        kwargs["service_stats"]["bedrock"] = {"passed": 0, "failed": 1, "na": 0}
+        kwargs["service_stats"]["agentcore"] = {
+            "passed": len(record_passes),
+            "failed": 0,
+            "na": 0,
+        }
+
+        html = report_template.generate_html_report(**kwargs)
+
+        assert (
+            '<div class="metric"><div class="metric-label">Overall</div>'
+            '<div class="metric-value">50.0%</div>'
+            '<div class="metric-sub">1 of 2 scored controls passed</div>' in html
+        )
+        assert "99.5%" not in html
+
+    def test_any_failed_resource_makes_the_unique_control_fail(self):
+        findings = [
+            _direct_finding(
+                "AC-23",
+                "Passed",
+                "Medium",
+                f"Registry record {record_index} has valid provenance.",
+            )
+            for record_index in range(10)
+        ]
+        findings.append(
+            _direct_finding(
+                "AC-23",
+                "Failed",
+                "Medium",
+                "One registry record lacks valid provenance.",
+            )
+        )
+
+        controls = report_template._aggregate_scored_controls(
+            findings,
+            {"agentic", "responsible-ai-grc", "owasp"},
+        )
+
+        assert controls == [
+            {"check_id": "AC-23", "status": "failed", "severity": "medium"}
+        ]
+
+    def test_na_only_control_is_excluded_from_the_score(self):
+        findings = [
+            _direct_finding(
+                "AC-22",
+                "N/A",
+                "Informational",
+                "Registry record lifecycle state is advisory.",
+            )
+        ]
+
+        controls = report_template._aggregate_scored_controls(
+            findings,
+            {"agentic", "responsible-ai-grc", "owasp"},
+        )
+
+        assert controls == []
 
     def test_finding_fields_are_escaped_and_reference_scheme_is_validated(self):
         kwargs = _base_kwargs()

@@ -261,6 +261,76 @@ class TestAC02FullAccessRoles:
         assert wildcard_finding["Status"] == "Failed"
         assert "WildcardRole" in wildcard_finding["Finding_Details"]
 
+    def test_ac02_detects_allow_not_action_that_includes_platform_services(self):
+        permission_cache = {
+            "role_permissions": {
+                "AllowExceptRole": {
+                    "attached_policies": [],
+                    "inline_policies": [
+                        {
+                            "name": "AllowExceptPolicy",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "NotAction": ["iam:*", "organizations:*"],
+                                    "Resource": "*",
+                                }
+                            },
+                        }
+                    ],
+                }
+            }
+        }
+
+        findings = agentcore_app.check_agentcore_full_access_roles(permission_cache)
+
+        wildcard_finding = next(
+            finding
+            for finding in findings
+            if finding["Finding"] == "AgentCore IAM Wildcard Permissions"
+        )
+        assert wildcard_finding["Status"] == "Failed"
+        assert "AllowExceptRole" in wildcard_finding["Finding_Details"]
+        assert "allow-except" in wildcard_finding["Finding_Details"]
+
+    @pytest.mark.parametrize(
+        "not_action",
+        [
+            ["bedrock-agentcore:*", "agent-registry:*"],
+            ["bedrock-*:*", "agent-registry:*"],
+            "*",
+            "*:*",
+        ],
+        ids=["both-namespaces", "service-pattern", "all-actions", "all-services"],
+    )
+    def test_ac02_ignores_not_action_that_excludes_all_platform_access(
+        self, not_action
+    ):
+        permission_cache = {
+            "role_permissions": {
+                "ExcludedPlatformRole": {
+                    "attached_policies": [],
+                    "inline_policies": [
+                        {
+                            "name": "ExcludedPlatformPolicy",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "NotAction": not_action,
+                                    "Resource": "*",
+                                }
+                            },
+                        }
+                    ],
+                }
+            }
+        }
+
+        findings = agentcore_app.check_agentcore_full_access_roles(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Passed"
+
     @pytest.mark.parametrize(
         ("action", "resource"),
         [
@@ -307,6 +377,49 @@ class TestAC02FullAccessRoles:
         assert len(findings) == 1
         assert findings[0]["Status"] == "Passed"
 
+    @pytest.mark.parametrize(
+        "statements",
+        [
+            {
+                "Effect": "Allow",
+                "Action": "*",
+                "Resource": "*",
+            },
+            [
+                {
+                    "Effect": "Allow",
+                    "Action": "*",
+                    "Resource": "*",
+                },
+                {
+                    "Effect": "Deny",
+                    "Action": "bedrock-agentcore:*",
+                    "Resource": "*",
+                },
+            ],
+        ],
+        ids=["administrator-access", "administrator-access-with-platform-deny"],
+    )
+    def test_ac02_ignores_service_agnostic_wildcard_actions(self, statements):
+        permission_cache = {
+            "role_permissions": {
+                "Administrator": {
+                    "attached_policies": [
+                        {
+                            "name": "AdministratorAccess",
+                            "document": {"Statement": statements},
+                        }
+                    ],
+                    "inline_policies": [],
+                }
+            }
+        }
+
+        findings = agentcore_app.check_agentcore_full_access_roles(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Passed"
+
     @patch("agentcore_app.agentcore_client")
     def test_ac02_empty_cache_returns_findings(self, mock_ac, empty_permission_cache):
         result = agentcore_app.check_agentcore_full_access_roles(empty_permission_cache)
@@ -323,6 +436,20 @@ class TestAC02FullAccessRoles:
 # ===================================================================
 # AC-03: check_stale_agentcore_access
 # ===================================================================
+def _agent_platform_policy(name, action):
+    return {
+        "name": name,
+        "arn": f"arn:aws:iam::123456789012:policy/{name}",
+        "document": {
+            "Statement": {
+                "Effect": "Allow",
+                "Action": action,
+                "Resource": "*",
+            }
+        },
+    }
+
+
 class TestAC03StaleAccess:
     """AC-03: Check stale AgentCore access."""
 
@@ -390,7 +517,12 @@ class TestAC03StaleAccess:
         permission_cache = {
             "role_permissions": {
                 "RegistryReader": {
-                    "attached_policies": [{"name": "AgentRegistryReadOnly"}],
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentRegistryReadOnly",
+                            "agent-registry:ListRegistries",
+                        )
+                    ],
                     "inline_policies": [],
                 }
             },
@@ -462,6 +594,403 @@ class TestAC03StaleAccess:
     @patch("agentcore_app.time.sleep")
     @patch("agentcore_app.boto3.client")
     @patch("agentcore_app.iam_client")
+    def test_ac03_includes_allow_not_action_principal(
+        self, mock_iam, mock_boto_client, mock_sleep
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        mock_iam.generate_service_last_accessed_details.return_value = {
+            "JobId": "job-1"
+        }
+        mock_iam.get_service_last_accessed_details.return_value = {
+            "JobStatus": "COMPLETED",
+            "ServicesLastAccessed": [
+                {
+                    "ServiceName": "Amazon Bedrock AgentCore",
+                    "ServiceNamespace": "bedrock-agentcore",
+                    "LastAuthenticated": agentcore_app.get_current_utc_date(),
+                }
+            ],
+        }
+        permission_cache = {
+            "role_permissions": {
+                "AllowExceptRole": {
+                    "attached_policies": [],
+                    "inline_policies": [
+                        {
+                            "name": "AllowExceptPolicy",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "NotAction": ["iam:*", "organizations:*"],
+                                    "Resource": "*",
+                                }
+                            },
+                        }
+                    ],
+                }
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert findings[0]["Status"] == "Passed"
+        mock_iam.generate_service_last_accessed_details.assert_called_once()
+
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_ignores_not_action_excluding_both_platform_namespaces(
+        self, mock_iam, mock_boto_client
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        permission_cache = {
+            "role_permissions": {
+                "ExcludedPlatformRole": {
+                    "attached_policies": [],
+                    "inline_policies": [
+                        {
+                            "name": "ExcludedPlatformPolicy",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "NotAction": [
+                                        "bedrock-agentcore:*",
+                                        "agent-registry:*",
+                                    ],
+                                    "Resource": "*",
+                                }
+                            },
+                        }
+                    ],
+                }
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        mock_iam.generate_service_last_accessed_details.assert_not_called()
+
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_ignores_service_agnostic_wildcard_actions(
+        self, mock_iam, mock_boto_client
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        permission_cache = {
+            "role_permissions": {
+                "Administrator": {
+                    "attached_policies": [
+                        {
+                            "name": "AdministratorAccess",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "Action": "*",
+                                    "Resource": "*",
+                                }
+                            },
+                        }
+                    ],
+                    "inline_policies": [],
+                }
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert (
+            findings[0]["Finding_Details"]
+            == "No IAM principals with AgentCore permissions found"
+        )
+        mock_iam.generate_service_last_accessed_details.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("policy_name", "statement"),
+        [
+            (
+                "DenyAgentRegistryAccess",
+                {
+                    "Effect": "Deny",
+                    "Action": "agent-registry:*",
+                    "Resource": "*",
+                },
+            ),
+            (
+                "AgentRegistryDocumentationOnly",
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:GetObject",
+                    "Resource": "arn:aws:s3:::example-docs/*",
+                },
+            ),
+        ],
+        ids=["deny-only", "misleading-name"],
+    )
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_attached_policy_names_do_not_imply_access(
+        self, mock_iam, mock_boto_client, policy_name, statement
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        permission_cache = {
+            "role_permissions": {
+                "NoAgentPlatformAccess": {
+                    "attached_policies": [
+                        {
+                            "name": policy_name,
+                            "arn": (f"arn:aws:iam::123456789012:policy/{policy_name}"),
+                            "document": {"Statement": statement},
+                        }
+                    ],
+                    "inline_policies": [],
+                }
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert (
+            findings[0]["Finding_Details"]
+            == "No IAM principals with AgentCore permissions found"
+        )
+        mock_iam.generate_service_last_accessed_details.assert_not_called()
+
+    @patch("agentcore_app.check_timeout", return_value=False)
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_timeout_before_first_principal_returns_incomplete_na(
+        self, mock_iam, mock_boto_client, mock_check_timeout
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        permission_cache = {
+            "role_permissions": {
+                "RuntimeReader": {
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentCoreReadOnly",
+                            "bedrock-agentcore:ListAgentRuntimes",
+                        )
+                    ],
+                    "inline_policies": [],
+                },
+                "RegistryReader": {
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentRegistryReadOnly",
+                            "agent-registry:ListRegistries",
+                        )
+                    ],
+                    "inline_policies": [],
+                },
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+        assert "2 IAM principal(s)" in findings[0]["Finding_Details"]
+        mock_iam.generate_service_last_accessed_details.assert_not_called()
+        mock_check_timeout.assert_called_once()
+
+    @patch("agentcore_app.check_timeout", side_effect=[True, True, False])
+    @patch("agentcore_app.time.sleep")
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_timeout_during_polling_stops_before_next_principal(
+        self,
+        mock_iam,
+        mock_boto_client,
+        mock_sleep,
+        mock_check_timeout,
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        mock_iam.generate_service_last_accessed_details.return_value = {
+            "JobId": "job-1"
+        }
+        permission_cache = {
+            "role_permissions": {
+                "RuntimeReader": {
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentCoreReadOnly",
+                            "bedrock-agentcore:ListAgentRuntimes",
+                        )
+                    ],
+                    "inline_policies": [],
+                },
+                "RegistryReader": {
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentRegistryReadOnly",
+                            "agent-registry:ListRegistries",
+                        )
+                    ],
+                    "inline_policies": [],
+                },
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+        assert "2 IAM principal(s)" in findings[0]["Finding_Details"]
+        mock_iam.generate_service_last_accessed_details.assert_called_once()
+        mock_iam.get_service_last_accessed_details.assert_not_called()
+        mock_sleep.assert_called_once_with(2)
+        assert mock_check_timeout.call_count == 3
+
+    @patch(
+        "agentcore_app.check_timeout",
+        side_effect=[True, True, True, False],
+    )
+    @patch("agentcore_app.time.sleep")
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_timeout_preserves_completed_principal_findings(
+        self,
+        mock_iam,
+        mock_boto_client,
+        mock_sleep,
+        mock_check_timeout,
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        mock_iam.generate_service_last_accessed_details.return_value = {
+            "JobId": "job-1"
+        }
+        mock_iam.get_service_last_accessed_details.return_value = {
+            "JobStatus": "COMPLETED",
+            "ServicesLastAccessed": [
+                {
+                    "ServiceName": "Amazon Bedrock AgentCore",
+                    "ServiceNamespace": "bedrock-agentcore",
+                    "LastAuthenticated": "2020-01-01T00:00:00+00:00",
+                }
+            ],
+        }
+        permission_cache = {
+            "role_permissions": {
+                "StaleRuntimeReader": {
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentCoreReadOnly",
+                            "bedrock-agentcore:ListAgentRuntimes",
+                        )
+                    ],
+                    "inline_policies": [],
+                },
+                "RegistryReader": {
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentRegistryReadOnly",
+                            "agent-registry:ListRegistries",
+                        )
+                    ],
+                    "inline_policies": [],
+                },
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert {finding["Status"] for finding in findings} == {"Failed", "N/A"}
+        stale_finding = next(
+            finding
+            for finding in findings
+            if finding["Finding"] == "AgentCore Stale Access"
+        )
+        incomplete_finding = next(
+            finding
+            for finding in findings
+            if finding["Finding"] == "AgentCore Stale Access Check Incomplete"
+        )
+        assert "StaleRuntimeReader" in stale_finding["Finding_Details"]
+        assert "1 IAM principal(s)" in incomplete_finding["Finding_Details"]
+        assert incomplete_finding["Severity"] == "Informational"
+        mock_iam.generate_service_last_accessed_details.assert_called_once()
+        mock_iam.get_service_last_accessed_details.assert_called_once_with(
+            JobId="job-1"
+        )
+        mock_sleep.assert_called_once_with(2)
+        assert mock_check_timeout.call_count == 4
+
+    @patch("agentcore_app.check_timeout", return_value=True)
+    @patch("agentcore_app.time.sleep")
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_iam_job_timeout_is_informational_na(
+        self,
+        mock_iam,
+        mock_boto_client,
+        mock_sleep,
+        mock_check_timeout,
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        mock_iam.generate_service_last_accessed_details.return_value = {
+            "JobId": "job-1"
+        }
+        mock_iam.get_service_last_accessed_details.return_value = {
+            "JobStatus": "IN_PROGRESS"
+        }
+        permission_cache = {
+            "role_permissions": {
+                "RuntimeReader": {
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentCoreReadOnly",
+                            "bedrock-agentcore:ListAgentRuntimes",
+                        )
+                    ],
+                    "inline_policies": [],
+                }
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+        assert "IAM job timed out after 30s" in findings[0]["Finding_Details"]
+        assert mock_iam.get_service_last_accessed_details.call_count == 15
+        assert mock_sleep.call_count == 15
+        assert mock_check_timeout.call_count == 31
+
+    @patch("agentcore_app.time.sleep")
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
     def test_ac03_uses_most_recent_matching_service_access(
         self, mock_iam, mock_boto_client, mock_sleep
     ):
@@ -489,7 +1018,12 @@ class TestAC03StaleAccess:
         permission_cache = {
             "role_permissions": {
                 "AgentPlatformReader": {
-                    "attached_policies": [{"name": "AgentRegistryReadOnly"}],
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentRegistryReadOnly",
+                            "agent-registry:ListRegistries",
+                        )
+                    ],
                     "inline_policies": [],
                 }
             },
@@ -1826,6 +2360,46 @@ class TestAgentRegistryChecks:
         assert "not available in this region" not in finding["Finding_Details"]
         assert "Grant " not in finding["Resolution"]
 
+    @pytest.mark.parametrize(
+        "error",
+        [
+            EndpointConnectionError(endpoint_url="https://agent-registry.invalid"),
+            _make_client_error("InvalidClientTokenId", "Invalid credentials"),
+            _make_client_error("AuthFailure", "Authentication failed"),
+            _make_client_error(
+                "UnrecognizedClientException", "Unrecognized credentials"
+            ),
+        ],
+        ids=[
+            "endpoint",
+            "invalid-token",
+            "auth-failure",
+            "unrecognized-client",
+        ],
+    )
+    @patch("agentcore_app.agent_registry_control_client")
+    def test_registry_inventory_does_not_treat_transport_or_auth_as_unavailable(
+        self, mock_registry, error
+    ):
+        mock_registry.get_paginator.return_value.paginate.side_effect = error
+
+        inventory = agentcore_app.get_agent_registry_inventory()
+
+        assert inventory["unavailable"] is False
+        assert inventory["list_error"] is error
+
+    @patch("agentcore_app.agent_registry_control_client")
+    def test_registry_inventory_marks_opt_in_required_as_unavailable(
+        self, mock_registry
+    ):
+        error = _make_client_error("OptInRequired", "Region is not enabled")
+        mock_registry.get_paginator.return_value.paginate.side_effect = error
+
+        inventory = agentcore_app.get_agent_registry_inventory()
+
+        assert inventory["unavailable"] is True
+        assert inventory["list_error"] is error
+
     @patch("agentcore_app.agent_registry_control_client")
     def test_registry_record_inventory_reads_all_pages_without_detail_calls(
         self, mock_registry
@@ -1870,8 +2444,149 @@ class TestAgentRegistryChecks:
         assert inventory["errors"] == []
         assert inventory["list_errors"] == []
         mock_registry.get_paginator.assert_called_once_with("list_registry_records")
-        paginator.paginate.assert_called_once_with(registryId="reg-1")
+        paginator.paginate.assert_called_once_with(
+            registryId="reg-1",
+            PaginationConfig={"MaxItems": 1000, "PageSize": 100},
+        )
         mock_registry.get_registry_record.assert_not_called()
+
+    @patch("agentcore_app.check_timeout", side_effect=[True, False])
+    @patch("agentcore_app.agent_registry_control_client")
+    def test_registry_inventory_stops_during_pagination_when_timeout_approaches(
+        self, mock_registry, mock_check_timeout
+    ):
+        mock_registry.get_paginator.return_value.paginate.return_value = [
+            {
+                "registries": [
+                    {"registryId": "reg-1", "name": "registry-1", "status": "READY"}
+                ]
+            },
+            {
+                "registries": [
+                    {"registryId": "reg-2", "name": "registry-2", "status": "READY"}
+                ]
+            },
+        ]
+
+        inventory = agentcore_app.get_agent_registry_inventory()
+
+        assert inventory["timed_out"] is True
+        assert inventory["timeout_stage"] == "listing registries"
+        assert inventory["items"] == []
+        mock_registry.get_registry.assert_not_called()
+        assert mock_check_timeout.call_count == 2
+
+    @patch("agentcore_app.check_timeout", side_effect=[True, True, False])
+    @patch("agentcore_app.agent_registry_control_client")
+    def test_registry_inventory_stops_before_detail_call_when_timeout_approaches(
+        self, mock_registry, mock_check_timeout
+    ):
+        mock_registry.get_paginator.return_value.paginate.return_value = [
+            {
+                "registries": [
+                    {"registryId": "reg-1", "name": "registry-1", "status": "READY"}
+                ]
+            }
+        ]
+
+        inventory = agentcore_app.get_agent_registry_inventory()
+
+        assert inventory["timed_out"] is True
+        assert inventory["timeout_stage"] == "retrieving registry details"
+        assert inventory["items"] == []
+        mock_registry.get_registry.assert_not_called()
+        assert mock_check_timeout.call_count == 3
+
+    @patch("agentcore_app.check_timeout", side_effect=[True, True, False])
+    @patch("agentcore_app.agent_registry_control_client")
+    def test_registry_record_inventory_stops_during_pagination(
+        self, mock_registry, mock_check_timeout
+    ):
+        registry_inventory = {
+            "items": [_registry_item()],
+            "errors": [],
+            "list_error": None,
+            "unavailable": False,
+        }
+        paginator = mock_registry.get_paginator.return_value
+        paginator.paginate.return_value = [
+            {
+                "registryRecords": [
+                    {
+                        "recordId": "record-1",
+                        "name": "record-1",
+                        "status": "APPROVED",
+                        "createdBy": "123456789012",
+                        "createdByAutoDetection": False,
+                    }
+                ]
+            },
+            {
+                "registryRecords": [
+                    {
+                        "recordId": "record-2",
+                        "name": "record-2",
+                        "status": "DRAFT",
+                        "createdBy": "111122223333",
+                        "createdByAutoDetection": False,
+                    }
+                ]
+            },
+        ]
+
+        inventory = agentcore_app.get_agent_registry_record_inventory(
+            registry_inventory
+        )
+
+        assert inventory["timed_out"] is True
+        assert inventory["timeout_stage"] == "listing registry records"
+        assert inventory["records_seen"] == 1
+        assert [item["summary"]["recordId"] for item in inventory["items"]] == [
+            "record-1"
+        ]
+        assert mock_check_timeout.call_count == 3
+
+    @patch.object(agentcore_app, "AGENT_REGISTRY_RECORD_INVENTORY_LIMIT", 1)
+    @patch("agentcore_app.agent_registry_control_client")
+    def test_registry_record_inventory_caps_and_marks_truncation(self, mock_registry):
+        registry_inventory = {
+            "items": [_registry_item()],
+            "errors": [],
+            "list_error": None,
+            "unavailable": False,
+        }
+        page_iterator = MagicMock()
+        page_iterator.__iter__.return_value = iter(
+            [
+                {
+                    "registryRecords": [
+                        {
+                            "recordId": "record-1",
+                            "name": "record-1",
+                            "status": "APPROVED",
+                            "createdBy": "123456789012",
+                            "createdByAutoDetection": False,
+                        }
+                    ]
+                }
+            ]
+        )
+        page_iterator.resume_token = "remaining-records"
+        paginator = mock_registry.get_paginator.return_value
+        paginator.paginate.return_value = page_iterator
+
+        inventory = agentcore_app.get_agent_registry_record_inventory(
+            registry_inventory
+        )
+
+        assert inventory["truncated"] is True
+        assert inventory["record_limit"] == 1
+        assert inventory["records_seen"] == 1
+        assert len(inventory["items"]) == 1
+        paginator.paginate.assert_called_once_with(
+            registryId="reg-1",
+            PaginationConfig={"MaxItems": 1, "PageSize": 1},
+        )
 
     @patch("agentcore_app.agent_registry_control_client")
     def test_registry_record_inventory_isolates_list_errors(self, mock_registry):
@@ -1892,6 +2607,78 @@ class TestAgentRegistryChecks:
         assert inventory["items"] == []
         assert len(inventory["list_errors"]) == 1
 
+    def test_registry_timeout_propagates_as_incomplete_na(self):
+        inventory = {
+            "items": [],
+            "errors": [],
+            "list_error": None,
+            "unavailable": False,
+            "timed_out": True,
+            "timeout_stage": "retrieving registry details",
+        }
+
+        finding = agentcore_app.check_agent_registry_approval_governance(inventory)[0]
+
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+        assert "Lambda timeout was approaching" in finding["Finding_Details"]
+        assert (
+            "No AWS Agent Registry registries found" not in finding["Finding_Details"]
+        )
+
+    @pytest.mark.parametrize(
+        "check_func",
+        [
+            agentcore_app.check_agent_registry_record_lifecycle,
+            agentcore_app.check_agent_registry_record_provenance,
+        ],
+        ids=["lifecycle", "provenance"],
+    )
+    def test_registry_timeout_does_not_claim_records_are_absent(self, check_func):
+        registry_inventory = {
+            "items": [],
+            "errors": [],
+            "list_error": None,
+            "unavailable": False,
+            "timed_out": True,
+            "timeout_stage": "listing registries",
+        }
+        record_inventory = _record_inventory(registry_inventory=registry_inventory)
+
+        finding = check_func(record_inventory)[0]
+
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+        assert "Lambda timeout was approaching" in finding["Finding_Details"]
+        assert (
+            "No AWS Agent Registry registries found" not in finding["Finding_Details"]
+        )
+
+    def test_registry_record_cap_preserves_results_and_emits_incomplete_na(self):
+        inventory = _record_inventory(
+            _record_item(status="APPROVED", record_id="record-1")
+        )
+        inventory.update(
+            {
+                "truncated": True,
+                "record_limit": 1,
+                "records_seen": 1,
+                "timed_out": False,
+            }
+        )
+
+        findings = agentcore_app.check_agent_registry_record_lifecycle(inventory)
+
+        assert len(findings) == 2
+        assert all(finding["Status"] == "N/A" for finding in findings)
+        assert all(finding["Severity"] == "Informational" for finding in findings)
+        incomplete = next(
+            finding
+            for finding in findings
+            if "assessment limit" in finding["Finding_Details"]
+        )
+        assert "assessment limit of 1 records" in incomplete["Finding_Details"]
+
     def test_ac18_no_registries_returns_na(self):
         finding = agentcore_app.check_agent_registry_approval_governance(
             {"items": [], "errors": [], "list_error": None, "unavailable": False}
@@ -1902,29 +2689,92 @@ class TestAgentRegistryChecks:
         assert finding["Finding_Details"] == "No AWS Agent Registry registries found."
 
     @pytest.mark.parametrize(
-        "check",
+        ("check", "uses_record_inventory"),
         [
-            agentcore_app.check_agent_registry_approval_governance,
-            agentcore_app.check_agent_registry_discovery_authorization,
-            agentcore_app.check_agent_registry_cmk_encryption,
-            agentcore_app.check_agent_registry_auto_detection,
+            (agentcore_app.check_agent_registry_approval_governance, False),
+            (agentcore_app.check_agent_registry_discovery_authorization, False),
+            (agentcore_app.check_agent_registry_cmk_encryption, False),
+            (agentcore_app.check_agent_registry_auto_detection, False),
+            (agentcore_app.check_agent_registry_record_lifecycle, True),
+            (agentcore_app.check_agent_registry_record_provenance, True),
         ],
     )
-    def test_registry_checks_region_unavailable_return_na(self, check):
-        finding = check(
-            {
-                "items": [],
-                "errors": [],
-                "list_error": EndpointConnectionError(
-                    endpoint_url="https://agent-registry.invalid"
-                ),
-                "unavailable": True,
-            }
-        )[0]
+    def test_registry_checks_region_unavailable_return_na(
+        self, check, uses_record_inventory
+    ):
+        registry_inventory = {
+            "items": [],
+            "errors": [],
+            "list_error": _make_client_error("OptInRequired", "Region is not enabled"),
+            "unavailable": True,
+        }
+        supplied_inventory = (
+            _record_inventory(registry_inventory=registry_inventory)
+            if uses_record_inventory
+            else registry_inventory
+        )
+
+        finding = check(supplied_inventory)[0]
 
         assert finding["Status"] == "N/A"
         assert finding["Severity"] == "Informational"
         assert "not available" in finding["Finding_Details"]
+
+    @pytest.mark.parametrize(
+        ("error", "expected_resolution"),
+        [
+            (
+                EndpointConnectionError(endpoint_url="https://agent-registry.invalid"),
+                "Verify DNS resolution",
+            ),
+            (
+                _make_client_error("InvalidClientTokenId", "Invalid credentials"),
+                "Verify the assessment credentials",
+            ),
+            (
+                _make_client_error("AuthFailure", "Authentication failed"),
+                "Verify the assessment credentials",
+            ),
+        ],
+        ids=["endpoint", "invalid-token", "auth-failure"],
+    )
+    @pytest.mark.parametrize(
+        ("check", "uses_record_inventory"),
+        [
+            (agentcore_app.check_agent_registry_approval_governance, False),
+            (agentcore_app.check_agent_registry_discovery_authorization, False),
+            (agentcore_app.check_agent_registry_cmk_encryption, False),
+            (agentcore_app.check_agent_registry_auto_detection, False),
+            (agentcore_app.check_agent_registry_record_lifecycle, True),
+            (agentcore_app.check_agent_registry_record_provenance, True),
+        ],
+    )
+    def test_registry_transport_and_auth_failures_are_indeterminate(
+        self,
+        check,
+        uses_record_inventory,
+        error,
+        expected_resolution,
+    ):
+        registry_inventory = {
+            "items": [],
+            "errors": [],
+            "list_error": error,
+            "unavailable": False,
+        }
+        supplied_inventory = (
+            _record_inventory(registry_inventory=registry_inventory)
+            if uses_record_inventory
+            else registry_inventory
+        )
+
+        finding = check(supplied_inventory)[0]
+
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+        assert "could not be assessed" in finding["Finding_Details"]
+        assert "not available in this region" not in finding["Finding_Details"]
+        assert expected_resolution in finding["Resolution"]
 
     @pytest.mark.parametrize(
         ("error", "expected_resolution", "expects_grant"),
@@ -2027,6 +2877,11 @@ class TestAgentRegistryChecks:
 
         assert finding["Status"] == "N/A"
         assert finding["Severity"] == "Informational"
+        assert finding["Resolution"] == (
+            "No action required under the current baseline. Set "
+            "REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL=true to require "
+            "manual review for registry publication."
+        )
 
     @patch.dict(
         os.environ,
@@ -2049,6 +2904,9 @@ class TestAgentRegistryChecks:
 
         assert finding["Status"] == "Failed"
         assert finding["Severity"] == "Medium"
+        assert finding["Resolution"] == (
+            "Remove auto-approval rules so submitted records require manual review."
+        )
 
     def test_ac18_detail_access_denied_does_not_hide_other_registries(self):
         inventory = {
@@ -2068,7 +2926,7 @@ class TestAgentRegistryChecks:
         assert {finding["Status"] for finding in findings} == {"Passed", "N/A"}
         assert all(finding["Check_ID"] == "AC-18" for finding in findings)
 
-    def test_ac19_iam_authorization_passes(self):
+    def test_ac19_iam_authorization_requires_manual_review(self):
         finding = agentcore_app.check_agent_registry_discovery_authorization(
             {
                 "items": [_registry_item()],
@@ -2079,8 +2937,11 @@ class TestAgentRegistryChecks:
         )[0]
 
         assert finding["Check_ID"] == "AC-19"
-        assert finding["Status"] == "Passed"
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
         assert "AWS IAM" in finding["Finding_Details"]
+        assert "effective principals" in finding["Finding_Details"]
+        assert "permissions boundaries" in finding["Resolution"]
 
     def test_ac19_no_registries_returns_na(self):
         finding = agentcore_app.check_agent_registry_discovery_authorization(
@@ -2090,7 +2951,31 @@ class TestAgentRegistryChecks:
         assert finding["Status"] == "N/A"
         assert finding["Severity"] == "Informational"
 
-    def test_ac19_constrained_custom_jwt_passes(self):
+    def test_ac19_unconfigured_discovery_authorization_is_described_accurately(self):
+        registry_item = _registry_item()
+        registry_item["detail"].pop("discoveryConfiguration")
+
+        finding = agentcore_app.check_agent_registry_discovery_authorization(
+            {
+                "items": [registry_item],
+                "errors": [],
+                "list_error": None,
+                "unavailable": False,
+            }
+        )[0]
+
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+        assert (
+            "does not have discovery authorization configured"
+            in finding["Finding_Details"]
+        )
+        assert "unrecognized" not in finding["Finding_Details"]
+        assert finding["Resolution"] == (
+            "No action required unless registry discovery is intended."
+        )
+
+    def test_ac19_constrained_custom_jwt_requires_manual_review(self):
         finding = agentcore_app.check_agent_registry_discovery_authorization(
             {
                 "items": [
@@ -2112,7 +2997,10 @@ class TestAgentRegistryChecks:
             }
         )[0]
 
-        assert finding["Status"] == "Passed"
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+        assert "cannot determine" in finding["Finding_Details"]
+        assert "approved registry consumer identities" in finding["Resolution"]
 
     def test_ac19_unconstrained_custom_jwt_fails(self):
         finding = agentcore_app.check_agent_registry_discovery_authorization(
@@ -2271,13 +3159,14 @@ class TestAgentRegistryChecks:
         "status",
         ["DRAFT", "PENDING_APPROVAL", "APPROVED", "REJECTED", "DEPRECATED"],
     )
-    def test_ac22_governed_lifecycle_states_pass(self, status):
+    def test_ac22_governed_lifecycle_states_are_advisory(self, status):
         finding = agentcore_app.check_agent_registry_record_lifecycle(
             _record_inventory(_record_item(status=status))
         )[0]
 
         assert finding["Check_ID"] == "AC-22"
-        assert finding["Status"] == "Passed"
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
         assert status in finding["Finding_Details"]
 
     @pytest.mark.parametrize(
@@ -2340,8 +3229,13 @@ class TestAgentRegistryChecks:
 
         findings = agentcore_app.check_agent_registry_record_lifecycle(inventory)
 
-        assert {finding["Status"] for finding in findings} == {"Passed", "N/A"}
-        incomplete = next(f for f in findings if f["Status"] == "N/A")
+        assert len(findings) == 2
+        assert all(finding["Status"] == "N/A" for finding in findings)
+        incomplete = next(
+            finding
+            for finding in findings
+            if "incomplete metadata" in finding["Finding_Details"]
+        )
         assert "incomplete metadata" in incomplete["Finding_Details"]
         assert "Grant " not in incomplete["Resolution"]
 
@@ -2372,7 +3266,8 @@ class TestAgentRegistryChecks:
             _record_inventory(_record_item())
         )[0]
 
-        assert finding["Status"] == "Passed"
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
         mock_get_registry_inventory.assert_not_called()
 
     @patch("agentcore_app.get_agent_registry_inventory")
@@ -2410,6 +3305,28 @@ class TestAgentRegistryChecks:
         assert finding["Status"] == "Passed"
         assert finding["Severity"] == "Medium"
 
+    def test_ac23_auto_detected_gateway_provenance_passes(self):
+        finding = agentcore_app.check_agent_registry_record_provenance(
+            _record_inventory(
+                _record_item(
+                    created_by="111122223333",
+                    created_by_auto_detection=True,
+                    provenance=[
+                        {
+                            "relation": "DETECTED_FROM",
+                            "sourceId": (
+                                "arn:aws-us-gov:bedrock-agentcore:us-gov-west-1:"
+                                "111122223333:gateway/gateway-1"
+                            ),
+                            "sourceType": "AWS::BedrockAgentCore::Gateway",
+                        }
+                    ],
+                )
+            )
+        )[0]
+
+        assert finding["Status"] == "Passed"
+
     @pytest.mark.parametrize(
         "provenance",
         [
@@ -2432,8 +3349,45 @@ class TestAgentRegistryChecks:
                     "sourceType": "AWS::BedrockAgentCore::Runtime",
                 }
             ],
+            [
+                {
+                    "relation": "DETECTED_FROM",
+                    "sourceId": (
+                        "arn:aws:lambda:us-east-1:111122223333:function:source-function"
+                    ),
+                    "sourceType": "AWS::BedrockAgentCore::Runtime",
+                }
+            ],
+            [
+                {
+                    "relation": "DETECTED_FROM",
+                    "sourceId": (
+                        "arn:aws:bedrock-agentcore:us-east-1:"
+                        "111122223333:gateway/gateway-1"
+                    ),
+                    "sourceType": "AWS::BedrockAgentCore::Runtime",
+                }
+            ],
+            [
+                {
+                    "relation": "DETECTED_FROM",
+                    "sourceId": (
+                        "arn:aws:bedrock-agentcore:us-east-1:"
+                        "111122223333:runtime/runtime-1"
+                    ),
+                    "sourceType": "AWS::BedrockAgentCore::Gateway",
+                }
+            ],
         ],
-        ids=["missing", "empty", "wrong-relation", "invalid-source"],
+        ids=[
+            "missing",
+            "empty",
+            "wrong-relation",
+            "invalid-source",
+            "wrong-service",
+            "gateway-arn-as-runtime",
+            "runtime-arn-as-gateway",
+        ],
     )
     def test_ac23_auto_detected_record_without_valid_provenance_fails(self, provenance):
         finding = agentcore_app.check_agent_registry_record_provenance(
@@ -2624,19 +3578,52 @@ class TestAgentCoreHandlerMultiRegion:
         "agentcore_app.check_timeout",
         side_effect=[True, True, False, False],
     )
-    def test_registry_check_loop_stops_when_timeout_is_approaching(
-        self, mock_check_timeout
-    ):
+    def test_registry_timeout_backfills_skipped_checks(self, mock_check_timeout):
         resp, findings = self._run_handler(
             EndpointConnectionError(endpoint_url="https://agentcore.invalid"),
             _agentcore_event(region="us-east-1", region_index=1),
         )
 
         assert resp["statusCode"] == 200
-        check_ids = {finding["Check_ID"] for finding in findings}
-        assert "AC-18" in check_ids
-        assert not {"AC-19", "AC-20", "AC-21", "AC-22", "AC-23"} & check_ids
+        status_by_id = {finding["Check_ID"]: finding["Status"] for finding in findings}
+        assert status_by_id["AC-18"] == "N/A"
+        assert status_by_id["AC-19"] == "N/A"
+        assert status_by_id["AC-23"] == "N/A"
+        assert status_by_id["AC-01"] == "N/A"
+        assert status_by_id["AC-17"] == "N/A"
+        assert status_by_id["AG-15"] == "N/A"
+        assert status_by_id["AG-38"] == "N/A"
         assert mock_check_timeout.call_count == 4
+
+    def test_registry_inventory_timeout_writes_backfilled_partial_report(self):
+        timed_out_inventory = {
+            "items": [],
+            "errors": [],
+            "list_error": None,
+            "unavailable": False,
+            "timed_out": True,
+            "timeout_stage": "listing registries",
+        }
+
+        resp, findings = self._run_handler(
+            AssertionError("AgentCore availability probe should not run"),
+            _agentcore_event(region="us-east-1", region_index=1),
+            registry_inventory=timed_out_inventory,
+        )
+
+        assert resp["statusCode"] == 200
+        status_by_id = {finding["Check_ID"]: finding["Status"] for finding in findings}
+        assert status_by_id["AC-18"] == "N/A"
+        assert status_by_id["AC-23"] == "N/A"
+        assert status_by_id["AC-01"] == "N/A"
+        assert status_by_id["AC-17"] == "N/A"
+        assert status_by_id["AG-15"] == "N/A"
+        assert status_by_id["AG-38"] == "N/A"
+        assert all(
+            finding["Severity"] == "Informational"
+            for finding in findings
+            if finding["Check_ID"] in {"AC-01", "AC-17", "AG-15", "AG-38"}
+        )
 
     def test_primary_region_emits_global_iam_checks_tagged_global(self):
         # On the primary region, AC-02, AC-03 and AC-09 (all IAM-global) must be
@@ -2749,16 +3736,16 @@ class TestAgentCoreHandlerMultiRegion:
         }
         assert status_by_id == {
             "AC-18": "Passed",
-            "AC-19": "Passed",
+            "AC-19": "N/A",
             "AC-20": "Passed",
             "AC-21": "Passed",
-            "AC-22": "Passed",
+            "AC-22": "N/A",
             "AC-23": "Passed",
             "AG-33": "Passed",
-            "AG-34": "Passed",
+            "AG-34": "N/A",
             "AG-35": "Passed",
             "AG-36": "Passed",
-            "AG-37": "Passed",
+            "AG-37": "N/A",
             "AG-38": "Passed",
         }
 
@@ -2766,12 +3753,90 @@ class TestAgentCoreHandlerMultiRegion:
         # A region-not-enabled ClientError code makes agentcore_client None, so
         # the handler emits the AC-00 availability finding and exits early.
         resp, findings = self._run_handler(
-            _make_client_error("UnrecognizedClientException"),
+            _make_client_error("OptInRequired"),
             _agentcore_event(region="me-south-1", region_index=1),
         )
         assert resp["statusCode"] == 200
         ac00 = [f for f in findings if f["Check_ID"] == "AC-00"]
         assert ac00 and ac00[0]["Status"] == "N/A"
+
+    @pytest.mark.parametrize(
+        "error_code",
+        sorted(agentcore_app.AUTHENTICATION_ERROR_CODES),
+    )
+    def test_runtime_auth_probe_errors_emit_incomplete_na_and_preserve_registry(
+        self, error_code
+    ):
+        registry_item = _registry_item(
+            encryption_configuration={
+                "kmsKeyArn": (
+                    "arn:aws:kms:us-east-1:123456789012:"
+                    "key/11111111-2222-3333-4444-555555555555"
+                )
+            },
+            auto_detection={
+                "configuration": {"enabled": True, "scope": "ORGANIZATION"},
+                "status": "ACTIVE",
+            },
+        )
+        registry_inventory = {
+            "items": [registry_item],
+            "errors": [],
+            "list_error": None,
+            "unavailable": False,
+        }
+        registry_record_inventory = _record_inventory(
+            _record_item(registry_item=registry_item),
+            registry_inventory=registry_inventory,
+        )
+
+        resp, findings = self._run_handler(
+            _make_client_error(error_code, "Rejected assessment credentials"),
+            _agentcore_event(region="us-east-1", region_index=1),
+            registry_inventory=registry_inventory,
+            registry_record_inventory=registry_record_inventory,
+        )
+
+        assert resp["statusCode"] == 200
+        assert not [finding for finding in findings if finding["Status"] == "Failed"]
+
+        status_by_id = {finding["Check_ID"]: finding["Status"] for finding in findings}
+        assert status_by_id["AC-18"] == "Passed"
+        assert status_by_id["AC-20"] == "Passed"
+        assert status_by_id["AC-21"] == "Passed"
+        assert status_by_id["AC-23"] == "Passed"
+        assert status_by_id["AG-33"] == "Passed"
+        assert status_by_id["AG-38"] == "Passed"
+
+        mapped_runtime_ids = {
+            agentcore_app.AGENTIC_AGENTCORE_CHECK_MAPPINGS[check_id]["check_id"]
+            for check_id in agentcore_app.AGENTCORE_RUNTIME_CHECK_IDS
+            if check_id in agentcore_app.AGENTIC_AGENTCORE_CHECK_MAPPINGS
+        }
+        incomplete_ids = {
+            "AC-00",
+            *agentcore_app.AGENTCORE_RUNTIME_CHECK_IDS,
+            *agentcore_app.NATIVE_AGENTIC_AGENTCORE_CHECK_NAMES,
+            *mapped_runtime_ids,
+        }
+        incomplete_findings = [
+            finding for finding in findings if finding["Check_ID"] in incomplete_ids
+        ]
+        assert {
+            finding["Check_ID"] for finding in incomplete_findings
+        } == incomplete_ids
+        assert all(finding["Status"] == "N/A" for finding in incomplete_findings)
+        assert all(
+            finding["Severity"] == "Informational" for finding in incomplete_findings
+        )
+        assert all(
+            "not available in this region" not in finding["Finding_Details"]
+            for finding in incomplete_findings
+        )
+        assert all(
+            "Verify the assessment credentials" in finding["Resolution"]
+            for finding in incomplete_findings
+        )
 
     def test_access_denied_probe_proceeds_with_checks(self):
         # AccessDenied is NOT a region-unavailable code: the service is reachable,

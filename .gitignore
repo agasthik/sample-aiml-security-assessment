@@ -30,6 +30,8 @@ venv/
 
 # Sample/mockup files (if any)
 samples/
+output/
+tmp/
 
 #Drawio files
 *.drawio

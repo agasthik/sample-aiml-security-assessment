@@ -732,6 +732,58 @@ class TestHtmlReportGeneration(unittest.TestCase):
             html,
         )
 
+    def test_unique_control_scoring_does_not_weight_resource_rows(self):
+        """Repeated resource passes count once while any control failure remains."""
+        failed_control = {
+            "account_id": "123456789012",
+            "check_id": "BR-01",
+            "finding": "Bedrock Access Control",
+            "details": "One direct control failed.",
+            "resolution": "Restrict access.",
+            "reference": "https://example.com",
+            "severity": "High",
+            "status": "Failed",
+            "region": "us-east-1",
+            "_service": "bedrock",
+        }
+        record_passes = [
+            {
+                "account_id": "123456789012",
+                "check_id": "AC-23",
+                "finding": "Agent Registry Record Provenance",
+                "details": f"Record {record_index} has valid provenance.",
+                "resolution": "No action required.",
+                "reference": "https://example.com",
+                "severity": "Medium",
+                "status": "Passed",
+                "region": "us-east-1",
+                "_service": "agentcore",
+            }
+            for record_index in range(100)
+        ]
+
+        html = generate_report_direct(
+            all_findings=[failed_control, *record_passes],
+            service_findings={
+                "bedrock": [failed_control],
+                "agentcore": record_passes,
+            },
+            service_stats={
+                "bedrock": {"passed": 0, "failed": 1, "na": 0},
+                "agentcore": {"passed": 100, "failed": 0, "na": 0},
+            },
+            mode="single",
+            account_id="123456789012",
+        )
+
+        self.assertIn(
+            '<div class="metric-label">Overall</div>'
+            '<div class="metric-value">50.0%</div>'
+            '<div class="metric-sub">1 of 2 scored controls passed</div>',
+            html,
+        )
+        self.assertNotIn("99.5%", html)
+
     def tearDown(self):
         """Clean up test files after running tests"""
         pass

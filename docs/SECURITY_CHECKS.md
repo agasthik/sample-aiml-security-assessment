@@ -10,6 +10,7 @@ The 64 Responsible AI GRC checks occupy 69 `FS-*` numbers: 64 ship as standalone
 
 - [Overview](#overview)
 - [Check ID Convention](#check-id-convention)
+- [Report Scoring](#report-scoring)
 - [Severity Levels](#severity-levels)
 - [Status Values](#status-values)
 - [Amazon SageMaker AI Security Checks (29)](#amazon-sagemaker-ai-security-checks-29)
@@ -68,6 +69,19 @@ evidence that a control passed or failed.
 [Responsible AI GRC Checks](SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md#fs-00--regional-scope-not-applicable-not-a-control),
 and `OW-00` in
 [OWASP Top 10 for LLM Security Checks](SECURITY_CHECKS_OWASP.md).
+
+---
+
+## Report Scoring
+
+Pass rates are calculated from unique direct-service `Check_ID` values, not
+from report-row counts. Findings for resources, Regions, or accounts are
+aggregated into one result per control: any assessable `Failed` row makes the
+control fail, and a control passes only when all assessable rows pass.
+Informational and `N/A` rows are excluded from the score. Agentic AI and
+compliance-mapping rows are contextual views of source evidence and are also
+excluded to prevent double counting. Resource-level rows remain visible for
+investigation and remediation.
 
 ---
 
@@ -483,12 +497,12 @@ and `OW-00` in
 ### AC-02: AWS IAM Full Access
 
 - **Severity:** High
-- **Description:** Checks attached and inline policy documents for AgentCore or Agent Registry full-access managed policies and wildcard IAM action patterns, including prefix and embedded wildcards, when they apply to all resources. Only the valid `bedrock-agentcore` and `agent-registry` IAM namespaces are evaluated.
+- **Description:** Checks attached and inline policy documents for AgentCore or Agent Registry full-access managed policies, wildcard IAM action patterns, and `Allow`/`NotAction` allow-except statements that still grant either platform namespace when they apply to all resources. Only the valid `bedrock-agentcore` and `agent-registry` IAM namespaces are evaluated.
 
 ### AC-03: Stale Access
 
 - **Severity:** Low
-- **Description:** Detects unused AgentCore and Agent Registry permissions by inspecting both attached and inline policy documents before querying IAM service-last-accessed history.
+- **Description:** Detects unused AgentCore and Agent Registry permissions by inspecting `Allow` and `NotAction` grants in attached and inline policy documents before querying IAM service-last-accessed history. Attached policy names alone are never treated as proof of access. This identifies candidate grants from the cached policy documents; it is not a complete effective-permissions simulation across boundaries, session policies, or organization controls.
 
 ### AC-04: Observability
 
@@ -567,8 +581,8 @@ and `OW-00` in
 
 ### AC-19: Agent Registry Discovery Authorization
 
-- **Severity:** High
-- **Description:** Verifies each READY registry uses AWS IAM discovery authorization or a custom JWT authorizer with an OpenID Connect discovery URL and at least one audience, client, scope, or custom-claim constraint. Unknown future authorizer types and inaccessible configuration are reported as informational N/A rather than failed.
+- **Severity:** Informational for configured authorizers; High for an unconstrained custom JWT authorizer
+- **Description:** Inventories the discovery authorizer on each READY registry. AWS IAM authorization is informational N/A because the authorizer type alone does not establish which principals have effective discovery access. A custom JWT authorizer with an OpenID Connect discovery URL and at least one audience, client, scope, or custom-claim constraint is also informational N/A pending review against approved caller values. A custom JWT authorizer without both issuer discovery and a caller constraint fails. Registries without discovery authorization configured, unknown future authorizer types, and inaccessible configuration are informational N/A.
 
 ### AC-20: Agent Registry Customer-Managed KMS Encryption
 
@@ -582,13 +596,13 @@ and `OW-00` in
 
 ### AC-22: Agent Registry Record Lifecycle Governance
 
-- **Severity:** Medium for governed states; otherwise Informational
-- **Description:** Paginates `ListRegistryRecords` and evaluates the lifecycle metadata returned in each record summary. Records in `DRAFT`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, or `DEPRECATED` pass because they occupy documented governance states. Transitional, failed-operation, unknown, inaccessible, and region-unavailable states are reported as informational N/A so operational conditions are not mislabeled as security failures.
+- **Severity:** Informational
+- **Description:** Paginates `ListRegistryRecords` and reports the lifecycle metadata returned in each record summary. Records in `DRAFT`, `PENDING_APPROVAL`, `APPROVED`, `REJECTED`, or `DEPRECATED` are advisory N/A observations because occupying a documented service state does not by itself prove a security control. Transitional, failed-operation, unknown, inaccessible, and region-unavailable states are also informational N/A. AC-22 does not affect the score unless a future baseline defines a genuine noncompliant lifecycle state.
 
 ### AC-23: Agent Registry Record Provenance
 
 - **Severity:** Medium
-- **Description:** Verifies manually created records retain a 12-digit creator-account attribution and auto-detected records include a `DETECTED_FROM` provenance summary with a valid AWS source ARN and source type of `AWS::BedrockAgentCore::Runtime` or `AWS::BedrockAgentCore::Gateway`. Manual records without valid creator attribution and auto-detected records without valid lineage fail. Missing optional origin-mode metadata is reported as informational N/A.
+- **Description:** Verifies manually created records retain a 12-digit creator-account attribution and auto-detected records include a `DETECTED_FROM` provenance summary whose `bedrock-agentcore` ARN matches its declared source type: `runtime/...` for `AWS::BedrockAgentCore::Runtime` or `gateway/...` for `AWS::BedrockAgentCore::Gateway`. Manual records without valid creator attribution and auto-detected records without correlated lineage fail. Missing optional origin-mode metadata is reported as informational N/A.
 
 ---
 
@@ -844,7 +858,7 @@ with scope limited to the Security pillar.
 - **Severity:** Source check severity
 - **Source:** AC-19
 - **Domain:** Agent Identity & Access
-- **Description:** Maps Agent Registry IAM or constrained JWT discovery authorization into the Agentic AI Security view.
+- **Description:** Maps Agent Registry authorizer inventory and manual-review guidance into the Agentic AI Security view. Configured IAM and constrained JWT authorizers remain informational until effective access or approved JWT caller values can be established.
 
 ### AG-35: Registry Metadata Encryption
 
@@ -865,7 +879,7 @@ with scope limited to the Security pillar.
 - **Severity:** Source check severity
 - **Source:** AC-22
 - **Domain:** Agent Identity & Access
-- **Description:** Maps governed Agent Registry record lifecycle states into the Agentic AI Security view.
+- **Description:** Maps advisory Agent Registry record lifecycle observations into the Agentic AI Security view.
 
 ### AG-38: Registry Record Provenance
 

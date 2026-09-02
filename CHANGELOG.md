@@ -38,11 +38,45 @@ section.
 
 ### Fixed
 
+- Restrict AC-02 wildcard findings and AC-03 stale-access discovery to explicit
+  `bedrock-agentcore` and `agent-registry` IAM action namespaces so generic
+  administrator policies are not misreported as AgentCore-specific grants.
+- Stop AC-03 IAM last-access polling before the Lambda timeout, preserve
+  completed results with an explicit incomplete-assessment row, and classify
+  IAM job timeouts as indeterminate instead of failed controls.
+- Require AC-03 candidate permissions to come from attached or inline policy
+  documents instead of inferring access from attached-policy names.
+- Bound Agent Registry record inventory to 1,000 records, stop registry and
+  record pagination before the Lambda timeout, surface partial inventories as
+  `N/A`/Informational, and backfill deadline-skipped AgentCore and Agentic AI
+  checks before writing the regional CSV.
+- Make AC-18 auto-approval remediation conditional on the configured baseline
+  so advisory findings do not instruct operators to enable manual approval.
+- Evaluate `Allow`/`NotAction` allow-except policies in AC-02 and AC-03 unless
+  their exclusions fully cover both AgentCore and Agent Registry namespaces.
+- Describe an absent AC-19 discovery authorization configuration as
+  unconfigured rather than as an unrecognized authorizer type.
+- Treat AC-19 IAM and constrained JWT authorizer configurations as
+  informational evidence requiring access review instead of reporting a High
+  pass without establishing intended callers.
+- Make screenshot capture failures, including clipped-sidebar guard failures,
+  terminate the capture tool with a non-zero exit status.
+- Calculate report pass rates from unique direct-service controls instead of
+  resource-row counts: any failed assessable row fails its `Check_ID`, controls
+  pass only when all assessable rows pass, and N/A rows are excluded.
+- Make AC-22 lifecycle-state observations Informational/N/A until the check
+  defines a genuine noncompliant lifecycle state.
 - Evaluate attached customer-managed IAM policy documents as well as inline
   policies when checking AgentCore and Agent Registry wildcard access.
 - Preserve registry client initialization and API failures as indeterminate
   assessment results instead of reporting them as regional unavailability.
 - Provide error-specific remediation for registry list and detail failures.
+- Preserve Registry endpoint, credential, and authentication failures as
+  incomplete assessments with network- or credential-specific remediation.
+- Preserve AgentCore Runtime credential and authentication probe failures as
+  incomplete `N/A` assessments instead of emitting false security failures.
+- Require AC-23 auto-detected provenance source ARNs to use the AgentCore
+  service and a runtime or gateway resource matching the declared source type.
 - Preserve case-insensitive wildcard matching while supporting embedded and
   partial wildcard action patterns.
 - Avoid unnecessary per-record registry detail calls and add timeout guards to
@@ -51,8 +85,7 @@ section.
 ### Deployment impact
 
 - **CodeBuild run required** to build and deploy the updated assessment code,
-  dependencies, AWS SAM templates, state machine inputs, and build
-  orchestration.
+  dependencies, AWS SAM templates, and build orchestration.
 - **Single-account infrastructure update required** because
   `deployment/aiml-security-single-account.yaml` changed.
 - **Multi-account member-role StackSet update required first** because

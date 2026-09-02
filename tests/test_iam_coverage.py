@@ -359,9 +359,14 @@ def test_required_agentcore_actions_are_granted_to_the_agentcore_function(templa
 # Known service prefixes used by this tool. `bedrock-agent:` is intentionally
 # absent: it is NOT a valid IAM namespace. Amazon Bedrock Knowledge Base / Data
 # Source / Flow / Agent actions all use the `bedrock:` prefix; AgentCore uses
-# `bedrock-agentcore:` and AWS Agent Registry uses `agent-registry:`. A
-# `bedrock-agent:` grant silently authorizes nothing.
-_INVALID_ACTION_PREFIXES = ("bedrock-agent:", "bedrock-agentcore-control:")
+# `bedrock-agentcore:` and AWS Agent Registry uses `agent-registry:`. The boto3
+# client names `bedrock-agent`, `bedrock-agentcore-control`, and
+# `agent-registry-control` are not IAM namespaces and silently authorize nothing.
+_INVALID_ACTION_PREFIXES = (
+    "agent-registry-control:",
+    "bedrock-agent:",
+    "bedrock-agentcore-control:",
+)
 _INVALID_ACTION_NAMES = {
     "bedrock:ListModelInvocations",
     "bedrock-agentcore:GetAgentRuntimeResourcePolicy",
@@ -375,7 +380,7 @@ _INVALID_ACTION_NAMES = {
     ids=lambda p: os.path.basename(p),
 )
 def test_no_invalid_iam_action_prefixes(template):
-    """Guard against reintroducing the invalid `bedrock-agent:` IAM prefix.
+    """Guard against using boto3 service names as IAM action prefixes.
 
     cfn-lint's W3037 is suppressed repo-wide (its action DB lags new services),
     so this test is the positive guard that catches a wrong-prefix typo that
@@ -392,15 +397,18 @@ def test_no_invalid_iam_action_prefixes(template):
         f"{os.path.basename(template)} uses invalid IAM action(s): {bad}. "
         "Bedrock KB/DataSource/Flow/Agent actions use the 'bedrock:' prefix "
         "(AgentCore uses 'bedrock-agentcore:'); boto3 client names such as "
-        "'bedrock-agent' and 'bedrock-agentcore-control' are not IAM namespaces. "
+        "'bedrock-agent', 'bedrock-agentcore-control', and "
+        "'agent-registry-control' are not IAM namespaces. AWS Agent Registry "
+        "actions use the 'agent-registry:' prefix. "
         "AgentCore resource policies use the generic bedrock-agentcore:GetResourcePolicy "
         "action."
     )
 
 
 def test_invalid_prefix_guard_detects_a_bad_action():
-    """Self-test: the invalid-prefix guard trips on a `bedrock-agent:` action."""
+    """Self-test: the invalid-prefix guard trips on boto3 client-name prefixes."""
     sample = {
+        "agent-registry-control:ListRegistries",
         "bedrock:ListKnowledgeBases",
         "bedrock-agent:ListKnowledgeBases",
         "bedrock-agentcore-control:GetResourcePolicy",
@@ -413,6 +421,7 @@ def test_invalid_prefix_guard_detects_a_bad_action():
         or a in _INVALID_ACTION_NAMES
     )
     assert bad == [
+        "agent-registry-control:ListRegistries",
         "bedrock-agent:ListKnowledgeBases",
         "bedrock-agentcore-control:GetResourcePolicy",
         "bedrock-agentcore:GetGatewayResourcePolicy",
