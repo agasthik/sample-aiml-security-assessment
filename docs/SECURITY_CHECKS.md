@@ -1,21 +1,23 @@
 # Security Checks Reference
 
-This document provides a comprehensive reference for all 194 security checks performed by the AI/ML Security Assessment framework (86 core checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, 32 Agentic AI Security checks, 64 Responsible AI GRC checks, and 12 OWASP Top 10 for LLM checks).
+This document provides a comprehensive reference for all 208 security checks performed by the AI/ML Security Assessment framework (94 core checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, 38 Agentic AI Security checks, 64 Responsible AI GRC checks, and 12 OWASP Top 10 for LLM checks).
 
-Sources differ by bucket and are not interchangeable: the core Bedrock, SageMaker, and AgentCore checks derive from the AWS Well-Architected **Generative AI Lens** security best practices (`gensec*`); the Agentic AI Security checks from the AWS Well-Architected **Agentic AI Lens**; the `FS-*` **Responsible AI GRC** checks from the AWS GRC User Guide; and the `OW-*` checks from the OWASP Top 10 for LLM. The AWS Well-Architected **Responsible AI Lens** is not a source for any of them — see [Responsible AI GRC — scope, sources, and compatibility](RESPONSIBLE_AI_GRC_SCOPE.md).
+Sources differ by bucket and are not interchangeable: the core Bedrock, SageMaker, AgentCore, and AWS Agent Registry checks derive from the AWS Well-Architected **Generative AI Lens** security best practices (`gensec*`) and service security documentation; the Agentic AI Security checks from the AWS Well-Architected **Agentic AI Lens**; the `FS-*` **Responsible AI GRC** checks from the AWS GRC User Guide; and the `OW-*` checks from the OWASP Top 10 for LLM. The AWS Well-Architected **Responsible AI Lens** is not a source for any of them — see [Responsible AI GRC — scope, sources, and compatibility](RESPONSIBLE_AI_GRC_SCOPE.md).
 
-The 64 Responsible AI GRC checks occupy 69 `FS-*` numbers: 64 ship as standalone checks and 5 are merged into upstream Bedrock/SageMaker checks. The framework also emits `BR-00`, `SM-00`, `AC-00`, `FS-00`, and `OW-00` operational marker rows at runtime; these are not controls and are excluded from the 194-check total. Per-control provenance, including which controls are project extensions rather than guide-derived, is recorded in [`provenance.json`](../aiml-security-assessment/functions/security/responsible_ai_grc_assessments/provenance.json).
+The 64 Responsible AI GRC checks occupy 69 `FS-*` numbers: 64 ship as standalone checks and 5 are merged into upstream Bedrock/SageMaker checks. The framework also emits `BR-00`, `SM-00`, `AC-00`, `AR-00`, `FS-00`, and `OW-00` operational marker rows at runtime; these are not controls and are excluded from the 208-check total. Per-control provenance, including which controls are project extensions rather than guide-derived, is recorded in [`provenance.json`](../aiml-security-assessment/functions/security/responsible_ai_grc_assessments/provenance.json).
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Check ID Convention](#check-id-convention)
+- [Report Scoring](#report-scoring)
 - [Severity Levels](#severity-levels)
 - [Status Values](#status-values)
 - [Amazon SageMaker AI Security Checks (29)](#amazon-sagemaker-ai-security-checks-29)
 - [Amazon Bedrock Security Checks (40)](#amazon-bedrock-security-checks-40)
 - [Amazon Bedrock AgentCore Security Checks (17)](#amazon-bedrock-agentcore-security-checks-17)
-- [Agentic AI Security Checks (32)](#agentic-ai-security-checks-32)
+- [AWS Agent Registry Security Checks (8)](#aws-agent-registry-security-checks-8)
+- [Agentic AI Security Checks (38)](#agentic-ai-security-checks-38)
 - [Responsible AI GRC Checks (64)](#responsible-ai-grc-checks-64-additional-5-upstream-extensions)
 - [OWASP Top 10 for LLM Checks (12)](#owasp-top-10-for-llm-checks-12)
 
@@ -23,14 +25,15 @@ The 64 Responsible AI GRC checks occupy 69 `FS-*` numbers: 64 ship as standalone
 
 ## Overview
 
-The framework evaluates your AI/ML workloads against AWS security best practices across three services:
+The framework evaluates your AI/ML workloads against AWS security best practices across four services:
 
 | Service | Number of Checks | Focus Areas |
 | --------- | ------------------ | ------------- |
 | Amazon SageMaker AI | 29 | Security Hub controls, encryption, network isolation, GuardDuty AI Protection, HyperPod, IAM, MLOps, Model Registry policy exposure |
 | Amazon Bedrock | 40 | Guardrails, prompt-attack/image filters, retention, inference profiles, automated reasoning and Marketplace endpoint governance, encryption, networking, IAM, logging, monitoring, and evaluation |
-| Amazon Bedrock AgentCore | 17 | Runtime/tool VPC isolation, encryption, browser recording, observability, resource policies, Identity token vaults, online evaluation |
-| Agentic AI Security | 32 | Bounded autonomy, agent identity, tool authorization, guardrail enforcement, prompt/input protection, memory privacy, auditability, continuous assurance, abuse protection |
+| Amazon Bedrock AgentCore | 17 | Runtime/tool VPC isolation, encryption, browser recording, observability, resource policies, Identity token vaults, and online evaluation |
+| AWS Agent Registry | 8 | IAM access, approval governance, discovery authorization, encryption, organization auto-detection, record lifecycle, and provenance |
+| Agentic AI Security | 38 | Bounded autonomy, agent identity, tool authorization, Registry governance and provenance, guardrail enforcement, prompt/input protection, memory privacy, auditability, continuous assurance, abuse protection |
 | Responsible AI GRC | 64 | Unbounded consumption, excessive agency, supply chain, training data poisoning, vector weaknesses, non-compliant output, misinformation, harmful output, biased output, PII disclosure, hallucination, prompt injection, improper output handling, off-topic output, out-of-date training data |
 | OWASP Top 10 for LLM | 12 | LLM01 Prompt Injection, LLM02 Sensitive Info Disclosure, LLM03 Supply Chain, LLM04 Data/Model Poisoning, LLM05 Improper Output Handling, LLM06 Excessive Agency, LLM07 System Prompt Leakage, LLM08 Vector/Embedding Weaknesses, LLM09 Misinformation, LLM10 Unbounded Consumption |
 
@@ -45,7 +48,8 @@ Each security check has a unique identifier with a service prefix:
 | **SM-XX** | Amazon SageMaker | SM-01, SM-30 (`SM-29` reserved) |
 | **BR-XX** | Amazon Bedrock | BR-01, BR-40 |
 | **AC-XX** | Amazon Bedrock AgentCore | AC-01, AC-17 |
-| **AG-XX** | Agentic AI Security | AG-01, AG-32 |
+| **AR-XX** | AWS Agent Registry | AR-01, AR-08 |
+| **AG-XX** | Agentic AI Security | AG-01, AG-38 |
 | **FS-XX** | Responsible AI GRC | FS-01, FS-69 |
 | **OW-XX** | OWASP Top 10 for LLM | OW-01, OW-12 |
 
@@ -61,6 +65,7 @@ evidence that a control passed or failed.
 | `BR-00` | Amazon Bedrock is unavailable or not enabled in the target region, so regional Bedrock checks were not run. | `N/A` / Informational |
 | `SM-00` | Amazon SageMaker AI is unavailable or not enabled in the target region, so regional SageMaker checks were not run. | `N/A` / Informational |
 | `AC-00` | Amazon Bedrock AgentCore is unavailable in the target region, or the AgentCore handler caught an unexpected per-check execution error. The error form is a diagnostic row, not a security-control failure. | Availability: `N/A` / Informational. Execution error: `Failed` / High. |
+| `AR-00` | AWS Agent Registry is unavailable in the target region, so regional `AR-03` through `AR-08` checks were not run. | `N/A` / Informational |
 | `FS-00` | No regional Bedrock, AgentCore, or SageMaker resource footprint was found, so Responsible AI GRC was not applicable to that region. | `N/A` / Informational |
 | `OW-00` | A required upstream assessment CSV was missing, so one or more mapping-derived OWASP rows could not be generated. | `N/A` / Informational |
 
@@ -68,6 +73,19 @@ evidence that a control passed or failed.
 [Responsible AI GRC Checks](SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md#fs-00--regional-scope-not-applicable-not-a-control),
 and `OW-00` in
 [OWASP Top 10 for LLM Security Checks](SECURITY_CHECKS_OWASP.md).
+
+---
+
+## Report Scoring
+
+Pass rates are calculated from unique direct-service `Check_ID` values, not
+from report-row counts. Findings for resources, Regions, or accounts are
+aggregated into one result per control: any assessable `Failed` row makes the
+control fail, and a control passes only when all assessable rows pass.
+Informational and `N/A` rows are excluded from the score. Agentic AI and
+compliance-mapping rows are contextual views of source evidence and are also
+excluded to prevent double counting. Resource-level rows remain visible for
+investigation and remediation.
 
 ---
 
@@ -483,12 +501,12 @@ and `OW-00` in
 ### AC-02: AWS IAM Full Access
 
 - **Severity:** High
-- **Description:** Checks for overly permissive AgentCore AWS IAM policies.
+- **Description:** Checks attached and inline policy documents for AgentCore full-access managed policies, wildcard IAM action patterns, and `Allow`/`NotAction` allow-except statements that still grant the AgentCore namespace when they apply to all resources. Only the valid `bedrock-agentcore` IAM namespace is evaluated; overly permissive `agent-registry` grants are reported by [AR-01](#ar-01-aws-iam-full-access) instead. Service-agnostic administrator-style grants are out of scope in both forms: a bare `Action: "*"` and a `NotAction` whose exclusions name no platform namespace are treated alike and not reported as AgentCore-specific grants.
 
 ### AC-03: Stale Access
 
 - **Severity:** Low
-- **Description:** Detects unused AgentCore permissions.
+- **Description:** Detects unused AgentCore permissions by inspecting `Allow` and `NotAction` grants in attached and inline policy documents before querying IAM service-last-accessed history. Only the `bedrock-agentcore` namespace is evaluated; `agent-registry` grants are reported by [AR-02](#ar-02-stale-access) instead. As in AC-02, a `NotAction` whose exclusions name no platform namespace is a service-agnostic administrator grant and is not treated as an AgentCore-specific permission. Attached policy names alone are never treated as proof of access. IAM last-accessed jobs are polled within the Lambda deadline; a job that does not complete in time is reported as an indeterminate `N/A` rather than a failed control. This identifies candidate grants from the cached policy documents; it is not a complete effective-permissions simulation across boundaries, session policies, or organization controls.
 
 ### AC-04: Observability
 
@@ -562,7 +580,70 @@ and `OW-00` in
 
 ---
 
-## Agentic AI Security Checks (32)
+## AWS Agent Registry Security Checks (8)
+
+AWS Agent Registry checks use the `AR-XX` namespace and run in a dedicated
+regional Lambda that writes its own CSV artifact and HTML report area. They are
+included with the default assessment.
+
+`AR-01` and `AR-02` are account-scoped IAM checks that read the shared
+permission cache and are reported once under the `Global` region. `AR-03`
+through `AR-08` are regional and use the generally available
+`agent-registry-control` API. Registry detail is read once per registry and
+shared across `AR-03` through `AR-06`; record inventory is shared between
+`AR-07` and `AR-08`.
+
+Record inventory is bounded to 1,000 records and paginates within the Lambda
+deadline. When the cap or the deadline is reached, `AR-07` and `AR-08` report a
+single informational `N/A` incomplete-assessment row and continue assessing
+the records already collected. A registry that is not `READY`, a registry
+whose detail call fails, an access-denied response, and a region where AWS
+Agent Registry is unavailable all resolve to informational `N/A` with
+error-specific remediation rather than to a failure.
+
+### AR-01: AWS IAM Full Access
+
+- **Severity:** High
+- **Description:** Checks attached and inline policy documents from the permission cache for AWS Agent Registry full-access managed policies, wildcard IAM action patterns, and `Allow`/`NotAction` allow-except statements that still grant the `agent-registry` namespace when they apply to all resources. Only the valid `agent-registry` IAM namespace is evaluated; `bedrock-agentcore` grants are reported by [AC-02](#ac-02-aws-iam-full-access) instead. Service-agnostic administrator-style grants are out of scope in both forms: a bare `Action: "*"` and a `NotAction` whose exclusions name no platform namespace are treated alike and not reported as Registry-specific grants. An empty permission cache is an informational `N/A` tooling condition, not a failure.
+
+### AR-02: Stale Access
+
+- **Severity:** Medium for 60+ day inactivity; Low when all principals are active; Informational when never used or incomplete
+- **Description:** Identifies IAM roles and users whose attached or inline policy documents grant the `agent-registry` namespace, either through an `Allow` action or through a `NotAction` allow-except statement that does not fully cover the namespace. Attached policy names alone are never treated as proof of access. It uses IAM service-last-accessed jobs to identify access older than 60 days and principals with no Registry usage evidence. IAM job errors, timeouts, and inaccessible principals are indeterminate informational `N/A` findings rather than failures.
+
+### AR-03: Registry Publication Approval Governance
+
+- **Severity:** Informational by default; Medium when required
+- **Description:** Verifies whether each `READY` registry requires manual review for submitted records. A registry whose `approvalConfiguration` carries `autoApprovalRules` approves submitted records automatically and is informational by default; set `RequireAgentRegistryManualApproval` to `true` (`REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL` in the Lambda) to make automatic approval fail, which also switches the remediation text from advisory to actionable. A registry with no auto-approval rules passes. `approvalConfiguration` is optional in the GA response; a registry that omits it is reported as informational `N/A` because manual review was never observed, not as a pass.
+
+### AR-04: Registry Discovery Authorization
+
+- **Severity:** Informational for configured authorizers; High for an unconstrained custom JWT authorizer
+- **Description:** Inventories the discovery authorizer on each `READY` registry. A custom JWT authorizer without **both** an OpenID Connect discovery URL and at least one caller constraint (`allowedAudience`, `allowedClients`, `allowedScopes`, or `customClaims`) fails. Every other outcome is informational `N/A` pending review, because the authorizer configuration alone does not establish which callers hold effective discovery access: `AWS_IAM` requires an effective-policy review, a constrained custom JWT authorizer requires comparing the approved audiences, clients, scopes, and claims against intended consumers, and an absent or unrecognized `discoveryConfiguration` establishes no authorization fact either way.
+
+### AR-05: Registry Customer-Managed KMS Encryption
+
+- **Severity:** Informational by default; Medium when required
+- **Description:** Reads `GetRegistry.encryptionConfiguration.kmsKeyArn`. Registries with a customer-managed KMS key pass. Registries using the default AWS owned key are informational by default because AWS Agent Registry still encrypts them at rest. Set `RequireAgentRegistryCMK` to `true` (`REQUIRE_AGENT_REGISTRY_CMK` in the Lambda) to make the AWS owned key configuration fail. The registry encryption key is immutable after creation, so remediation requires a replacement registry and record migration.
+
+### AR-06: Registry Organization Auto-Detection
+
+- **Severity:** Medium when active; otherwise Informational
+- **Description:** Passes only when a `READY` registry reports auto-detection that is enabled, scoped to `ORGANIZATION`, and `ACTIVE`. Disabled, account-scoped, or `INACTIVE` configurations are informational `N/A` because the feature is optional. An omitted or incomplete optional `autoDetection` block, and a registry that has not reached `READY`, are also informational `N/A` because the control state could not be established.
+
+### AR-07: Registry Record Lifecycle Governance
+
+- **Severity:** Informational
+- **Description:** Paginates `ListRegistryRecords` across every accessible registry and reports the lifecycle state returned in each record summary as an advisory `N/A` observation, because occupying a documented service state does not by itself prove a security control. Review failed or unknown lifecycle states operationally. Per-registry listing failures are reported individually with error-specific remediation so one inaccessible registry does not hide the rest. `AR-07` does not affect the score unless a future baseline defines a genuine noncompliant lifecycle state.
+
+### AR-08: Registry Record Provenance
+
+- **Severity:** Medium
+- **Description:** Verifies that manually created records retain a 12-digit creator-account attribution and that auto-detected records carry a `DETECTED_FROM` provenance summary whose `sourceId` is a `bedrock-agentcore` ARN matching its declared `sourceType`: a `runtime/...` resource for `AWS::BedrockAgentCore::Runtime` or a `gateway/...` resource for `AWS::BedrockAgentCore::Gateway`. A record whose declared lineage does not match fails, and it continues to fail even when another provenance entry omits its own source type. Optional origin-mode, creator-attribution, provenance, and source-type metadata are reported as informational `N/A` rather than as operator-remediable failures.
+
+---
+
+## Agentic AI Security Checks (38)
 
 Agentic AI Security checks use the `AG-XX` namespace and are included with the
 default assessment. They follow a hybrid model:
@@ -801,6 +882,48 @@ with scope limited to the Security pillar.
 - **Source:** AC-17
 - **Domain:** Auditability & Continuous Assurance
 - **Description:** Maps AgentCore online evaluation configuration without claiming universal runtime trace coverage.
+
+### AG-33: Registry Publication Approval Governance
+
+- **Severity:** Source check severity
+- **Source:** AR-03
+- **Domain:** Agent Identity & Access
+- **Description:** Maps Agent Registry publication approval configuration into the Agentic AI Security view.
+
+### AG-34: Registry Discovery Authorization
+
+- **Severity:** Source check severity
+- **Source:** AR-04
+- **Domain:** Agent Identity & Access
+- **Description:** Maps Agent Registry authorizer inventory and manual-review guidance into the Agentic AI Security view. Configured IAM and constrained JWT authorizers remain informational until effective access or approved JWT caller values can be established.
+
+### AG-35: Registry Metadata Encryption
+
+- **Severity:** Source check severity
+- **Source:** AR-05
+- **Domain:** Memory & Data Privacy
+- **Description:** Maps Agent Registry customer-managed KMS encryption into the Agentic AI Security view.
+
+### AG-36: Organization Discovery Coverage
+
+- **Severity:** Source check severity
+- **Source:** AR-06
+- **Domain:** Auditability & Continuous Assurance
+- **Description:** Maps organization-scoped Agent Registry auto-detection health into the Agentic AI Security view.
+
+### AG-37: Registry Record Lifecycle Governance
+
+- **Severity:** Source check severity
+- **Source:** AR-07
+- **Domain:** Agent Identity & Access
+- **Description:** Maps advisory Agent Registry record lifecycle observations into the Agentic AI Security view.
+
+### AG-38: Registry Record Provenance
+
+- **Severity:** Source check severity
+- **Source:** AR-08
+- **Domain:** Auditability & Continuous Assurance
+- **Description:** Maps Agent Registry creator attribution and auto-detected runtime or gateway lineage into the Agentic AI Security view.
 
 ### Runtime guardrail methodology note
 

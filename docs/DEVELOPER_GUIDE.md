@@ -65,7 +65,7 @@ additional compatibility syntax.
 
 ## Architecture Overview
 
-The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 86 core security checks across Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore, plus 32 always-on Agentic AI Security checks, with optional 64-check Responsible AI GRC and 12-check OWASP Top 10 for LLM assessments, generating interactive HTML reports with findings and remediation guidance.
+The AI/ML Security Assessment Framework is a serverless, multi-account security assessment solution for AWS AI/ML workloads. It performs 94 core security checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, plus 38 always-on Agentic AI Security checks, with optional 64-check Responsible AI GRC and 12-check OWASP Top 10 for LLM assessments, generating interactive HTML reports with findings and remediation guidance.
 
 ### Security Design Principles
 
@@ -270,7 +270,7 @@ sample-aiml-security-assessment/
 
 ## Assessment Structure
 
-The framework includes **86 core security checks** across three AI/ML services, plus **32 always-on Agentic AI Security checks**, **64 optional Responsible AI GRC checks** when `EnableResponsibleAIGRCAssessment` is enabled, and **12 optional OWASP Top 10 for LLM checks** when `EnableOWASPAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
+The framework includes **94 core security checks** across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, plus **38 always-on Agentic AI Security checks**, **64 optional Responsible AI GRC checks** when `EnableResponsibleAIGRCAssessment` is enabled, and **12 optional OWASP Top 10 for LLM checks** when `EnableOWASPAssessment` is enabled. For the complete list of checks with descriptions, see the [Security Checks Reference](SECURITY_CHECKS.md).
 
 ### AWS Lambda Functions
 
@@ -284,6 +284,12 @@ Each core service assessment AWS Lambda function:
 6. Generates CSV report with findings (includes `Region` column)
 7. Uploads results to Amazon S3 with region-suffixed filename
 8. Returns findings summary to AWS Step Functions
+
+AWS Agent Registry is a separate regional assessment Lambda. It creates its
+own `agent-registry-control` client, writes
+`agent_registry_security_report_<execution_id>_<region>.csv`, and runs
+independently of Amazon Bedrock AgentCore availability because the services
+have separate endpoints.
 
 The Responsible AI GRC assessment Lambda is different. It is deployed in both SAM templates, but Step Functions invokes it only from the first region iteration (`RegionIndex == 0`) when the execution input includes `"enableResponsibleAIGRC": "true"` or `"enableOWASP": "true"`. The OWASP path uses `FS-*` findings as hidden source rows unless the capability was explicitly enabled. It receives the full `TargetRegions` list and emits findings with Region values so the report can display the same regional filters as the core services.
 
@@ -326,6 +332,8 @@ environment variable, and every `sam deploy` path in `buildspec.yml`.
 | `RequireBedrockZeroDataRetention` | `REQUIRE_BEDROCK_ZERO_DATA_RETENTION` | BR-37 |
 | `RequireMarketplaceEndpointCMK` | `REQUIRE_MARKETPLACE_ENDPOINT_CMK` | BR-40 |
 | `RequireAgentCoreOnlineEvaluation` | `REQUIRE_AGENTCORE_ONLINE_EVALUATION` | AC-17 |
+| `RequireAgentRegistryManualApproval` | `REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL` | AR-03 |
+| `RequireAgentRegistryCMK` | `REQUIRE_AGENT_REGISTRY_CMK` | AR-05 |
 | `AgentCoreTokenVaultId` | `AGENTCORE_TOKEN_VAULT_ID` | AC-14 |
 | `ApprovedExternalAccountIds` | `AIML_APPROVED_EXTERNAL_ACCOUNT_IDS` | SM-30 |
 | `ApprovedOrganizationIds` | `AIML_APPROVED_ORG_IDS` | SM-30 |
@@ -600,7 +608,7 @@ Most day-to-day contributions add or update individual security checks inside th
 
 4. **Pagination and error isolation**: Use `get_paginator()` or the `_agentcore_list_all` pattern for list APIs. Wrap per-resource detail calls in individual try/except blocks so one throttle or delete-race does not abort the whole check.
 
-5. **Synthesized mappings** (if applicable): If the new check should also appear under the Agentic AI lens (AG- prefix) or an OWASP category, update the corresponding mapping dictionary. Values in `OWASP_CHECK_MAPPINGS` are lists because one source check can emit multiple OW- rows. Allocate new AG numbers by hand across both mapping files and native checks to avoid collisions (current catalog ends at AG-32).
+5. **Synthesized mappings** (if applicable): If the new check should also appear under the Agentic AI lens (AG- prefix) or an OWASP category, update the corresponding mapping dictionary. Values in `OWASP_CHECK_MAPPINGS` are lists because one source check can emit multiple OW- rows. Allocate new AG numbers by hand across both mapping files and native checks to avoid collisions (current catalog ends at AG-38).
 
 6. **Add tests**: Every new check requires at least four cases: compliant (Passed), non-compliant (Failed), no-resource (N/A), and access-denied / API-unavailable. Shared inventory checks also need list-error and per-resource detail-error tests. See `tests/test_bedrock_checks.py` and `tests/test_sagemaker_checks.py` for patterns.
 
@@ -713,7 +721,7 @@ When adding a new check, extending a lens (AG-*), or introducing a new complianc
 
 The generated reports are written under `aiml-security-assessment/functions/security/generate_consolidated_report/test_reports/`. Open the single-account and multi-account HTML files in a browser (desktop and mobile viewports) and verify:
 
-- Your new `Check_ID` (for example BR-41, SM-31, AC-18, AG-33, OW-13, or NR-01) appears in the findings table with the expected Finding name, Severity badge, Status, Region, and Resolution text.
+- Your new `Check_ID` (for example BR-41, SM-31, AR-09, AG-33, OW-13, or NR-01) appears in the findings table with the expected Finding name, Severity badge, Status, Region, and Resolution text.
 - The row is correctly routed into the sidebar navigation:
   - Core service checks (BR-*, SM-*, AC-*) appear under "By Service".
   - AG-* findings appear under "By Lens" → Agentic AI Security.
@@ -732,7 +740,7 @@ For detailed troubleshooting guidance, common issues, and debugging tips, see th
 
 ### Current Status
 
-- **AI/ML Assessment**: 86 core checks across three services, 32 always-on Agentic AI Security checks, plus 64 optional Responsible AI GRC checks and 12 optional OWASP Top 10 for LLM checks (see [Security Checks Reference](SECURITY_CHECKS.md))
+- **AI/ML Assessment**: 94 core checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, 38 always-on Agentic AI Security checks, plus 64 optional Responsible AI GRC checks and 12 optional OWASP Top 10 for LLM checks (see [Security Checks Reference](SECURITY_CHECKS.md))
 
 ### Potential Additions
 
@@ -788,13 +796,13 @@ To update report styling, layout, or features:
 
 ## Extending or Adding Lenses
 
-The Agentic AI Security lens (AG-01 through AG-32) is **synthesized at runtime**, not produced by a separate scanner. It re-uses findings from the core Bedrock, SageMaker, and AgentCore assessments plus a small number of native gateway checks.
+The Agentic AI Security lens (AG-01 through AG-38) is **synthesized at runtime**, not produced by a separate scanner. It re-uses findings from the core Bedrock, SageMaker, AgentCore, and Agent Registry assessments plus a small number of native gateway checks.
 
 - Mapping dictionaries live in two places:
   - `bedrock_assessments/app.py` → `AGENTIC_BEDROCK_CHECK_MAPPINGS`
   - `agentcore_assessments/app.py` → `AGENTIC_AGENTCORE_CHECK_MAPPINGS`
 - Native checks (currently AG-24 through AG-27) are implemented directly inside the AgentCore assessment package because they require the `bedrock-agentcore` control-plane client.
-- When adding new AG checks, manually allocate numbers to avoid collisions across both mapping dictionaries and the native checks. The current high-water mark for the catalog is AG-32.
+- When adding new AG checks, manually allocate numbers to avoid collisions across both mapping dictionaries and the native checks. The current high-water mark for the catalog is AG-38.
 - The HTML report reconstructs the lens via the AG- prefix and the `COMPLIANCE_STANDARDS` list in `report_template.py` (same mechanism used for OWASP and future standards).
 - Follow the same seven-site wiring checklist as a new compliance standard (CloudFormation parameters are not required for the always-on Agentic lens, but any new native checks still need IAM grants in all five policy locations).
 - Update `docs/SECURITY_CHECKS.md` and run the full mapping-drift, test-coverage, and gate checklist before merging.
@@ -843,6 +851,12 @@ end-to-end. Concrete steps:
      permissions policy. Diff `2-aiml-security-codebuild.yaml`'s local
      `MemberRole` against `1-aiml-security-member-roles.yaml` to confirm
      parity — this pair drifts easily.
+   - The multi-account canonical member role has two customer-managed policy
+     documents because IAM's inline-policy quota is cumulative per role.
+     Keep each document within the 5,500-character rendered budget enforced
+     by `tests/test_member_role_policy_size.py`; do not split grants into
+     multiple inline policies, which would still share the 10,240-character
+     quota.
 
 5. **Add the Step Functions Choice state** in
    `aiml-security-assessment/statemachine/assessments.asl.json`:
@@ -900,17 +914,24 @@ The fixture reports are written under `aiml-security-assessment/functions/securi
 The repository includes an automated screenshot capture tool:
 
 ```bash
-# Install dependencies (first time only)
-.venv/bin/pip install -r sample-reports/dev-requirements.txt
-.venv/bin/playwright install chromium
+# Prepare or verify the optional screenshot environment without changing files
+./sample-reports/scripts/capture_screenshots.py --check-dependencies
 
 # Capture and optimize screenshots
-.venv/bin/python sample-reports/scripts/capture_screenshots.py
+./sample-reports/scripts/capture_screenshots.py
 ```
+
+The repository-root `.venv` must already exist and use Python 3.12. The script
+re-launches itself with `.venv/bin/python`, installs
+`sample-reports/dev-requirements.txt` into that environment when needed, and
+installs Chromium under `.venv/playwright-browsers`.
 
 **What the script does:**
 
+- Verifies the repository Python environment and screenshot dependencies
 - Opens HTML reports in a headless browser
+- Expands the viewport to include every left-navigation section, including
+  compliance standards
 - Captures key views (dashboard, findings table, dark mode)
 - Automatically optimizes images (target: 200-300KB each)
 - Converts large PNGs to JPEG if needed
@@ -925,7 +946,7 @@ The script captures 4 screenshots:
 - `findings-table.png` - Detailed findings table with filters
 - `multi-account-summary.png` - Multi-account consolidated view
 
-All screenshots are automatically optimized (target: 200-300KB each, ~600KB total).
+All screenshots are automatically optimized (target: 200-300KB each, ~700KB total).
 
 **Customization:**
 
@@ -967,7 +988,8 @@ SCREENSHOTS = [
 
 | Issue | Solution |
 | ------- | ---------- |
-| `playwright not installed` | `.venv/bin/pip install playwright && .venv/bin/playwright install chromium` |
+| `.venv` not found | Create it with `python3.12 -m venv .venv`, then bootstrap the repository dependencies |
+| Playwright or Chromium missing | Run `./sample-reports/scripts/capture_screenshots.py --check-dependencies` |
 | Sample reports not found | Run from repository root |
 | Screenshots too large | Lower `JPEG_QUALITY` or reduce viewport size |
 | Browser launch fails | Run `playwright install-deps` (Linux only) |
@@ -995,6 +1017,31 @@ After generating new screenshots, update the README to reference them:
 - **Update both HTML and screenshots** when making UI changes
 - **Test screenshots render correctly** in GitHub's markdown preview
 - **All screenshot tooling**: Located in `sample-reports/` for easy organization
+
+### Declaring Deployment Impact
+
+Every releasable behavior or deployment change must update the root
+`CHANGELOG.md` under `Unreleased`; a release does not need to be created for
+every merged change. Use one or more of these deployment-impact categories:
+
+- **No deployment required** — documentation, tests, examples, or CI-only changes.
+- **CodeBuild run required** — deployable assessment code, dependencies, AWS SAM
+  templates, state machine, buildspec, or multi-account report consolidator
+  changed.
+- **Single-account infrastructure update required** —
+  `deployment/aiml-security-single-account.yaml` changed.
+- **Multi-account member-role StackSet update required** —
+  `deployment/1-aiml-security-member-roles.yaml` changed. This update must
+  complete before CodeBuild runs.
+- **Multi-account central infrastructure update required** —
+  `deployment/2-aiml-security-codebuild.yaml` changed.
+
+The changelog should list the exact changed deployment templates and give the
+required order. When a release is pinned by tag or commit, it should also remind
+users to update the `GitHubBranch` stack parameter. When a version is tagged,
+move the accumulated entries into a dated version section and recreate an empty
+`Unreleased` section. The end-user procedure and repository-diff fallback are documented in
+[Upgrading to a New Release](TROUBLESHOOTING.md#upgrading-to-a-new-release).
 
 ## CI/CD Workflows
 
