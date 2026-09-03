@@ -290,9 +290,18 @@ class TestHtmlReportGeneration(unittest.TestCase):
             self.assertIn("AgentCore IAM Identity Center Check", content)
             self.assertIn("Agent Registry Publication Approval Governance", content)
             self.assertIn("Agent Registry Discovery Authorization", content)
-            self.assertIn('<div class="metric-label">AWS Agent Registry</div>', content)
+            # The summary tile and scope chip both carry a service icon, so the
+            # label is preceded by an icon span rather than opening the element.
             self.assertIn(
-                '<span style="font-size: 13px; font-weight: 500;">AWS Agent Registry</span>',
+                '<div class="metric-label">'
+                f"{generate_report_template.AGENT_REGISTRY_ICON_SMALL} "
+                "AWS Agent Registry</div>",
+                content,
+            )
+            self.assertIn(
+                f"{generate_report_template.AGENT_REGISTRY_ICON_SCOPE}"
+                '<span style="font-size: 13px; font-weight: 500;">'
+                "AWS Agent Registry</span>",
                 content,
             )
             self.assertIn(
