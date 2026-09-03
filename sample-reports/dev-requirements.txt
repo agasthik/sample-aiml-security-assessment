@@ -1,5 +1,6 @@
 # Development dependencies for documentation and tooling
-# Install with: pip install -r dev-requirements.txt
+# Installed and verified automatically by scripts/capture_screenshots.py in the
+# repository-root .venv.
 
 # Screenshot capture and optimization
 playwright>=1.40.0

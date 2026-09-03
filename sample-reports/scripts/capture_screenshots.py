@@ -9,25 +9,29 @@ Requirements:
     - playwright
     - pillow (PIL)
 
-Installation:
-    source .venv/bin/activate
-    pip install playwright pillow
-    playwright install chromium
+The script automatically:
+    - Re-launches itself with the repository-root .venv Python.
+    - Installs sample-reports/dev-requirements.txt when dependencies are missing.
+    - Installs and verifies Chromium under .venv/playwright-browsers.
 
 Usage:
-    python sample-reports/scripts/capture_screenshots.py
+    ./sample-reports/scripts/capture_screenshots.py
+    ./sample-reports/scripts/capture_screenshots.py --check-dependencies
 """
 
+import importlib.util
+import os
 import re
+import subprocess
 import sys
-from pathlib import Path
-from playwright.sync_api import sync_playwright
-from PIL import Image
 import time
+from pathlib import Path
 
 # Configuration
-REPO_ROOT = Path(__file__).parent.parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SAMPLE_REPORTS_DIR = REPO_ROOT / "sample-reports"
+SCREENSHOT_REQUIREMENTS = SAMPLE_REPORTS_DIR / "dev-requirements.txt"
+PLAYWRIGHT_BROWSERS_DIR = REPO_ROOT / ".venv" / "playwright-browsers"
 VIEWPORT_WIDTH = 1440
 VIEWPORT_HEIGHT = 900
 JPEG_QUALITY = 85  # Balance between quality and file size
@@ -92,6 +96,123 @@ SCREENSHOTS = [
         "clip": {"x": 0, "y": 0, "width": VIEWPORT_WIDTH, "height": 800},
     },
 ]
+
+
+def _repo_venv_python() -> Path:
+    """Return the repository-root virtual environment's Python executable."""
+    if os.name == "nt":
+        return REPO_ROOT / ".venv" / "Scripts" / "python.exe"
+    return REPO_ROOT / ".venv" / "bin" / "python"
+
+
+def ensure_repo_venv() -> None:
+    """Re-launch this script with the repository-root virtual environment."""
+    venv_python = _repo_venv_python()
+    if not venv_python.is_file():
+        print(f"ERROR: Repository virtual environment not found: {venv_python}")
+        print("Create it with Python 3.12 before running this tool:")
+        print("  python3.12 -m venv .venv")
+        sys.exit(1)
+
+    try:
+        using_repo_venv = Path(sys.executable).resolve().samefile(venv_python.resolve())
+    except OSError:
+        using_repo_venv = Path(sys.executable).resolve() == venv_python.resolve()
+
+    if not using_repo_venv:
+        print(f"Re-launching with repository Python: {venv_python}", flush=True)
+        os.execv(
+            str(venv_python),
+            [str(venv_python), str(Path(__file__).resolve()), *sys.argv[1:]],
+        )
+
+    if sys.version_info[:2] != (3, 12):
+        print(
+            "ERROR: The repository .venv must use Python 3.12; found "
+            f"{sys.version_info.major}.{sys.version_info.minor}."
+        )
+        print("Recreate it with: python3.12 -m venv .venv")
+        sys.exit(1)
+
+    print(f"Verified repository Python: {sys.version.split()[0]}")
+
+
+def ensure_python_dependencies() -> None:
+    """Install and verify screenshot Python dependencies in the root .venv."""
+    required_modules = {"playwright": "playwright", "PIL": "pillow"}
+    missing = [
+        package
+        for module, package in required_modules.items()
+        if importlib.util.find_spec(module) is None
+    ]
+
+    if missing:
+        print(
+            "Installing missing screenshot dependencies in the repository "
+            f".venv: {', '.join(missing)}",
+            flush=True,
+        )
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "-r",
+                    str(SCREENSHOT_REQUIREMENTS),
+                ],
+                cwd=REPO_ROOT,
+                check=True,
+            )
+        except subprocess.CalledProcessError as error:
+            print(
+                f"ERROR: Dependency installation failed with exit code {error.returncode}"
+            )
+            sys.exit(error.returncode)
+
+    still_missing = [
+        package
+        for module, package in required_modules.items()
+        if importlib.util.find_spec(module) is None
+    ]
+    if still_missing:
+        print(
+            "ERROR: Required screenshot dependencies remain unavailable: "
+            + ", ".join(still_missing)
+        )
+        sys.exit(1)
+
+    print("Verified Python dependencies: playwright, pillow")
+
+
+def ensure_chromium() -> None:
+    """Ensure the matching Playwright Chromium binary exists under the root .venv."""
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(PLAYWRIGHT_BROWSERS_DIR)
+
+    print(
+        f"Ensuring Playwright Chromium under: {PLAYWRIGHT_BROWSERS_DIR}",
+        flush=True,
+    )
+    try:
+        # Idempotent: exits quickly when the browser revision matching the
+        # installed Playwright package is already present.
+        subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            cwd=REPO_ROOT,
+            env=os.environ.copy(),
+            check=True,
+        )
+    except subprocess.CalledProcessError as error:
+        print(f"ERROR: Chromium installation failed with exit code {error.returncode}")
+        sys.exit(error.returncode)
+
+
+def bootstrap_screenshot_environment() -> None:
+    """Prepare and verify the screenshot tooling environment."""
+    ensure_repo_venv()
+    ensure_python_dependencies()
+    ensure_chromium()
 
 
 def anonymize_account_ids(html_files: list) -> None:
@@ -160,6 +281,8 @@ def optimize_png(image_path: Path, max_size_kb: int = 300) -> None:
         image_path: Path to the PNG file
         max_size_kb: Maximum target file size in KB
     """
+    from PIL import Image
+
     img = Image.open(image_path)
 
     # Convert RGBA to RGB if needed (reduces size)
@@ -186,6 +309,83 @@ def optimize_png(image_path: Path, max_size_kb: int = 300) -> None:
 
     print(f"  Optimized PNG: {image_path.name} ({file_size_kb:.1f} KB)")
     return image_path
+
+
+def fit_viewport_to_sidebar(page, minimum_height: int) -> int:
+    """
+    Expand the viewport until the entire left navigation fits without scrolling.
+
+    The report sidebar uses ``height: 100vh`` with its own vertical overflow.
+    A fixed screenshot height can therefore hide lower navigation sections even
+    when the main page has enough content. Measuring ``scrollHeight`` makes the
+    capture resilient to additional lenses, governance frameworks, and
+    compliance standards.
+
+    Args:
+        page: Playwright page instance.
+        minimum_height: Minimum capture height requested by the screenshot.
+
+    Returns:
+        The viewport height required to include the full sidebar.
+    """
+    sidebar = page.query_selector(".sidebar")
+    if sidebar is None:
+        return minimum_height
+
+    target_height = minimum_height
+    for _ in range(3):
+        sidebar_height = page.eval_on_selector(
+            ".sidebar", "element => element.scrollHeight"
+        )
+        target_height = max(target_height, sidebar_height)
+        viewport = page.viewport_size or {
+            "width": VIEWPORT_WIDTH,
+            "height": VIEWPORT_HEIGHT,
+        }
+        if viewport["height"] >= target_height:
+            break
+        page.set_viewport_size({"width": viewport["width"], "height": target_height})
+        page.wait_for_timeout(100)
+
+    final_sidebar_height = page.eval_on_selector(
+        ".sidebar", "element => element.scrollHeight"
+    )
+    target_height = max(target_height, final_sidebar_height)
+    viewport = page.viewport_size or {
+        "width": VIEWPORT_WIDTH,
+        "height": VIEWPORT_HEIGHT,
+    }
+    if viewport["height"] < target_height:
+        page.set_viewport_size({"width": viewport["width"], "height": target_height})
+        page.wait_for_timeout(100)
+
+    sidebar_visibility = page.eval_on_selector(
+        ".sidebar",
+        """element => {
+            const sidebarRect = element.getBoundingClientRect();
+            const hiddenItems = [...element.querySelectorAll(".nav-item")]
+                .filter(item => {
+                    const rect = item.getBoundingClientRect();
+                    return rect.top < sidebarRect.top || rect.bottom > sidebarRect.bottom;
+                })
+                .map(item => item.textContent.trim().replace(/\\s+/g, " "));
+            return {
+                clientHeight: element.clientHeight,
+                scrollHeight: element.scrollHeight,
+                navItemCount: element.querySelectorAll(".nav-item").length,
+                hiddenItems,
+            };
+        }""",
+    )
+    if sidebar_visibility["hiddenItems"]:
+        hidden = ", ".join(sidebar_visibility["hiddenItems"])
+        raise RuntimeError(f"Sidebar navigation remains clipped: {hidden}")
+
+    print(
+        f"  Full sidebar capture height: {target_height}px "
+        f"({sidebar_visibility['navItemCount']} navigation items visible)"
+    )
+    return target_height
 
 
 def capture_screenshot(browser, screenshot_config: dict) -> Path:
@@ -216,6 +416,12 @@ def capture_screenshot(browser, screenshot_config: dict) -> Path:
     # Navigate to the HTML file
     page.goto(f"file://{html_file.absolute()}")
 
+    capture_clip = dict(screenshot_config.get("clip", {}))
+    minimum_height = capture_clip.get("height", VIEWPORT_HEIGHT)
+    capture_height = fit_viewport_to_sidebar(page, minimum_height)
+    if capture_clip:
+        capture_clip["height"] = capture_height
+
     # Execute actions
     for action in screenshot_config["actions"]:
         if action["type"] == "wait":
@@ -232,8 +438,8 @@ def capture_screenshot(browser, screenshot_config: dict) -> Path:
     # Capture screenshot
     output_path = SAMPLE_REPORTS_DIR / f"{screenshot_config['name']}.png"
 
-    if "clip" in screenshot_config:
-        page.screenshot(path=output_path, clip=screenshot_config["clip"])
+    if capture_clip:
+        page.screenshot(path=output_path, clip=capture_clip)
     else:
         page.screenshot(path=output_path, full_page=False)
 
@@ -247,45 +453,84 @@ def capture_screenshot(browser, screenshot_config: dict) -> Path:
     return optimized_path
 
 
+def capture_all_screenshots(browser, screenshot_configs=None) -> list[Path]:
+    """Capture every configured screenshot and fail if any capture fails."""
+    configs = SCREENSHOTS if screenshot_configs is None else screenshot_configs
+    captured_files = []
+    failures = []
+
+    for screenshot_config in configs:
+        try:
+            output_path = capture_screenshot(browser, screenshot_config)
+            if output_path:
+                captured_files.append(output_path)
+        except Exception as error:
+            screenshot_name = screenshot_config.get("name", "unnamed")
+            print(f"  ERROR: Failed to capture screenshot '{screenshot_name}': {error}")
+            failures.append((screenshot_name, error))
+
+    if failures:
+        failed_names = ", ".join(name for name, _ in failures)
+        raise RuntimeError(
+            f"Failed to capture {len(failures)} screenshot(s): {failed_names}"
+        ) from failures[0][1]
+
+    return captured_files
+
+
 def main():
     """Main function to capture all screenshots."""
-    print("=" * 70)
-    print("AI/ML Security Assessment - Screenshot Capture Tool")
-    print("=" * 70)
+    unexpected_arguments = [
+        argument for argument in sys.argv[1:] if argument != "--check-dependencies"
+    ]
+    if unexpected_arguments:
+        print(f"ERROR: Unsupported argument(s): {' '.join(unexpected_arguments)}")
+        print("Supported option: --check-dependencies")
+        sys.exit(2)
 
-    # Check if sample reports exist
-    if not SAMPLE_REPORTS_DIR.exists():
-        print(f"\nERROR: Sample reports directory not found: {SAMPLE_REPORTS_DIR}")
-        sys.exit(1)
+    check_dependencies_only = "--check-dependencies" in sys.argv[1:]
+    bootstrap_screenshot_environment()
 
-    print(f"\n Sample reports directory: {SAMPLE_REPORTS_DIR}")
-    print(f" Viewport size: {VIEWPORT_WIDTH}x{VIEWPORT_HEIGHT}")
-    print(f" Target: {len(SCREENSHOTS)} screenshots")
-
-    # Anonymize account IDs in the source HTML reports before capturing so the
-    # screenshots (and the reports themselves) never expose real account IDs.
-    report_files = sorted({SAMPLE_REPORTS_DIR / cfg["file"] for cfg in SCREENSHOTS})
-    anonymize_account_ids(report_files)
+    from playwright.sync_api import sync_playwright
 
     try:
         with sync_playwright() as p:
-            # Launch browser
-            print("\n Launching Chromium browser...")
+            print("Verifying Playwright Chromium launch...")
             browser = p.chromium.launch(headless=True)
+            print(f"Verified Playwright Chromium: {p.chromium.executable_path}")
 
-            captured_files = []
+            if check_dependencies_only:
+                browser.close()
+                print("Screenshot environment is ready.")
+                return
 
-            # Capture each screenshot
-            for screenshot_config in SCREENSHOTS:
-                try:
-                    output_path = capture_screenshot(browser, screenshot_config)
-                    if output_path:
-                        captured_files.append(output_path)
-                except Exception as e:
-                    print(f"  ERROR: Failed to capture screenshot: {e}")
-                    continue
+            print("=" * 70)
+            print("AI/ML Security Assessment - Screenshot Capture Tool")
+            print("=" * 70)
 
-            browser.close()
+            # Check if sample reports exist
+            if not SAMPLE_REPORTS_DIR.exists():
+                print(
+                    f"\nERROR: Sample reports directory not found: {SAMPLE_REPORTS_DIR}"
+                )
+                browser.close()
+                sys.exit(1)
+
+            print(f"\n Sample reports directory: {SAMPLE_REPORTS_DIR}")
+            print(f" Viewport size: {VIEWPORT_WIDTH}x{VIEWPORT_HEIGHT}")
+            print(f" Target: {len(SCREENSHOTS)} screenshots")
+
+            # Anonymize account IDs only after the browser environment has been
+            # verified, so a bootstrap failure cannot modify report files.
+            report_files = sorted(
+                {SAMPLE_REPORTS_DIR / cfg["file"] for cfg in SCREENSHOTS}
+            )
+            anonymize_account_ids(report_files)
+
+            try:
+                captured_files = capture_all_screenshots(browser)
+            finally:
+                browser.close()
 
             # Summary
             print("\n" + "=" * 70)
@@ -306,14 +551,6 @@ def main():
             print("  2. Update README.md to reference these screenshots")
             print("  3. Commit the screenshots to the repository")
 
-    except ImportError as e:
-        print("\nERROR: Required library not installed")
-        print(f"   {e}")
-        print("\nPlease install required dependencies:")
-        print("   source .venv/bin/activate")
-        print("   pip install playwright pillow")
-        print("   playwright install chromium")
-        sys.exit(1)
     except Exception as e:
         print(f"\nERROR: Error: {e}")
         sys.exit(1)
