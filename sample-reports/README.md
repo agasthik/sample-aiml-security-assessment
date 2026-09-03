@@ -34,7 +34,7 @@ Screenshots used in the main README to showcase report features:
 | `findings-table.png` | Interactive findings table with filters |
 | `multi-account-summary.png` | Multi-account consolidated view |
 
-**Total size:** ~585 KB (optimized for web)
+**Total size:** ~685 KB (optimized for web)
 
 ### Developer Tools
 
@@ -57,10 +57,22 @@ If you modify the report template or want to update screenshots:
 
 ```bash
 # From repository root
-source .venv/bin/activate
-pip install -r sample-reports/dev-requirements.txt
-playwright install chromium
-python sample-reports/scripts/capture_screenshots.py
+./sample-reports/scripts/capture_screenshots.py
+```
+
+The script re-launches itself with the repository-root `.venv`, installs the
+dependencies from `sample-reports/dev-requirements.txt` when missing, and keeps
+the Playwright Chromium browser under `.venv/playwright-browsers`. The
+repository `.venv` must already exist and use Python 3.12.
+
+Screenshot height is calculated from the report sidebar at runtime, ensuring
+that every service, lens, governance framework, and compliance-standard
+navigation item is included.
+
+To prepare and verify the environment without changing reports or screenshots:
+
+```bash
+./sample-reports/scripts/capture_screenshots.py --check-dependencies
 ```
 
 See [Developer Guide](../docs/DEVELOPER_GUIDE.md#documentation-and-screenshots) for detailed instructions.
