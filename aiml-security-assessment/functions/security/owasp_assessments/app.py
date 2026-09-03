@@ -1,9 +1,10 @@
 """OWASP Top 10 for LLM assessment Lambda.
 
-This Lambda runs after the per-service Lambdas (Bedrock, SageMaker, AgentCore,
-Responsible AI GRC) have written their region CSVs. It:
+This Lambda runs after the source assessment Lambdas (Bedrock, SageMaker,
+AgentCore, Responsible AI GRC) have written their CSVs. AWS Agent Registry
+runs in the same workflow but is intentionally not an OWASP source. It:
 
-1. Reads those CSVs from S3.
+1. Reads Bedrock, SageMaker, AgentCore, and Responsible AI GRC source CSVs from S3.
 2. Applies OWASP_CHECK_MAPPINGS to emit OW-01..OW-10 rows derived from
    existing BR/SM/AC/FS findings.
 3. Runs two net-new checks for LLM07 (System Prompt Leakage):
@@ -119,7 +120,7 @@ ACCESS_DENIED_ERROR_CODES = {
 # validate them against its own interpretation of the OWASP LLM Top 10
 # 2025 controls before relying on them as evidence.
 #
-# Deliberate non-mappings among the checks added with the 194-check catalog:
+# Deliberate non-mappings among checks added in recent catalog expansions:
 # - BR-35 measures harmful-content IMAGE modality coverage, not image-borne
 #   prompt-injection protection or downstream output validation.
 # - BR-36 verifies governance tags; tags do not bound model consumption.
@@ -128,6 +129,9 @@ ACCESS_DENIED_ERROR_CODES = {
 # - AG-28..AG-32 are derived from BR/AC findings, not independent evidence.
 #   Mapping them would duplicate source evidence or bypass a deliberate
 #   source-level non-mapping.
+# - AR-01..AR-08 and their AG-33..AG-38 derivatives cover Agent Registry
+#   governance but do not directly establish an OWASP LLM01-LLM10 control, so
+#   the OWASP assessment deliberately does not read the Registry CSV.
 # ---------------------------------------------------------------------------
 OWASP_CHECK_MAPPINGS: Dict[str, List[Dict[str, str]]] = {
     # LLM01 Prompt Injection
@@ -930,7 +934,7 @@ def _list_all_items(
 # ---------------------------------------------------------------------------
 # CSV I/O — read the per-service region CSVs written by earlier Lambdas.
 #
-# Per-region-scoped services (Bedrock, SageMaker, AgentCore) write one CSV per
+# Per-region OWASP source services (Bedrock, SageMaker, AgentCore) write one CSV per
 # region as `<prefix>_<execution_id>_<region>.csv`. Responsible AI GRC is
 # different: it runs once (RegionIndex==0), emits its unscoped evidence with
 # Region=Global plus any explicit regional N/A rows, and writes a single un-suffixed

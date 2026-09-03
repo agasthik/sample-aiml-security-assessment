@@ -305,17 +305,31 @@ class TestOWASPMappings:
         }
         intentionally_unmapped = {
             "AC-17",
+            "AR-01",
+            "AR-02",
+            "AR-03",
+            "AR-04",
+            "AR-05",
+            "AR-06",
+            "AR-07",
+            "AR-08",
             "AG-28",
             "AG-29",
             "AG-30",
             "AG-31",
             "AG-32",
+            "AG-33",
+            "AG-34",
+            "AG-35",
+            "AG-36",
+            "AG-37",
+            "AG-38",
             "BR-35",
             "BR-36",
         }
         new_check_ids = set(expected_mappings) | intentionally_unmapped
 
-        assert len(new_check_ids) == 20
+        assert len(new_check_ids) == 34
         assert len(expected_mappings) == 12
         assert set(owasp_app.OWASP_CHECK_MAPPINGS) & new_check_ids == set(
             expected_mappings
@@ -774,6 +788,33 @@ class TestReadServiceCsvsForRegion:
                 include_finserv=False,
             )
         assert any(r.get("Check_ID") == "BR-23" for r in rows)
+
+    def test_agent_registry_csv_is_not_an_owasp_source(self):
+        exec_id = "exec-abc"
+        region = "eu-west-1"
+        registry_key = f"agent_registry_security_report_{exec_id}_{region}.csv"
+        client = self._fake_s3_client(
+            {
+                registry_key: self._csv(
+                    [{"Check_ID": "AR-01", "Region": region, "Status": "Failed"}]
+                )
+            }
+        )
+
+        with patch.object(owasp_app.boto3, "client", return_value=client):
+            rows, missing = owasp_app._read_service_csvs_for_region(
+                bucket_name="b",
+                execution_id=exec_id,
+                region=region,
+                return_missing=True,
+            )
+
+        requested_keys = [
+            call.kwargs["Key"] for call in client.get_object.call_args_list
+        ]
+        assert registry_key not in requested_keys
+        assert not any(row.get("Check_ID", "").startswith("AR-") for row in rows)
+        assert registry_key not in missing
 
     def test_missing_source_keys_can_be_reported(self):
         exec_id = "exec-abc"
