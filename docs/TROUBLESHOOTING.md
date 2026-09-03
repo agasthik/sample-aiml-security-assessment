@@ -538,7 +538,7 @@ You can automate regular assessments using Amazon EventBridge scheduled rules.
 
 **Q: What AWS regions are supported?**
 
-A: The framework is designed for standard AWS commercial regions where Amazon Bedrock, Amazon SageMaker AI, or Amazon Bedrock AgentCore are available. Leave `TargetRegions` empty for the deployment region, set it to `all` to resolve the union of assessed-service regions, or provide an explicit comma- or space-separated list. AWS GovCloud and AWS China regions may require template modifications.
+A: The framework is designed for standard AWS commercial regions where Amazon Bedrock, Amazon SageMaker AI, or Amazon Bedrock AgentCore are available. Leave `TargetRegions` empty for the deployment region, set it to `all` to resolve the union of the regions reported for those three services, or provide an explicit comma- or space-separated list. AWS Agent Registry then runs in every selected region. AWS GovCloud and AWS China regions may require template modifications.
 
 **Q: Does this work if I don't have any AI/ML resources deployed yet?**
 
@@ -583,9 +583,10 @@ A: Minimal ongoing costs:
 
 **Q: Can I customize which security checks are included?**
 
-A: Currently, all 92 core checks and 38 Agentic AI Security checks run by
-default to provide comprehensive coverage. If `EnableResponsibleAIGRCAssessment`
-is enabled, the 64 optional Responsible AI GRC checks also run. If
+A: Currently, all 94 core checks (40 Bedrock, 29 SageMaker AI, 17 AgentCore,
+and 8 AWS Agent Registry) and 38 Agentic AI Security checks run by default to
+provide comprehensive coverage. If `EnableResponsibleAIGRCAssessment` is
+enabled, the 64 optional Responsible AI GRC checks also run. If
 `EnableOWASPAssessment` is enabled, the 12 optional OWASP Top 10 for LLM checks
 run; Responsible AI GRC also runs as a hidden source dependency when OWASP
 needs `FS-*` mappings, but its UI rows and raw CSV are omitted from the

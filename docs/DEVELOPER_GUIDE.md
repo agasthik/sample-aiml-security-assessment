@@ -130,6 +130,7 @@ sample-aiml-security-assessment/
 │   │   ├── bedrock_assessments/      # Bedrock security checks (40)
 │   │   ├── sagemaker_assessments/    # SageMaker checks (29; SM-29 reserved)
 │   │   ├── agentcore_assessments/    # AgentCore security checks (17)
+│   │   ├── agent_registry_assessments/  # AWS Agent Registry checks (8)
 │   │   ├── responsible_ai_grc_assessments/  # Optional Responsible AI GRC checks (64)
 │   │   ├── owasp_assessments/        # Optional OWASP Top 10 for LLM checks (12)
 │   │   ├── responsible_ai_grc_tests/ # Responsible AI GRC-specific unit and coverage tests
@@ -171,7 +172,7 @@ sample-aiml-security-assessment/
 
 - **AWS SAM Application**: AI/ML security assessment stack
 - **AWS Step Functions**: Single workflow orchestrating all assessments
-- **AWS Lambda Functions**: One per core service (Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore), one Responsible AI GRC assessment Lambda invoked when Responsible AI GRC or OWASP needs FS-* source rows, one OWASP assessment Lambda invoked only when enabled, plus utilities
+- **AWS Lambda Functions**: One per core service (Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry), one Responsible AI GRC assessment Lambda invoked when Responsible AI GRC or OWASP needs FS-* source rows, one OWASP assessment Lambda invoked only when enabled, plus utilities
 - **Local Amazon S3 Bucket**: Storage for account-specific results
 
 ### Assessment Execution Workflow
@@ -222,6 +223,7 @@ sample-aiml-security-assessment/
               {"StartAt": "Bedrock Security Assessment", "States": {...}},
               {"StartAt": "Sagemaker Security Assessment", "States": {...}},
               {"StartAt": "AgentCore Security Assessment", "States": {...}},
+              {"StartAt": "AWS Agent Registry Security Assessment", "States": {...}},
               {
                 "StartAt": "Responsible AI GRC Enabled?",
                 "States": {
@@ -383,11 +385,23 @@ def lambda_handler(event, context):
     try:
         test_client = boto3.client("comprehend", config=boto3_config, region_name=region)
         test_client.list_endpoints(MaxResults=1)
-    except (EndpointConnectionError, Exception) as e:
-        if "Could not connect to the endpoint URL" in str(e):
-            # Service not available — return N/A finding
-            ...
-            return {"statusCode": 200, "body": {"message": f"Service not available in {region}"}}
+    except EndpointConnectionError:
+        # Service not available — create an Informational N/A finding, write
+        # the regional CSV artifact, then return its URL. Do not return early
+        # without an artifact: that makes the assessment area look empty.
+        return write_unavailable_report(
+            execution_id=event["Execution"]["Name"],
+            region=region,
+            detail=f"Comprehend is not available in {region}.",
+        )
+    except ClientError as error:
+        if is_region_unsupported(error):
+            return write_unavailable_report(
+                execution_id=event["Execution"]["Name"],
+                region=region,
+                detail=f"Comprehend is not available in {region}.",
+            )
+        raise
 
     # Get cached permissions
     execution_id = event["Execution"]["Name"]
@@ -464,10 +478,11 @@ def create_finding(
     """Create standardized finding format
 
     Args:
-        check_id: Unique check identifier (for example, SM-01, BR-01, AC-01)
+        check_id: Unique check identifier (for example, BR-01, SM-01, AC-01, AR-01)
         finding_name: Name of the finding
         finding_details: Detailed description
-        resolution: Steps to resolve (empty string for N/A status)
+        resolution: Steps to resolve. N/A findings can still include an
+            explanatory "No action required" or permission-remediation message.
         reference: Documentation URL
         severity: SeverityEnum value
         status: StatusEnum value (Failed, Passed, or N/A)
@@ -541,6 +556,10 @@ Add the new service to the `Run Security Assessments` parallel branch inside the
         "States": {"AgentCore Security Assessment": {"Type": "Task", "Resource": "arn:aws:states:::lambda:invoke", "End": true}}
       },
       {
+        "StartAt": "AWS Agent Registry Security Assessment",
+        "States": {"AWS Agent Registry Security Assessment": {"Type": "Task", "Resource": "arn:aws:states:::lambda:invoke", "End": true}}
+      },
+      {
         "StartAt": "Comprehend Security Assessment",
         "States": {"Comprehend Security Assessment": {"Type": "Task", "Resource": "arn:aws:states:::lambda:invoke", "End": true}}
       }
@@ -582,6 +601,12 @@ Add required permissions to every role that may deploy or run the new service as
 
 Also add runtime permissions to the new Lambda role statements in both SAM templates if the new service function needs service-specific access at execution time.
 
+Before merging a new check, validate every new boto3 operation and its exact
+IAM action against the AWS Knowledge MCP documentation tools. Confirm the
+client (control-plane versus data-plane), IAM prefix, and any resource or
+condition-key constraints; add grants in all five policy locations in the
+same change.
+
 ### Step 5: Test Locally
 
 Test your new assessment function locally:
@@ -594,21 +619,21 @@ sam local invoke ComprehendSecurityAssessmentFunction --event testfile.json
 
 ## Adding a New Check Inside an Existing Service
 
-Most day-to-day contributions add or update individual security checks inside the existing assessment packages (Bedrock, SageMaker, or AgentCore) rather than creating an entire new service package.
+Most day-to-day contributions add or update individual security checks inside the existing assessment packages (Bedrock, SageMaker, AgentCore, or AWS Agent Registry) rather than creating an entire new service package.
 
-1. **Locate the target file**: Choose `bedrock_assessments/app.py`, `sagemaker_assessments/app.py`, or `agentcore_assessments/app.py`. New checks must follow the existing function structure and naming patterns inside that file.
+1. **Locate the target file**: Choose `bedrock_assessments/app.py`, `sagemaker_assessments/app.py`, `agentcore_assessments/app.py`, or `agent_registry_assessments/app.py`. New checks must follow the existing function structure and naming patterns inside that file.
 
 2. **Implement the check**: Write a function that returns a dict with a `"csv_data"` list of findings. Always pass `region=region` (or the loop variable) to every `create_finding()` call. Use the shared `schema.py` helpers where present.
 
 3. **Status and severity semantics** (critical):
-   - Access-denied, region-unavailable, or "service not present" paths must return `status="N/A"` and `severity="Informational"`.
+   - Access-denied, region-unavailable, or "service not present" paths must return `status="N/A"`. Unsupported regional APIs and features are `Informational`; follow the target package's severity convention for access-denied and other could-not-assess results (Responsible AI GRC uses `Low`).
    - Use the `is_region_unsupported()` and `describe_api_error()` helpers in `bedrock_assessments/app.py` (or equivalent patterns) instead of raw string matching.
    - Never emit a row with `status="Failed"` and `resolution="No action required"`.
    - For optional policy baselines (e.g., `REQUIRE_MARKETPLACE_ENDPOINT_CMK=false`), emit `N/A` + `Informational` when the hardening gap is observed; reserve `Passed` only for controls that were checked and satisfied.
 
 4. **Pagination and error isolation**: Use `get_paginator()` or the `_agentcore_list_all` pattern for list APIs. Wrap per-resource detail calls in individual try/except blocks so one throttle or delete-race does not abort the whole check.
 
-5. **Synthesized mappings** (if applicable): If the new check should also appear under the Agentic AI lens (AG- prefix) or an OWASP category, update the corresponding mapping dictionary. Values in `OWASP_CHECK_MAPPINGS` are lists because one source check can emit multiple OW- rows. Allocate new AG numbers by hand across both mapping files and native checks to avoid collisions (current catalog ends at AG-38).
+5. **Synthesized mappings** (if applicable): If the new check should also appear under the Agentic AI lens (AG- prefix) or an OWASP category, update the corresponding mapping dictionary. Values in `OWASP_CHECK_MAPPINGS` are lists because one source check can emit multiple OW- rows. Allocate new AG numbers by hand across the Bedrock, AgentCore, and Agent Registry mapping files and native checks to avoid collisions (current catalog ends at AG-38).
 
 6. **Add tests**: Every new check requires at least four cases: compliant (Passed), non-compliant (Failed), no-resource (N/A), and access-denied / API-unavailable. Shared inventory checks also need list-error and per-resource detail-error tests. See `tests/test_bedrock_checks.py` and `tests/test_sagemaker_checks.py` for patterns.
 
@@ -616,7 +641,7 @@ Most day-to-day contributions add or update individual security checks inside th
 
 8. **Run the gates before committing**:
    - `ruff check` and `ruff format --check` only on the changed `.py` files (match CI scope).
-   - The four separate pytest sessions (`tests/`, `responsible_ai_grc_tests/`, `test_consolidate_responsible_ai_grc.py`, and the report-pipeline session).
+   - The three required pytest sessions: `tests/` (which includes `test_consolidate_responsible_ai_grc.py`), `responsible_ai_grc_tests/`, and the report-pipeline session.
    - `cfn-lint` on any edited templates.
    - Full review checklist in [AGENTS.md](../AGENTS.md) (API names, IAM in all 5 locations, status semantics, mapping drift, CSV schema, etc.).
 
@@ -630,16 +655,16 @@ Most day-to-day contributions add or update individual security checks inside th
 - **Handle Exceptions**: Implement proper error handling and logging
 - **Follow Least Privilege**: Only request necessary permissions
 - **Standardize Findings**: Use the `create_finding()` function for consistent output
-- **Check ID Convention**: Use service prefixes for check IDs (BR-XX for Amazon Bedrock, SM-XX for Amazon SageMaker AI, AC-XX for Amazon Bedrock AgentCore, AG-XX for Agentic AI Security, FS-XX for Responsible AI GRC checks)
+- **Check ID Convention**: Use service prefixes for check IDs (BR-XX for Amazon Bedrock, SM-XX for Amazon SageMaker AI, AC-XX for Amazon Bedrock AgentCore, AR-XX for AWS Agent Registry, AG-XX for Agentic AI Security, FS-XX for Responsible AI GRC checks)
 - **Status Semantics**: Use correct status values:
   - `Passed`: Resources were checked and met the assessed best practice
   - `Failed`: Resources were checked and found non-compliant
-  - `N/A`: The check is not applicable, requires manual review, targets an unavailable API or region, or could not determine a result
+  - `N/A`: The check is not applicable, requires manual review, targets an unavailable API or region, or could not determine a result. Use the target package's severity convention: advisory and unavailable-feature results are Informational, while Responsible AI GRC could-not-assess results are Low.
 - **Severity Values**: Use appropriate severity levels:
   - `High`: Critical security issues requiring immediate attention
   - `Medium`: Important security improvements recommended
   - `Low`: Minor optimizations suggested
-  - `Informational`: Advisory information or an N/A disposition
+  - `Informational`: Advisory information, no-resource results, or unavailable-feature N/A dispositions
 
 ### 2. Performance Optimization
 
@@ -796,14 +821,15 @@ To update report styling, layout, or features:
 
 ## Extending or Adding Lenses
 
-The Agentic AI Security lens (AG-01 through AG-38) is **synthesized at runtime**, not produced by a separate scanner. It re-uses findings from the core Bedrock, SageMaker, AgentCore, and Agent Registry assessments plus a small number of native gateway checks.
+The Agentic AI Security lens (AG-01 through AG-38) is **synthesized at runtime**, not produced by a separate scanner. It re-uses findings from the core Bedrock, AgentCore, and AWS Agent Registry assessments plus a small number of native gateway checks.
 
-- Mapping dictionaries live in two places:
+- Mapping dictionaries live in three places:
   - `bedrock_assessments/app.py` → `AGENTIC_BEDROCK_CHECK_MAPPINGS`
   - `agentcore_assessments/app.py` → `AGENTIC_AGENTCORE_CHECK_MAPPINGS`
-- Native checks (currently AG-24 through AG-27) are implemented directly inside the AgentCore assessment package because they require the `bedrock-agentcore` control-plane client.
-- When adding new AG checks, manually allocate numbers to avoid collisions across both mapping dictionaries and the native checks. The current high-water mark for the catalog is AG-38.
-- The HTML report reconstructs the lens via the AG- prefix and the `COMPLIANCE_STANDARDS` list in `report_template.py` (same mechanism used for OWASP and future standards).
+  - `agent_registry_assessments/app.py` → `AGENTIC_AGENT_REGISTRY_CHECK_MAPPINGS`
+- Native checks (currently AG-24 through AG-27) are implemented directly inside the AgentCore assessment package because they require the `bedrock-agentcore-control` client.
+- When adding new AG checks, manually allocate numbers to avoid collisions across all three mapping dictionaries and the native checks. The current high-water mark for the catalog is AG-38.
+- The HTML report routes the lens through the `AG-` prefix as its dedicated Agentic AI assessment area. `COMPLIANCE_STANDARDS` is the separate registry for OWASP and future compliance standards.
 - Follow the same seven-site wiring checklist as a new compliance standard (CloudFormation parameters are not required for the always-on Agentic lens, but any new native checks still need IAM grants in all five policy locations).
 - Update `docs/SECURITY_CHECKS.md` and run the full mapping-drift, test-coverage, and gate checklist before merging.
 - **Generate and verify the HTML report** (mandatory before opening a PR): Follow the Report Verification steps in the [Testing Your Extensions](#4-report-verification-required-before-opening-a-pr) section. Confirm AG-* findings appear under the correct lens section, with proper severity and routing.
@@ -1054,7 +1080,7 @@ GitHub Actions workflows run automatically to validate code quality and security
 | **Python Code Quality** | `.github/workflows/python-lint.yml` | `ruff check` (lint) and `ruff format --check` (formatting) on changed `.py` files |
 | **Python Tests** | `.github/workflows/python-tests.yml` | Runs upstream tests, Responsible AI GRC tests, and report-pipeline tests in separate pytest sessions |
 | **CloudFormation Lint** | `.github/workflows/cfn-lint.yml` | Validates deployment and SAM templates with `cfn-lint` |
-| **SAM Validate & Build** | `.github/workflows/sam-validate.yml` | Runs `sam validate --lint` and `sam build` on SAM templates |
+| **SAM Validate & Build** | `.github/workflows/sam-validate.yml` | Runs `sam validate --lint` on both SAM templates and `sam build` on the single-account template |
 | **ASH Security Scan** | `.github/workflows/ash-security-scan.yml` | Scans changed files for secrets, dependency vulnerabilities, and IaC misconfigurations |
 
 Additional workflows run post-merge or on schedule:
@@ -1073,6 +1099,7 @@ Before pushing, run these checks locally to catch issues early:
 ```bash
 # Bootstrap or refresh the repository-local virtual environment
 .venv/bin/pip install -r tests/requirements.txt \
+  -r aiml-security-assessment/functions/security/agent_registry_assessments/requirements.txt \
   -r aiml-security-assessment/functions/security/agentcore_assessments/requirements.txt \
   -r aiml-security-assessment/functions/security/bedrock_assessments/requirements.txt \
   -r aiml-security-assessment/functions/security/cleanup_bucket/requirements.txt \
@@ -1089,8 +1116,8 @@ changed_py=$(git diff --name-only --diff-filter=ACMR origin/main...HEAD -- '*.py
 .venv/bin/ruff check $changed_py
 .venv/bin/ruff format --check $changed_py
 
-# Unit tests. Run these as separate pytest sessions because multiple
-# assessment packages use top-level app.py imports.
+# Unit tests. tests/ is one session; the Responsible AI GRC and report-pipeline
+# suites need their own sessions because they live outside tests/.
 export AIML_ASSESSMENT_BUCKET_NAME=test-assessment-bucket
 export AWS_DEFAULT_REGION=us-east-1
 export AWS_ACCESS_KEY_ID=testing
@@ -1098,7 +1125,6 @@ export AWS_SECRET_ACCESS_KEY=testing
 
 .venv/bin/python -m pytest tests/ -v --tb=short
 .venv/bin/python -m pytest aiml-security-assessment/functions/security/responsible_ai_grc_tests/ -v --tb=short
-.venv/bin/python -m pytest tests/test_consolidate_responsible_ai_grc.py -v --tb=short
 
 (cd aiml-security-assessment/functions/security/generate_consolidated_report \
   && ../../../../.venv/bin/python -m pytest test_generate_report.py -v --tb=short)

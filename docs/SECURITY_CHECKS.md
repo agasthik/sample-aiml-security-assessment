@@ -97,7 +97,6 @@ investigation and remediation.
 | **Medium** | Important security improvements that strengthen your security posture | Address in next maintenance window |
 | **Low** | Minor optimizations and best practice recommendations | Address when convenient |
 | **Informational** | Advisory information about your configuration | No action required |
-| **N/A** | Check not applicable (no resources to assess) | No action required |
 
 ---
 
@@ -107,7 +106,7 @@ investigation and remediation.
 | -------- | ------------- |
 | **Failed** | Security issue identified that requires remediation |
 | **Passed** | Checked resources met the assessed best practice at time of scan |
-| **N/A** | No resources exist to check (for example, no notebooks, no guardrails configured) |
+| **N/A** | The check was not applicable, advisory-only, unavailable in the region, or could not be assessed (for example, because no resources exist or access was denied). |
 
 ---
 
@@ -648,8 +647,8 @@ error-specific remediation rather than to a failure.
 Agentic AI Security checks use the `AG-XX` namespace and are included with the
 default assessment. They follow a hybrid model:
 
-- Reused API-backed controls from Amazon Bedrock and Amazon Bedrock AgentCore
-  are mapped into agentic security domains.
+- Reused API-backed controls from Amazon Bedrock, Amazon Bedrock AgentCore,
+  and AWS Agent Registry are mapped into agentic security domains.
 - New checks are added only where AWS APIs can prove the control state.
 - Controls that cannot be proven by AWS APIs are not scored. Human-in-the-loop
   governance is therefore documented as a methodology note, not emitted as an
