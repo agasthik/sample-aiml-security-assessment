@@ -8,6 +8,8 @@ ignore_checks:
   # W3037: IAM action not recognized. As of the last review the ONLY actions
   # this suppresses are valid-but-newer ones cfn-lint's DB does not yet list:
   #   - bedrock-agentcore:*  (Amazon Bedrock AgentCore control plane)
+  #   - agent-registry:*     (AWS Agent Registry; boto3 client is
+  #                           agent-registry-control, IAM prefix is not)
   #   - s3:GetBucketEncryption, s3:HeadBucket
   # All Amazon Bedrock Knowledge Base / Data Source / Flow actions use the
   # `bedrock:` IAM prefix (there is no `bedrock-agent:` IAM namespace — that is
