@@ -1,15 +1,15 @@
-# AWS AI/ML Security Assessment for Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore
+# AWS AI/ML Security Assessment for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry
 
 *A serverless framework based assessment that scans your AWS accounts for AI/ML security misconfigurations and produces an interactive, shareable report.*
 
 [![License: MIT-0](https://img.shields.io/badge/License-MIT--0-yellow.svg)](https://opensource.org/licenses/MIT-0) [![Python 3.12](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/downloads/) [![AWS SAM](https://img.shields.io/badge/AWS-SAM-orange.svg)](https://aws.amazon.com/serverless/sam/)
 
-**Open-source automated security scanner for generative AI and machine learning workloads on AWS.** It brings together assessments for Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore. Core checks are guided by the [AWS Well-Architected Generative AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html). The optional **Responsible AI GRC** module adds technical checks for AI governance, risk, and compliance. Optional **OWASP Top 10 for LLM** checks extend coverage across common LLM security risks. Responsible AI GRC checks draw on the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf).
+**Open-source automated security scanner for generative AI and machine learning workloads on AWS.** It brings together separate assessments for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry. Core checks are guided by the [AWS Well-Architected Generative AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html). The optional **Responsible AI GRC** module adds technical checks for AI governance, risk, and compliance. Optional **OWASP Top 10 for LLM** checks extend coverage across common LLM security risks. Responsible AI GRC checks draw on the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf).
 
-Run **[194 checks](docs/SECURITY_CHECKS.md)** across AWS accounts and regions:
+Run **[208 checks](docs/SECURITY_CHECKS.md)** across AWS accounts and regions:
 
-- **86 always-on core checks** for Amazon Bedrock, Amazon SageMaker AI, and Amazon Bedrock AgentCore
-- **32 always-on Agentic AI Security checks**, synthesized from service findings and native AgentCore gateway checks
+- **94 always-on core checks** for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry
+- **38 always-on Agentic AI Security checks**, synthesized from service findings and native AgentCore gateway checks
 - **64 optional Responsible AI GRC checks** for selected technical controls informed by AWS governance, risk, and compliance guidance
 - **12 optional OWASP Top 10 for LLM checks**, including mapping-based coverage and native system-prompt-leakage checks
 
@@ -48,8 +48,8 @@ The framework generates professional, interactive security assessment reports wi
 
 - **Executive Summary** with severity counts and service breakdown
 - **Priority Recommendations** highlighting critical issues requiring immediate attention
-- **[194 Security Checks](docs/SECURITY_CHECKS.md)** across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, Agentic AI Security, Responsible AI GRC, and OWASP Top 10 for LLM
-- **Multi-Region Support** for core Bedrock, SageMaker, and AgentCore checks, with per-region risk breakdown
+- **[208 Security Checks](docs/SECURITY_CHECKS.md)** across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, AWS Agent Registry, Agentic AI Security, Responsible AI GRC, and OWASP Top 10 for LLM
+- **Multi-Region Support** for core Bedrock, SageMaker, AgentCore, and AWS Agent Registry checks, with per-region risk breakdown
 - **Interactive Filtering** by account, region, service, severity, and status
 - **Light/Dark Mode Toggle** with persistent user preference
 - **Text Search** across all findings with real-time results
@@ -69,6 +69,7 @@ The framework generates professional, interactive security assessment reports wi
 - [Prerequisites](#prerequisites)
 - [Single-Account Deployment](#single-account-deployment)
 - [Multi-Account Deployment](#multi-account-deployment)
+- [Upgrading an Existing Deployment](#upgrading-an-existing-deployment)
 - [How It Works](#how-it-works)
 - [Permissions Required](#permissions-required)
 - [Viewing Results](#viewing-results)
@@ -85,14 +86,14 @@ The framework generates professional, interactive security assessment reports wi
 
 This serverless assessment framework automatically evaluates your AI/ML workloads against AWS security best practices. It uses AWS serverless services to gather data from the control plane and generate reports containing the status of various security checks, severity levels, and recommended actions.
 
-Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), [Amazon Bedrock AgentCore](https://aws.github.io/bedrock-agentcore-starter-toolkit/), [Amazon SageMaker AI](https://aws.amazon.com/sagemaker/ai/), or the optional Responsible AI GRC assessment.
+Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), [Amazon Bedrock AgentCore](https://aws.github.io/bedrock-agentcore-starter-toolkit/), AWS Agent Registry, [Amazon SageMaker AI](https://aws.amazon.com/sagemaker/ai/), or the optional Responsible AI GRC assessment.
 
 ### Why Use This Framework?
 
 | Challenge | How This Framework Helps |
 | --- | --- |
 | **Manual security audits are time-consuming** | Fully automated scanning with one-click CloudFormation deployment |
-| **Inconsistent security checks across teams** | Standardized 194-check assessment based on AWS Well-Architected Generative AI Lens and Agentic AI Lens best practices, AWS Responsible AI governance/risk/compliance guidance for financial services, and OWASP Top 10 for LLM |
+| **Inconsistent security checks across teams** | Standardized 208-check assessment based on AWS Well-Architected Generative AI Lens and Agentic AI Lens best practices, AWS Responsible AI governance/risk/compliance guidance, and OWASP Top 10 for LLM |
 | **Difficulty tracking AI/ML security posture** | Interactive HTML dashboards with severity breakdown and per-account visibility |
 | **Multi-account complexity** | Consolidated reporting across AWS Organizations with cross-account role assumption |
 | **Compliance and audit support** | Exportable reports to supplement your compliance program, with remediation guidance linked to AWS documentation |
@@ -102,10 +103,11 @@ Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), 
 
 - **[Amazon Bedrock](docs/SECURITY_CHECKS.md#amazon-bedrock-security-checks-40)** (40 always-on core checks) - Covers guardrails, prompt-attack and image filtering, cross-account policies, data retention, inference profiles, automated reasoning and Marketplace endpoint encryption/networking, Amazon VPC endpoints, IAM permissions, agent guardrails and least privilege, logging, monitoring, evaluation, quotas, and Lambda code scanning.
 - **[Amazon SageMaker AI](docs/SECURITY_CHECKS.md#amazon-sagemaker-ai-security-checks-29)** (29 always-on core checks) - Covers AWS Security Hub controls, internet and VPC exposure, encryption, isolation, GuardDuty AI Protection, HyperPod, Model Registry resource policies, MLOps, monitoring, approval, drift detection, deployment patterns, and lineage tracking. `SM-29` remains reserved for a deferred Unified Studio networking check; `SM-30` is implemented.
-- **[Amazon Bedrock AgentCore](docs/SECURITY_CHECKS.md#amazon-bedrock-agentcore-security-checks-17)** (17 always-on core checks) - Covers runtime, Code Interpreter, and browser VPC isolation; Identity token-vault encryption; browser recording; memory, policy-engine, and gateway encryption; observability; VPC endpoints; policies; and online evaluation.
-- **[Agentic AI Security](docs/SECURITY_CHECKS.md#agentic-ai-security-checks-32)** (32 always-on checks) - Covers bounded autonomy, agent identity and access, tool authorization, guardrail enforcement, prompt/input protection, memory privacy, auditability and continuous assurance, and abuse/cost protection. Maps selected Amazon Bedrock and Amazon Bedrock AgentCore findings into the [AWS Well-Architected Agentic AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html) view and adds native AgentCore gateway checks.
+- **[Amazon Bedrock AgentCore](docs/SECURITY_CHECKS.md#amazon-bedrock-agentcore-security-checks-17)** (17 always-on core checks) - Covers runtime, Code Interpreter, and browser VPC isolation; Identity token-vault encryption; browser recording; memory, policy-engine, gateway encryption; observability; VPC endpoints; policies; and online evaluation.
+- **[AWS Agent Registry](docs/SECURITY_CHECKS.md#aws-agent-registry-security-checks-8)** (8 always-on core checks) - Covers Registry IAM access, publication approval, discovery authorization, encryption, organization auto-detection, record lifecycle, and provenance.
+- **[Agentic AI Security](docs/SECURITY_CHECKS.md#agentic-ai-security-checks-38)** (38 always-on checks) - Covers bounded autonomy, agent identity and access, tool authorization, Registry governance and provenance, guardrail enforcement, prompt/input protection, memory privacy, auditability and continuous assurance, and abuse/cost protection. Maps selected Amazon Bedrock, Amazon Bedrock AgentCore, and AWS Agent Registry findings into the [AWS Well-Architected Agentic AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html) view and adds native AgentCore gateway checks.
 - **[Responsible AI GRC](docs/SECURITY_CHECKS.md#responsible-ai-grc-checks-64-additional-5-upstream-extensions)** (64 opt-in checks) - Covers unbounded consumption, excessive agency, supply chain, training data poisoning, vector weaknesses, non-compliant output, misinformation, harmful or biased output, PII disclosure, hallucination, prompt injection, improper output handling, off-topic output, and out-of-date training data. Enable with `EnableResponsibleAIGRCAssessment`; checks are derived from the [AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf).
-- **[OWASP Top 10 for LLM](docs/SECURITY_CHECKS.md#owasp-top-10-for-llm-checks-12)** (12 opt-in checks) - Covers LLM01 through LLM10 by mapping existing Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and Responsible AI GRC findings, plus two native LLM07 checks for system prompt leakage. Enable with `EnableOWASPAssessment`; results align to the [OWASP Top 10 for LLM 2025](https://genai.owasp.org/llm-top-10/) and render in the "By Compliance Standard" report section. When needed, this also runs Responsible AI GRC as a hidden source dependency.
+- **[OWASP Top 10 for LLM](docs/SECURITY_CHECKS.md#owasp-top-10-for-llm-checks-12)** (12 opt-in checks) - Covers LLM01 through LLM10 by mapping existing Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and Responsible AI GRC findings, plus two native LLM07 checks for system prompt leakage. AWS Agent Registry findings are intentionally excluded because the current Registry controls do not directly establish an OWASP LLM01–LLM10 control. Enable with `EnableOWASPAssessment`; results align to the [OWASP Top 10 for LLM 2025](https://genai.owasp.org/llm-top-10/) and render in the "By Compliance Standard" report section. When needed, this also runs Responsible AI GRC as a hidden source dependency.
 
 **Deployment Options:**
 
@@ -129,7 +131,7 @@ This tool operates within the [AWS Shared Responsibility Model](https://aws.amaz
 
 **No guarantee of security or compliance.** This framework identifies common misconfigurations based on AWS best practices and the AWS Well-Architected Framework. It does not cover all possible security risks, does not replace formal compliance audits (SOC 2, HIPAA, and similar), and does not guarantee that your workloads are secure. Use the results as one input into your broader security program.
 
-**194 checks across six areas.** The assessment covers Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, always-on Agentic AI Security, optional Responsible AI GRC checks, and optional OWASP Top 10 for LLM checks. Other AI/ML services (Amazon Comprehend, Amazon Rekognition, Amazon Textract, and others) are not currently assessed.
+**208 checks across seven areas.** The assessment covers Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, AWS Agent Registry, always-on Agentic AI Security, optional Responsible AI GRC checks, and optional OWASP Top 10 for LLM checks. Other AI/ML services (Amazon Comprehend, Amazon Rekognition, Amazon Textract, and others) are not currently assessed.
 
 ---
 
@@ -195,6 +197,106 @@ Deploy [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yam
 
 ---
 
+## Upgrading an Existing Deployment
+
+The required upgrade steps depend on which files changed. For a code-only fix,
+running the existing CodeBuild project is normally sufficient. The top-level
+CloudFormation templates and multi-account member-role StackSet only need to be
+updated when the corresponding templates changed.
+
+| Files changed in the target release | Required action |
+| --- | --- |
+| `aiml-security-assessment/functions/**`, `aiml-security-assessment/statemachine/**`, either AWS SAM `template*.yaml`, Lambda `requirements.txt`, `buildspec.yml`, or `consolidate_html_reports.py` | Run CodeBuild so it builds and updates the AWS SAM assessment stack |
+| `deployment/aiml-security-single-account.yaml` | Update the single-account infrastructure stack |
+| `deployment/1-aiml-security-member-roles.yaml` | Update every targeted multi-account member-role StackSet instance before running CodeBuild |
+| `deployment/2-aiml-security-codebuild.yaml` | Update the multi-account central infrastructure stack |
+| Only documentation, tests, examples, or GitHub workflow files | No deployed-resource update is required |
+
+Use the templates and source from the same release. `GitHubBranch` accepts a
+branch, tag, or commit; an immutable release tag or commit is recommended for
+reproducible deployments.
+
+### Determine what changed
+
+Check [CHANGELOG.md](CHANGELOG.md) first. Its `Unreleased` or target-version
+`Deployment impact` section identifies the required actions. If the changelog
+does not cover the exact revisions being compared, infer the actions directly
+from the repository by comparing the commit used by the last successful build
+with the target revision:
+
+```bash
+git diff --name-only <deployed-commit>..<target-tag-or-commit> -- \
+  deployment/ \
+  aiml-security-assessment/ \
+  buildspec.yml \
+  consolidate_html_reports.py
+```
+
+For a branch such as `main`, use the resolved source commit shown by the last
+successful CodeBuild execution—not merely the branch name—as
+`<deployed-commit>`.
+
+If the deployment is pinned to a tag or commit, update the infrastructure
+stack's `GitHubBranch` parameter before starting CodeBuild. When its
+CloudFormation template did not change, this can be a parameter-only update
+using the current template. A deployment tracking a moving branch such as
+`main` can pull the latest code by starting CodeBuild without a stack update.
+
+### Single-account upgrade
+
+1. If [aiml-security-single-account.yaml](deployment/aiml-security-single-account.yaml)
+   changed, update the existing infrastructure stack by replacing its template
+   with the target release's version. Do not create a second stack.
+2. If the source is pinned, update `GitHubRepoUrl` or `GitHubBranch` as needed.
+   If the infrastructure template did not change, use the current template and
+   change only these parameters.
+3. Preserve all other parameter values unless intentionally changing the
+   assessment configuration.
+4. For a template update, review the change set, including IAM changes,
+   acknowledge `CAPABILITY_NAMED_IAM`, and wait for `UPDATE_COMPLETE`.
+5. If deployable assessment code changed, manually start CodeBuild and confirm
+   that it updates the existing `aiml-sec-{account_id}` AWS SAM stack.
+
+### Multi-account upgrade
+
+Perform only the applicable steps, in this order:
+
+1. If [1-aiml-security-member-roles.yaml](deployment/1-aiml-security-member-roles.yaml)
+   changed, update the existing CloudFormation StackSet with the target
+   release's template. Preserve `ManagementAccountID`, deployment targets,
+   regions, and other settings. Wait until every targeted StackSet instance
+   reports success.
+2. If [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yaml)
+   changed, update the existing central infrastructure stack by replacing its
+   template with the target release's version.
+3. If the source is pinned, update `GitHubRepoUrl` or `GitHubBranch` as needed.
+   If the central template did not change, use the current template and change
+   only these parameters.
+4. Preserve all other parameter values unless deliberately changing the
+   deployment. For a template update, review IAM changes, acknowledge
+   `CAPABILITY_NAMED_IAM`, and wait for `UPDATE_COMPLETE`.
+5. If deployable assessment code changed, manually start CodeBuild and confirm
+   that it updates the existing per-account AWS SAM stacks.
+
+When the member-role template changed, it must be updated before CodeBuild runs
+so new assessment APIs have the required cross-account permissions.
+
+The custom resource in the infrastructure templates starts CodeBuild only when
+the infrastructure stack is initially created. It does not start a new build
+for stack updates, so manually start CodeBuild whenever deployable assessment
+code needs to be applied.
+
+Users who deployed the AWS SAM templates directly, without the top-level
+CloudFormation templates, must build and deploy the new release's
+`aiml-security-assessment/template.yaml` or
+`aiml-security-assessment/template-multi-account.yaml` to the existing stack
+name while preserving its parameter values.
+
+For verification and additional detail, see
+[Upgrading to a New Release](docs/TROUBLESHOOTING.md#upgrading-to-a-new-release).
+
+---
+
 ## Optional Security Policy Baselines
 
 The deployment templates expose organization-specific baselines for checks that
@@ -207,6 +309,8 @@ enforced by default.
 | `RequireBedrockZeroDataRetention` | `false` | BR-37 | When `true`, the Bedrock account retention modes `default` and `inherit` fail the explicit zero-data-retention baseline. `provider_data_share` fails regardless of this setting. |
 | `RequireMarketplaceEndpointCMK` | `true` | BR-40 | When `true`, a Bedrock Marketplace model endpoint without a customer-managed KMS key fails. BR-40 uses `kms:DescribeKey` and requires `KeyManager=CUSTOMER`; AWS-managed keys do not pass. When `false`, a missing or AWS-managed key is reported as an informational `N/A` hardening advisory. |
 | `RequireAgentCoreOnlineEvaluation` | `false` | AC-17 | When `true`, missing or incomplete active AgentCore online evaluation coverage fails. When `false`, absent coverage is informational. |
+| `RequireAgentRegistryManualApproval` | `false` | AR-03 | When `true`, Agent Registry instances configured to approve all submitted records fail. When `false`, automatic approval is reported as an informational governance advisory. |
+| `RequireAgentRegistryCMK` | `false` | AR-05 | When `true`, registries using the default AWS owned encryption key fail. When `false`, AWS owned key encryption is reported as an informational hardening advisory; registries with a customer-managed KMS key pass. |
 | `AgentCoreTokenVaultId` | `default` | AC-14 | Selects the regional AgentCore Identity token vault whose customer-managed KMS encryption is assessed. |
 | `ApprovedExternalAccountIds` | Empty | SM-30 | Comma-separated 12-digit AWS account IDs approved to receive SageMaker Model Registry access. Accounts outside the configured boundary fail. |
 | `ApprovedOrganizationIds` | Empty | SM-30 | Comma-separated AWS Organizations IDs approved to receive SageMaker Model Registry access. Organizations outside the configured boundary fail. |
@@ -271,7 +375,10 @@ informational N/A finding.
 
 The HTML report includes a Region column, filter dropdown, and "Risk by Region / Scope" summary.
 
-> **Upgrading an existing deployment?** See [Troubleshooting](docs/TROUBLESHOOTING.md#12-upgrading-an-existing-deployment-to-multi-region) — it's a simple stack parameter update with no teardown.
+> **Changing an existing deployment to multi-region?** See
+> [Troubleshooting](docs/TROUBLESHOOTING.md#12-upgrading-an-existing-deployment-to-multi-region).
+> This is a parameter-only change. For a new software release, follow the full
+> [upgrade procedure](#upgrading-an-existing-deployment).
 
 ---
 
@@ -279,7 +386,7 @@ The HTML report includes a Region column, filter dropdown, and "Risk by Region /
 
 1. **Deploy** — CloudFormation creates CodeBuild, S3, IAM roles, and a Lambda trigger
 2. **CodeBuild runs** — builds and deploys the SAM assessment stack (per account in multi-account mode)
-3. **Step Functions execute** — orchestrates: S3 cleanup → IAM permission caching → resolve regions → Map state fans out across regions. Within each region, Bedrock, SageMaker, and AgentCore run in parallel; Responsible AI GRC runs once from the first region when either Responsible AI GRC or OWASP requires its source rows; OWASP then runs per region when enabled → generate consolidated report
+3. **Step Functions execute** — orchestrates: S3 cleanup → IAM permission caching → resolve regions → Map state fans out across regions. Within each region, Bedrock, SageMaker, AgentCore, and AWS Agent Registry run in parallel; Responsible AI GRC runs once from the first region when either Responsible AI GRC or OWASP requires its source rows; OWASP then runs per region when enabled → generate consolidated report
 4. **Results** — HTML and CSV reports are stored in your S3 bucket
 
 ### Optional: Responsible AI GRC Checks (`EnableResponsibleAIGRCAssessment`)
@@ -313,8 +420,9 @@ source rows rather than a customer-visible Responsible AI GRC section. A legacy
 The 12 OWASP Top 10 for LLM (OW-XX) checks are **opt-in** and default to
 `false`. Set the `EnableOWASPAssessment` deployment parameter to `true` when
 you want the additional compliance-standard assessment. When enabled, the OWASP
-Lambda runs per region after the Bedrock/SageMaker/AgentCore/Responsible AI GRC Lambdas
-complete: it reads each service's per-region CSV, applies mapping rules to emit
+Lambda runs per region after the Bedrock/SageMaker/AgentCore/AWS Agent Registry/Responsible AI GRC Lambdas
+complete: it reads Bedrock, SageMaker, and AgentCore per-region CSVs plus the
+Responsible AI GRC execution-scoped CSV when needed, applies mapping rules to emit
 OW-01..OW-10 rows derived from existing findings, and runs two net-new checks
 for LLM07 (System Prompt Leakage). Findings appear in a new **"By Compliance
 Standard"** sidebar section of the HTML report. When left `false`, no OWASP
@@ -339,7 +447,7 @@ The "By Compliance Standard" section is **extensible**: adding NIST AI RMF (`Ena
 
 #### Scope and limitations
 
-- **Responsible AI GRC Region scope.** Core Bedrock, SageMaker, and AgentCore checks run per target region. Responsible AI GRC runs once per account; evidence without explicit regional provenance is labeled `Global` rather than copied into every target region. Regions confirmed to have no relevant GenAI resources receive an explicit regional `FS-00`/`N/A` row.
+- **Responsible AI GRC Region scope.** Core Bedrock, SageMaker, AgentCore, and AWS Agent Registry checks run per target region. Responsible AI GRC runs once per account; evidence without explicit regional provenance is labeled `Global` rather than copied into every target region. Regions confirmed to have no relevant GenAI resources receive an explicit regional `FS-00`/`N/A` row.
 - **Heuristic and advisory checks.** Some controls cannot be verified through an API (application-layer controls, dataset contents, resource associations); these are reported as `ADVISORY`/`N/A` and require manual review. See [How finding severities are determined](#how-finding-severities-are-determined).
 - **Permissions.** A check that lacks an IAM permission is reported as `COULD NOT ASSESS` (not a failure). Re-deploy the member role after any IAM template change so newer actions take effect.
 
@@ -437,6 +545,7 @@ You can check the AWS CodeBuild console to confirm the assessment completed succ
   - `bedrock_security_report_{execution_id}_{region}.csv` - Amazon Bedrock security assessment results
   - `sagemaker_security_report_{execution_id}_{region}.csv` - Amazon SageMaker AI security assessment results
   - `agentcore_security_report_{execution_id}_{region}.csv` - Amazon Bedrock AgentCore security assessment results
+  - `agent_registry_security_report_{execution_id}_{region}.csv` - AWS Agent Registry security assessment results
   - `responsible_ai_grc_security_report_{execution_id}.csv` - Responsible AI
     GRC risk assessment results (64 FS-XX checks; present in the report bucket
     only when `EnableResponsibleAIGRCAssessment` is enabled)
@@ -495,7 +604,7 @@ The deployment uses multiple IAM roles with different trust and permission bound
 
 - **`CodeBuildRole` / `MultiAccountCodeBuildRole`**: orchestration roles used by the infrastructure stack to clone the repo, build SAM, deploy/update the assessment stack, and start Step Functions executions. These roles require infrastructure-management permissions such as CloudFormation, Lambda, IAM, Step Functions, and S3 actions.
 - **`AIMLSecurityMemberRole`**: role assumed in the target account during single-account and multi-account runs. In the multi-account flow this role is also **not read-only**. It needs both service-read permissions for the checks and deployment permissions so CodeBuild can create or update the per-account SAM assessment stack.
-- **SAM-created Lambda execution roles**: runtime roles for the assessment functions. These are the closest thing to read-only assessment roles. They primarily use `List*`, `Describe*`, and `Get*` access against Bedrock, SageMaker, AgentCore, IAM analysis APIs, and supporting read APIs, plus S3 access to write reports and read the cached IAM permissions file.
+- **SAM-created Lambda execution roles**: runtime roles for the assessment functions. These are the closest thing to read-only assessment roles. They primarily use `List*`, `Describe*`, and `Get*` access against Bedrock, SageMaker, AgentCore, AWS Agent Registry (`agent-registry:ListRegistries`, `agent-registry:GetRegistry`, `agent-registry:ListRegistryRecords`), IAM analysis APIs, and supporting read APIs, plus S3 access to write reports and read the cached IAM permissions file.
 
 If you need to reduce scope, review the role policies in:
 
@@ -511,7 +620,8 @@ If you need to reduce scope, review the role policies in:
 
 | Document | Description |
 | --- | --- |
-| [Security Checks Reference](docs/SECURITY_CHECKS.md) | Complete reference for all 194 security checks with severity levels |
+| [Changelog](CHANGELOG.md) | User-facing changes and required deployment actions for unreleased work and tagged versions |
+| [Security Checks Reference](docs/SECURITY_CHECKS.md) | Complete reference for all 208 security checks with severity levels |
 | [OWASP Top 10 for LLM Checks](docs/SECURITY_CHECKS_OWASP.md) | Complete OW-01..12 reference: mapping-derived OWASP LLM01..LLM10 rows, native LLM07 checks, source dependencies, references, and status semantics |
 | [Responsible AI GRC Scope](docs/RESPONSIBLE_AI_GRC_SCOPE.md) | What Responsible AI GRC is and is not, its relationship to the AWS Well-Architected Responsible AI Lens, the per-bucket source catalog, check-count reconciliation, terminology, and the compatibility policy for preserved identifiers |
 | [Responsible AI GRC Checks](docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md) | Complete FS-01..69 reference: shared introduction, severity rubric, upstream-overlap table, compliance framework mapping, and all check definitions (Part 1 infrastructure controls, Part 2 guardrails & content safety, Part 3 app-layer controls & gaps) |
