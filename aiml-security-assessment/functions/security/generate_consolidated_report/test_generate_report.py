@@ -1,4 +1,5 @@
 import unittest
+import copy
 import os
 import sys
 import importlib.util
@@ -125,14 +126,139 @@ class TestHtmlReportGeneration(unittest.TestCase):
                         "Reference": "https://docs.aws.amazon.com/singlesignon/latest/userguide/what-is.html",
                         "Severity": "Informational",
                         "Status": "Passed",
-                    }
+                    },
+                    {
+                        "Account_ID": "123456789012",
+                        "Check_ID": "AR-03",
+                        "Finding": "Agent Registry Publication Approval Governance",
+                        "Finding_Details": "Registry 'production-agents' (reg-a1b2c3) automatically approves submitted records.",
+                        "Resolution": "Remove auto-approval rules so submitted records require manual review.",
+                        "Reference": "https://docs.aws.amazon.com/agent-registry-control/latest/APIReference/API_ApprovalConfiguration.html",
+                        "Severity": "Medium",
+                        "Status": "Failed",
+                    },
+                    {
+                        "Account_ID": "123456789012",
+                        "Check_ID": "AR-04",
+                        "Finding": "Agent Registry Discovery Authorization",
+                        "Finding_Details": "Registry 'production-agents' (reg-a1b2c3) uses a custom JWT authorizer without a caller constraint.",
+                        "Resolution": "Configure at least one allowed audience, client, scope, or custom claim.",
+                        "Reference": "https://docs.aws.amazon.com/agent-registry-control/latest/APIReference/API_CustomJWTAuthorizerConfiguration.html",
+                        "Severity": "High",
+                        "Status": "Failed",
+                    },
+                    {
+                        "Account_ID": "123456789012",
+                        "Check_ID": "AR-05",
+                        "Finding": "Agent Registry Customer-Managed KMS Encryption",
+                        "Finding_Details": "Registry 'production-agents' uses the default AWS owned key.",
+                        "Resolution": "Create a replacement registry with a customer-managed KMS key.",
+                        "Reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/registry-data-encryption.html",
+                        "Severity": "Medium",
+                        "Status": "Failed",
+                    },
+                    {
+                        "Account_ID": "123456789012",
+                        "Check_ID": "AR-06",
+                        "Finding": "Agent Registry Organization Auto-Detection",
+                        "Finding_Details": "Registry 'production-agents' has active organization-scoped auto-detection.",
+                        "Resolution": "No action required",
+                        "Reference": "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/registry-organizations.html",
+                        "Severity": "Medium",
+                        "Status": "Passed",
+                    },
+                    {
+                        "Account_ID": "123456789012",
+                        "Check_ID": "AR-07",
+                        "Finding": "Agent Registry Record Lifecycle Governance",
+                        "Finding_Details": "Registry record 'payment-agent' is in the governed APPROVED lifecycle state.",
+                        "Resolution": "No action required",
+                        "Reference": "https://docs.aws.amazon.com/agent-registry-control/latest/APIReference/API_SubmitRegistryRecordForApproval.html",
+                        "Severity": "Medium",
+                        "Status": "Passed",
+                    },
+                    {
+                        "Account_ID": "123456789012",
+                        "Check_ID": "AR-08",
+                        "Finding": "Agent Registry Record Provenance",
+                        "Finding_Details": "Auto-detected registry record 'payment-agent' does not include valid DETECTED_FROM provenance.",
+                        "Resolution": "Refresh or recreate the auto-detected record.",
+                        "Reference": "https://docs.aws.amazon.com/agent-registry-control/latest/APIReference/API_Provenance.html",
+                        "Severity": "Medium",
+                        "Status": "Failed",
+                    },
                 ]
             },
         }
 
     def test_generate_viewable_report(self):
         """Generate a viewable HTML report with test data"""
-        html_content = generate_html_report(self.test_assessment_results)
+        report_data = copy.deepcopy(self.test_assessment_results)
+        report_data["agentcore"]["agentcore_security_report"].extend(
+            [
+                {
+                    "Account_ID": "123456789012",
+                    "Check_ID": "AG-33",
+                    "Finding": "Agentic AI Registry Publication Approval Governance",
+                    "Finding_Details": "Registry publication does not require manual approval.",
+                    "Resolution": "Require manual review for registry publication.",
+                    "Reference": "https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html",
+                    "Severity": "Medium",
+                    "Status": "Failed",
+                },
+                {
+                    "Account_ID": "123456789012",
+                    "Check_ID": "AG-34",
+                    "Finding": "Agentic AI Registry Discovery Authorization",
+                    "Finding_Details": "Registry discovery authorization is not constrained to intended callers.",
+                    "Resolution": "Constrain registry discovery authorization.",
+                    "Reference": "https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html",
+                    "Severity": "High",
+                    "Status": "Failed",
+                },
+                {
+                    "Account_ID": "123456789012",
+                    "Check_ID": "AG-35",
+                    "Finding": "Agentic AI Registry Metadata Encryption",
+                    "Finding_Details": "Registry metadata uses the default AWS owned key.",
+                    "Resolution": "Create the registry with a customer-managed KMS key.",
+                    "Reference": "https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html",
+                    "Severity": "Medium",
+                    "Status": "Failed",
+                },
+                {
+                    "Account_ID": "123456789012",
+                    "Check_ID": "AG-36",
+                    "Finding": "Agentic AI Organization Discovery Coverage",
+                    "Finding_Details": "Organization-scoped registry auto-detection is active.",
+                    "Resolution": "No action required",
+                    "Reference": "https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html",
+                    "Severity": "Medium",
+                    "Status": "Passed",
+                },
+                {
+                    "Account_ID": "123456789012",
+                    "Check_ID": "AG-37",
+                    "Finding": "Agentic AI Registry Record Lifecycle Governance",
+                    "Finding_Details": "The registry record is in the governed APPROVED state.",
+                    "Resolution": "No action required",
+                    "Reference": "https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html",
+                    "Severity": "Medium",
+                    "Status": "Passed",
+                },
+                {
+                    "Account_ID": "123456789012",
+                    "Check_ID": "AG-38",
+                    "Finding": "Agentic AI Registry Record Provenance",
+                    "Finding_Details": "The auto-detected record is missing source lineage.",
+                    "Resolution": "Restore runtime or gateway provenance.",
+                    "Reference": "https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html",
+                    "Severity": "Medium",
+                    "Status": "Failed",
+                },
+            ]
+        )
+        html_content = generate_html_report(report_data)
 
         # Save the HTML content to a file
         report_path = os.path.join(self.test_dir, "security_report.html")
@@ -162,6 +288,17 @@ class TestHtmlReportGeneration(unittest.TestCase):
 
             # AgentCore findings
             self.assertIn("AgentCore IAM Identity Center Check", content)
+            self.assertIn("Agent Registry Publication Approval Governance", content)
+            self.assertIn("Agent Registry Discovery Authorization", content)
+            self.assertIn('<div class="metric-label">AWS Agent Registry</div>', content)
+            self.assertIn(
+                '<span style="font-size: 13px; font-weight: 500;">AWS Agent Registry</span>',
+                content,
+            )
+            self.assertIn(
+                "Agentic AI Registry Publication Approval Governance", content
+            )
+            self.assertIn("Agentic AI Registry Discovery Authorization", content)
 
             # Severity levels
             self.assertIn("High", content)
@@ -182,6 +319,14 @@ class TestHtmlReportGeneration(unittest.TestCase):
             self.assertIn("Lens / Compliance Rows", content)
             self.assertIn('<option value="failed" selected>Failed</option>', content)
             self.assertIn('class="single-account-report"', content)
+            self.assertIn(
+                ".main { padding: 32px 40px; max-width: 1400px; min-width: 0; }",
+                content,
+            )
+            self.assertIn(
+                ".metrics, .assessment-summary-grid { grid-template-columns: 1fr; }",
+                content,
+            )
             self.assertIn("Details and remediation", content)
             self.assertLess(content.index('id="risk"'), content.index('id="findings"'))
             self.assertIn(
@@ -228,6 +373,28 @@ class TestHtmlReportGeneration(unittest.TestCase):
                 "_service": "agentcore",
             },
             {
+                "account_id": "111122223333",
+                "check_id": "AR-03",
+                "finding": "Agent Registry Publication Approval Governance",
+                "details": "Registry 'shared-agents' automatically approves submitted records.",
+                "resolution": "Require manual review.",
+                "reference": "https://example.com",
+                "severity": "Medium",
+                "status": "Failed",
+                "_service": "agentcore",
+            },
+            {
+                "account_id": "111122223333",
+                "check_id": "AG-34",
+                "finding": "Agentic AI Registry Discovery Authorization",
+                "details": "Registry discovery JWT authorization is not constrained.",
+                "resolution": "Constrain intended callers.",
+                "reference": "https://example.com",
+                "severity": "High",
+                "status": "Failed",
+                "_service": "agentic",
+            },
+            {
                 "account_id": "444455556666",
                 "check_id": "FS-01",
                 "finding": "Responsible AI GRC Regional Scope Not Applicable",
@@ -242,13 +409,15 @@ class TestHtmlReportGeneration(unittest.TestCase):
         service_findings = {
             "bedrock": [all_findings[0]],
             "sagemaker": [all_findings[1]],
-            "agentcore": [all_findings[2]],
-            "responsible-ai-grc": [all_findings[3]],
+            "agentcore": [all_findings[2], all_findings[3]],
+            "agentic": [all_findings[4]],
+            "responsible-ai-grc": [all_findings[5]],
         }
         service_stats = {
             "bedrock": {"passed": 0, "failed": 1},
             "sagemaker": {"passed": 0, "failed": 1},
-            "agentcore": {"passed": 1, "failed": 0},
+            "agentcore": {"passed": 1, "failed": 1},
+            "agentic": {"passed": 0, "failed": 1},
             "responsible-ai-grc": {"passed": 0, "failed": 0, "na": 1},
         }
 
@@ -267,6 +436,8 @@ class TestHtmlReportGeneration(unittest.TestCase):
         print(f"\nMulti-account report generated at: {os.path.abspath(report_path)}")
 
         self.assertTrue(os.path.exists(report_path))
+        self.assertIn("Agent Registry Publication Approval Governance", html_content)
+        self.assertIn("Agentic AI Registry Discovery Authorization", html_content)
 
         with open(report_path, "r") as f:
             content = f.read()
@@ -277,6 +448,8 @@ class TestHtmlReportGeneration(unittest.TestCase):
             self.assertIn("111122223333", content)
             self.assertIn("444455556666", content)
             self.assertIn("<h3>By Governance Framework</h3>", content)
+            self.assertIn("<h3>By Lens</h3>", content)
+            self.assertIn("Agentic AI Security", content)
             # governance-* CSS class names accompany the "By Governance
             # Framework" heading (renamed from industry-*/"By Industry").
             self.assertIn('class="nav-section governance-nav"', content)
@@ -563,6 +736,58 @@ class TestHtmlReportGeneration(unittest.TestCase):
             '<span style="color: var(--accent);">0 Low</span>',
             html,
         )
+
+    def test_unique_control_scoring_does_not_weight_resource_rows(self):
+        """Repeated resource passes count once while any control failure remains."""
+        failed_control = {
+            "account_id": "123456789012",
+            "check_id": "BR-01",
+            "finding": "Bedrock Access Control",
+            "details": "One direct control failed.",
+            "resolution": "Restrict access.",
+            "reference": "https://example.com",
+            "severity": "High",
+            "status": "Failed",
+            "region": "us-east-1",
+            "_service": "bedrock",
+        }
+        record_passes = [
+            {
+                "account_id": "123456789012",
+                "check_id": "AR-08",
+                "finding": "Agent Registry Record Provenance",
+                "details": f"Record {record_index} has valid provenance.",
+                "resolution": "No action required.",
+                "reference": "https://example.com",
+                "severity": "Medium",
+                "status": "Passed",
+                "region": "us-east-1",
+                "_service": "agentcore",
+            }
+            for record_index in range(100)
+        ]
+
+        html = generate_report_direct(
+            all_findings=[failed_control, *record_passes],
+            service_findings={
+                "bedrock": [failed_control],
+                "agentcore": record_passes,
+            },
+            service_stats={
+                "bedrock": {"passed": 0, "failed": 1, "na": 0},
+                "agentcore": {"passed": 100, "failed": 0, "na": 0},
+            },
+            mode="single",
+            account_id="123456789012",
+        )
+
+        self.assertIn(
+            '<div class="metric-label">Overall</div>'
+            '<div class="metric-value">50.0%</div>'
+            '<div class="metric-sub">1 of 2 scored controls passed</div>',
+            html,
+        )
+        self.assertNotIn("99.5%", html)
 
     def tearDown(self):
         """Clean up test files after running tests"""

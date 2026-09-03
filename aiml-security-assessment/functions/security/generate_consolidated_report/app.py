@@ -94,10 +94,17 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
         # (responsible_ai_grc_security_report_) differs from its report
         # slug (responsible-ai-grc); category_to_csv_fragment maps between
         # them for the prefix list and the filename-matching loop below.
-        category_slugs = ["bedrock", "sagemaker", "agentcore", "responsible-ai-grc"] + [
-            std["slug"] for std in COMPLIANCE_STANDARDS
-        ]
-        category_to_csv_fragment = {"responsible-ai-grc": "responsible_ai_grc"}
+        category_slugs = [
+            "bedrock",
+            "sagemaker",
+            "agentcore",
+            "agent-registry",
+            "responsible-ai-grc",
+        ] + [std["slug"] for std in COMPLIANCE_STANDARDS]
+        category_to_csv_fragment = {
+            "agent-registry": "agent_registry",
+            "responsible-ai-grc": "responsible_ai_grc",
+        }
         prefixes = [
             f"{category_to_csv_fragment.get(slug, slug)}_security_report_{execution_id}"
             for slug in category_slugs
@@ -119,6 +126,7 @@ def get_assessment_results(execution_id: str, account_id: str = None) -> Dict[st
             "bedrock",
             "sagemaker",
             "agentcore",
+            "agent-registry",
             "agentic",
             "responsible-ai-grc",
         ] + [std["slug"] for std in COMPLIANCE_STANDARDS]
@@ -230,6 +238,7 @@ def generate_html_report(
         "bedrock",
         "sagemaker",
         "agentcore",
+        "agent-registry",
         "agentic",
         "responsible-ai-grc",
     ] + compliance_slugs
@@ -258,6 +267,7 @@ def generate_html_report(
         "bedrock",
         "sagemaker",
         "agentcore",
+        "agent-registry",
         "responsible-ai-grc",
     ] + compliance_slugs
     for service in csv_source_slugs:
@@ -267,6 +277,8 @@ def generate_html_report(
                     check_id_upper = finding.get("Check_ID", "").upper()
                     if check_id_upper.startswith("AG-"):
                         output_service = "agentic"
+                    elif check_id_upper.startswith("AR-"):
+                        output_service = "agent-registry"
                     elif (
                         "-" in check_id_upper
                         and check_id_upper.split("-", 1)[0] in compliance_prefix_to_slug

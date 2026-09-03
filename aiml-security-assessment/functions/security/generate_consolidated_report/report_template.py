@@ -363,7 +363,7 @@ def get_html_template() -> str:
         .compliance-nav .nav-item .count {{ background: var(--success); color: #fff; padding: 2px 6px; font-size: 11px; }}
         .sidebar-footer {{ margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-3); }}
         .sidebar-footer a {{ color: var(--accent); text-decoration: none; }}
-        .main {{ padding: 32px 40px; max-width: 1400px; }}
+        .main {{ padding: 32px 40px; max-width: 1400px; min-width: 0; }}
         .page-header {{ margin-bottom: 32px; }}
         .page-header h2 {{ font-size: 24px; font-weight: 700; margin-bottom: 8px; }}
         .page-header-meta {{ display: flex; gap: 24px; font-size: 13px; color: var(--text-2); }}
@@ -454,7 +454,7 @@ def get_html_template() -> str:
         .assessment-summary-grid {{ display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 16px; margin-bottom: 16px; }}
         .assessment-actions {{ display: flex; flex-wrap: wrap; gap: 10px; }}
         @media (max-width: 1024px) {{ .layout {{ grid-template-columns: 1fr; }} .sidebar {{ display: none; }} .metrics {{ grid-template-columns: repeat(2, 1fr); }} }}
-        @media (max-width: 640px) {{ .metrics {{ grid-template-columns: 1fr; }} .main {{ padding: 20px; }} }}
+        @media (max-width: 640px) {{ .metrics, .assessment-summary-grid {{ grid-template-columns: 1fr; }} .main {{ padding: 20px; }} }}
         .page-footer {{ padding: 16px 40px; border-top: 1px solid var(--border); font-size: 10px; line-height: 1.6; color: var(--text-3); text-align: center; background: var(--surface); }}
         .page-footer a {{ color: var(--accent); text-decoration: none; }}
     </style>
@@ -508,6 +508,7 @@ def get_html_template() -> str:
 	                    AgentCore
 	                    <span class="count">{agentcore_total}</span>
 	                </a>
+                    {agent_registry_nav}
 	            </nav>
 	            {lens_nav}
 	            {industry_nav}
@@ -532,7 +533,7 @@ def get_html_template() -> str:
                     <div class="metric"><div class="metric-label">Report Rows</div><div class="metric-value">{total_findings}</div><div class="metric-sub">{findings_sub}</div></div>
                     <div class="metric danger"><div class="metric-label">Open Action Items</div><div class="metric-value">{actionable_findings}</div><div class="metric-sub">Direct failed service rows</div></div>
                     <div class="metric"><div class="metric-label">Lens / Compliance Rows</div><div class="metric-value">{contextual_rows}</div><div class="metric-sub">{contextual_failed} failed; may map to service rows</div></div>
-                    <div class="metric danger"><div class="metric-label">Failed High</div><div class="metric-value">{failed_high_count}</div><div class="metric-sub">{high_passed} of {high_count} direct high rows passed</div></div>
+                    <div class="metric danger"><div class="metric-label">Failed High</div><div class="metric-value">{failed_high_count}</div><div class="metric-sub">Direct High failed service rows</div></div>
                     <div class="metric warning"><div class="metric-label">Failed Medium / Low</div><div class="metric-value">{failed_medium_count}/{failed_low_count}</div><div class="metric-sub">Direct Medium / Low failed rows</div></div>
                 </div>
                 <div class="card"><div class="card-header"><h3>Priority Recommendations</h3></div><div class="card-body"><div class="alerts">{alerts}</div></div></div>
@@ -553,12 +554,12 @@ def get_html_template() -> str:
             </section>
             <section id="risk" class="section">
                 <div class="section-title"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Risk Distribution</div>
-                <h4 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Direct Service Scored Row Results by Severity</h4>
+                <h4 style="font-size: 14px; font-weight: 600; color: var(--text-2); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Direct Service Scored Control Results by Severity</h4>
                 <div class="metrics" style="margin-bottom: 32px;">
-                    <div class="metric danger"><div class="metric-label"><span class="severity high" style="padding: 2px 6px; font-size: 10px;">HIGH</span></div><div class="metric-value">{high_pass_rate}%</div><div class="metric-sub">{high_passed} of {high_count} scored rows passed</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {high_pass_rate}%; height: 100%; background: var(--danger);"></div></div></div>
-                    <div class="metric warning"><div class="metric-label"><span class="severity medium" style="padding: 2px 6px; font-size: 10px;">MEDIUM</span></div><div class="metric-value">{medium_pass_rate}%</div><div class="metric-sub">{medium_passed} of {medium_count} scored rows passed</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {medium_pass_rate}%; height: 100%; background: var(--warning);"></div></div></div>
-                    <div class="metric" style="border-color: var(--accent);"><div class="metric-label"><span class="severity low" style="padding: 2px 6px; font-size: 10px;">LOW</span></div><div class="metric-value" style="color: var(--accent);">{low_pass_rate}%</div><div class="metric-sub">{low_passed} of {low_count} scored rows passed</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {low_pass_rate}%; height: 100%; background: var(--accent);"></div></div></div>
-                    <div class="metric"><div class="metric-label">Overall</div><div class="metric-value">{pass_rate}%</div><div class="metric-sub">{passed_count} of {scored_findings} scored rows passed</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {pass_rate}%; height: 100%; background: var(--text-3);"></div></div></div>
+                    <div class="metric danger"><div class="metric-label"><span class="severity high" style="padding: 2px 6px; font-size: 10px;">HIGH</span></div><div class="metric-value">{high_pass_rate}%</div><div class="metric-sub">{high_passed} of {high_count} scored controls passed</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {high_pass_rate}%; height: 100%; background: var(--danger);"></div></div></div>
+                    <div class="metric warning"><div class="metric-label"><span class="severity medium" style="padding: 2px 6px; font-size: 10px;">MEDIUM</span></div><div class="metric-value">{medium_pass_rate}%</div><div class="metric-sub">{medium_passed} of {medium_count} scored controls passed</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {medium_pass_rate}%; height: 100%; background: var(--warning);"></div></div></div>
+                    <div class="metric" style="border-color: var(--accent);"><div class="metric-label"><span class="severity low" style="padding: 2px 6px; font-size: 10px;">LOW</span></div><div class="metric-value" style="color: var(--accent);">{low_pass_rate}%</div><div class="metric-sub">{low_passed} of {low_count} scored controls passed</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {low_pass_rate}%; height: 100%; background: var(--accent);"></div></div></div>
+                    <div class="metric"><div class="metric-label">Overall</div><div class="metric-value">{pass_rate}%</div><div class="metric-sub">{passed_count} of {scored_controls} scored controls passed</div><div style="margin-top: 8px; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden;"><div style="width: {pass_rate}%; height: 100%; background: var(--text-3);"></div></div></div>
                 </div>
                 {account_risk_section}
                 {region_risk_section}
@@ -567,6 +568,7 @@ def get_html_template() -> str:
                     <div class="metric"><div class="metric-label"><span class="service-icon" style="width: 18px; height: 18px;"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><rect fill="#01A88D" width="80" height="80"/><path fill="#FFF" transform="translate(12,12)" d="M52,26.999C50.897,26.999 50,26.103 50,25 50,23.897 50.897,23 52,23 53.103,23 54,23.897 54,25 54,26.103 53.103,26.999 52,26.999L52,26.999ZM20.113,53.908L16.865,52.014 23.53,47.848 22.47,46.152 14.913,50.875 9,47.426 9,38.535 14.555,34.832 13.445,33.168 7.959,36.825 2,33.42 2,28.58 8.496,24.868 7.504,23.132 2,26.277 2,22.58 8,19.152 14,22.58 14,26.434 9.485,29.143 10.515,30.857 15,28.166 19.485,30.857 20.515,29.143 16,26.434 16,22.535 21.555,18.832C21.833,18.646 22,18.334 22,18L22,11 20,11 20,17.465 14.959,20.825 9,17.42 9,8.574 14,5.658 14,14 16,14 16,4.491 20.113,2.092 28,4.721 28,33.434 13.485,42.143 14.515,43.857 28,35.766 28,51.279 20.113,53.908ZM50,38C50,39.103 49.103,40 48,40 46.897,40 46,39.103 46,38 46,36.897 46.897,36 48,36 49.103,36 50,36.897 50,38L50,38ZM40,48C40,49.103 39.103,50 38,50 36.897,50 36,49.103 36,48 36,46.897 36.897,46 38,46 39.103,46 40,46.897 40,48L40,48ZM39,8C39,6.897 39.897,6 41,6 42.103,6 43,6.897 43,8 43,9.103 42.103,10 41,10 39.897,10 39,9.103 39,8L39,8ZM52,21C50.141,21 48.589,22.28 48.142,24L30,24 30,19 41,19C41.553,19 42,18.552 42,18L42,11.858C43.72,11.411 45,9.858 45,8 45,5.794 43.206,4 41,4 38.794,4 37,5.794 37,8 37,9.858 38.28,11.411 40,11.858L40,17 30,17 30,4C30,3.569 29.725,3.188 29.316,3.051L20.316,0.051C20.042,-0.039 19.744,-0.009 19.496,0.136L7.496,7.136C7.188,7.315 7,7.645 7,8L7,17.42 0.504,21.132C0.192,21.31 0,21.641 0,22L0,34C0,34.359 0.192,34.69 0.504,34.868L7,38.58 7,48C7,48.355 7.188,48.685 7.496,48.864L19.496,55.864C19.65,55.954 19.825,56 20,56 20.106,56 20.213,55.983 20.316,55.949L29.316,52.949C29.725,52.812 30,52.431 30,52L30,40 37,40 37,44.142C35.28,44.589 34,46.142 34,48 34,50.206 35.794,52 38,52 40.206,52 42,50.206 42,48 42,46.142 40.72,44.589 39,44.142L39,39C39,38.448 38.553,38 38,38L30,38 30,33 42.5,33 44.638,35.85C44.239,36.472 44,37.207 44,38 44,40.206 45.794,42 48,42 50.206,42 52,40.206 52,38 52,35.794 50.206,34 48,34 47.316,34 46.682,34.188 46.119,34.492L43.8,31.4C43.611,31.148 43.314,31 43,31L30,31 30,26 48.142,26C48.589,27.72 50.141,29 52,29 54.206,29 56,27.206 56,25 56,22.794 54.206,21 52,21L52,21Z"/></svg></span> Bedrock</div><div class="metric-value">{bedrock_total}</div><div class="metric-sub">{bedrock_failed} Failed · {bedrock_passed} Passed</div></div>
                     <div class="metric"><div class="metric-label"><span class="service-icon" style="width: 18px; height: 18px;"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><rect fill="#01A88D" width="80" height="80"/><path fill="#FFF" d="M54.034,26.034C54.034,26.594 53.578,27.05 53.017,27.05 52.458,27.05 52.002,26.594 52.002,26.034 52.002,25.474 52.458,25.018 53.017,25.018 53.578,25.018 54.034,25.474 54.034,26.034L54.034,26.034ZM48.002,36C48.002,35.449 48.45,35 49.002,35 49.554,35 50.002,35.449 50.002,36 50.002,36.551 49.554,37 49.002,37 48.45,37 48.002,36.551 48.002,36L48.002,36ZM48.002,55C48.002,54.449 48.45,54 49.002,54 49.554,54 50.002,54.449 50.002,55 50.002,55.551 49.554,56 49.002,56 48.45,56 48.002,55.551 48.002,55L48.002,55ZM58.002,42C58.002,42.551 57.554,43 57.002,43 56.45,43 56.002,42.551 56.002,42 56.002,41.449 56.45,41 57.002,41 57.554,41 58.002,41.449 58.002,42L58.002,42ZM65,45.272L59.963,42.382C59.979,42.256 60.002,42.131 60.002,42 60.002,40.346 58.656,39 57.002,39 55.347,39 54.002,40.346 54.002,42 54.002,43.654 55.347,45 57.002,45 57.801,45 58.523,44.681 59.061,44.171L63.886,46.939 59.555,49.105C59.216,49.275 59.002,49.621 59.002,50L59.002,58.441 46.983,65.837 41.003,62.42 41.003,56 46.186,56C46.6,57.161 47.7,58 49.002,58 50.656,58 52.002,56.654 52.002,55 52.002,53.345 50.656,52 49.002,52 47.7,52 46.6,52.838 46.186,54L41.003,54 41.003,40C41.003,39.649 40.818,39.323 40.517,39.142L35.516,36.142 34.487,37.857 39.003,40.566 39.003,43.507 33.002,48.123 33.002,44C33.002,43.696 32.864,43.408 32.627,43.219L28.002,39.519 28.002,34.535 33.556,30.832C33.835,30.646 34.002,30.334 34.002,30L34.002,24 32.002,24 32.002,29.465 27.013,32.79 22.002,29.464 22.002,21.575 27.002,18.659 27.002,27 29.002,27 29.002,17.492 33.005,15.157 39.001,18.616 39.002,31C39.002,31.359 39.194,31.69 39.506,31.868L46.042,35.603C46.024,35.734 46.002,35.864 46.002,36 46.002,37.654 47.347,39 49.002,39 50.656,39 52.002,37.654 52.002,36 52.002,34.346 50.656,33 49.002,33 48.208,33 47.49,33.315 46.953,33.82L41.002,30.419 41.001,18.618 46.964,15.177 58.002,22.536 58.002,25 55.851,25C55.429,23.845 54.318,23.018 53.017,23.018 51.354,23.018 50.002,24.371 50.002,26.034 50.002,27.697 51.354,29.05 53.017,29.05 54.343,29.05 55.471,28.191 55.875,27L58.002,27 58.002,30C58.002,30.36 58.194,30.691 58.506,30.869L65,34.58 65,45.272ZM33.02,65.837L29.867,63.897 35.583,59.814 34.421,58.186 28.018,62.759 21.002,58.441 21.002,50.566 25.516,47.857 24.487,46.142 19.958,48.86 15.002,46.383 15.001,40.617 20.449,37.894 19.555,36.105 15.001,38.381 15.002,34.58 20.963,31.175 26.002,34.519 26.002,39.48 20.449,43.167 21.555,44.833 26.958,41.245 31.002,44.48 31.002,49.662 26.392,53.207 27.611,54.792 39.003,46.03 39.003,62.419 33.02,65.837ZM66.496,33.132L60.002,29.42 60.002,22C60.002,21.666 59.835,21.354 59.556,21.169L47.556,13.169C47.24,12.959 46.832,12.945 46.502,13.135L40.004,16.885 33.502,13.135C33.19,12.955 32.807,12.955 32.498,13.137L20.498,20.137C20.19,20.316 20.002,20.645 20.002,21L20.002,29.42 13.506,33.132C13.194,33.31 13.002,33.641 13.002,34L13.002,34.417C13.001,34.438 13,34.458 13,34.479L13,45.363C13,45.383 13.001,45.403 13.002,45.422L13.002,47C13.002,47.379 13.216,47.725 13.555,47.894L19.002,50.618 19.002,59C19.002,59.347 19.181,59.669 19.477,59.851L32.477,67.851C32.638,67.95 32.82,68 33.002,68 33.173,68 33.344,67.956 33.498,67.868L40.003,64.152 46.506,67.868C46.821,68.049 47.213,68.042 47.526,67.851L60.526,59.851C60.822,59.669 61.002,59.347 61.002,59L61.002,50.618 66.447,47.894C66.786,47.725 67,47.379 67,47L67,34C67,33.641 66.807,33.31 66.496,33.132L66.496,33.132Z"/></svg></span> SageMaker</div><div class="metric-value">{sagemaker_total}</div><div class="metric-sub">{sagemaker_failed} Failed · {sagemaker_passed} Passed</div></div>
                     <div class="metric"><div class="metric-label"><span class="service-icon" style="width: 18px; height: 18px;"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><rect fill="#01A88D" width="80" height="80"/><path fill="#FFF" d="M67.372,28.073L64.178,26.792 62.933,23.634C62.781,23.252 62.412,23.001 62.002,23.001 61.591,23.001 61.222,23.253 61.071,23.636L59.814,26.838 56.638,28.071C56.253,28.22 55.999,28.592 56,29.005 56.001,29.419 56.257,29.79 56.643,29.937L59.89,31.178 61.063,34.348C61.205,34.735 61.572,34.995 61.985,35.001L62,35.001C62.407,35.001 62.774,34.754 62.928,34.375L64.231,31.142 67.36,29.934C67.743,29.786 67.997,29.418 68,29.007 68.003,28.597 67.754,28.226 67.372,28.073ZM63.106,29.432C62.849,29.532 62.643,29.734 62.539,29.991L62.04,31.228 61.607,30.058C61.508,29.788 61.296,29.574 61.027,29.471L59.782,28.996 60.947,28.543C61.207,28.442 61.414,28.237 61.516,27.977L62.004,26.732 62.435,27.822C62.523,28.142 62.767,28.398 63.079,28.506L64.269,28.983 63.106,29.432ZM64.053,38.6L54.914,34.935 51.351,25.902C51.123,25.325 50.575,24.953 49.955,24.953 49.335,24.954 48.786,25.327 48.56,25.905L44.958,35.083 42,36.23 42,16C42,15.569 41.725,15.188 41.316,15.051L32.316,12.051C32.042,11.961 31.744,11.991 31.496,12.136L19.496,19.136C19.189,19.315 19,19.645 19,20L19,29.42 12.504,33.132C12.192,33.31 12,33.641 12,34L12,46C12,46.359 12.192,46.69 12.504,46.868L19,50.58 19,60C19,60.355 19.189,60.685 19.496,60.864L31.496,67.864C31.65,67.954 31.825,68 32,68 32.106,68 32.213,67.983 32.316,67.949L41.316,64.949C41.725,64.813 42,64.431 42,64L42,43.738 45.2,44.961 48.561,54.046C48.777,54.632 49.32,55.017 49.945,55.026L49.969,55.026C50.584,55.026 51.128,54.66 51.359,54.087L55.089,44.845 64.035,41.392C64.614,41.168 64.991,40.623 64.995,40.001 64.999,39.381 64.629,38.831 64.053,38.6ZM32.113,65.908L28.865,64.014 35.53,59.848 34.47,58.186 26.913,62.759 21,58.441 21,50.566 26.555,46.832 25.445,45.168 19.959,48.825 14,45.42 14,40.58 20.496,36.868 19.504,35.132 14,38.277 14,34.58 20,31.152 26,34.58 26,38.434 21.485,41.143 22.515,42.857 27,40.166 31.485,42.857 32.515,41.143 28,38.434 28,34.535 33.555,30.832C33.833,30.646 34,30.334 34,30L34,24 32,24 32,29.465 26.959,32.825 21,29.42 21,20.574 26,17.658 26,27 28,27 28,16.491 32.113,14.092 40,16.721 40,45.434 25.485,54.143 26.515,55.857 40,47.766 40,63.279 32.113,65.908ZM53.964,43.135C53.706,43.235 53.501,43.438 53.397,43.694L49.988,52.14 46.918,43.842C46.818,43.572 46.607,43.358 46.338,43.255L42,41.597 42,38.375 46.09,36.788C46.351,36.687 46.558,36.481 46.659,36.221L49.957,27.818 53.14,35.886C53.209,36.252 53.486,36.548 53.84,36.659L62.129,39.983 53.964,43.135Z"/></svg></span> AgentCore</div><div class="metric-value">{agentcore_total}</div><div class="metric-sub">{agentcore_failed} Failed · {agentcore_passed} Passed</div></div>
+                    {agent_registry_service_card}
                     {agentic_service_card}
                     {finserv_service_card}
                     {compliance_service_card}
@@ -578,7 +580,7 @@ def get_html_template() -> str:
                     <div class="filter-group"><label>Search</label><input type="text" placeholder="Search findings..." id="searchInput"></div>
                     {account_filter}
                     {region_filter}
-                    <div class="filter-group"><label>Assessment Area</label><select id="serviceFilter"><option value="">All Assessment Areas</option><option value="bedrock">Bedrock</option><option value="sagemaker">SageMaker</option><option value="agentcore">AgentCore</option>{agentic_filter_option}{finserv_filter_option}{compliance_filter_option}</select></div>
+                    <div class="filter-group"><label>Assessment Area</label><select id="serviceFilter"><option value="">All Assessment Areas</option><option value="bedrock">Bedrock</option><option value="sagemaker">SageMaker</option><option value="agentcore">AgentCore</option><option value="agent-registry">AWS Agent Registry</option>{agentic_filter_option}{finserv_filter_option}{compliance_filter_option}</select></div>
                     <div class="filter-group"><label>Severity</label><select id="severityFilter"><option value="">All Severities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="informational">Informational</option></select></div>
                     <div class="filter-group"><label>Status</label><select id="statusFilter"><option value="">All Statuses</option><option value="failed" selected>Failed</option><option value="passed">Passed</option><option value="n/a">N/A</option></select></div>
                     <button class="btn btn-reset" id="resetFilters"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>Reset</button>
@@ -597,12 +599,13 @@ def get_html_template() -> str:
                 <div class="section-title"><span class="service-icon"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><rect fill="#01A88D" width="80" height="80"/><path fill="#FFF" d="M67.372,28.073L64.178,26.792 62.933,23.634C62.781,23.252 62.412,23.001 62.002,23.001 61.591,23.001 61.222,23.253 61.071,23.636L59.814,26.838 56.638,28.071C56.253,28.22 55.999,28.592 56,29.005 56.001,29.419 56.257,29.79 56.643,29.937L59.89,31.178 61.063,34.348C61.205,34.735 61.572,34.995 61.985,35.001L62,35.001C62.407,35.001 62.774,34.754 62.928,34.375L64.231,31.142 67.36,29.934C67.743,29.786 67.997,29.418 68,29.007 68.003,28.597 67.754,28.226 67.372,28.073ZM63.106,29.432C62.849,29.532 62.643,29.734 62.539,29.991L62.04,31.228 61.607,30.058C61.508,29.788 61.296,29.574 61.027,29.471L59.782,28.996 60.947,28.543C61.207,28.442 61.414,28.237 61.516,27.977L62.004,26.732 62.435,27.822C62.523,28.142 62.767,28.398 63.079,28.506L64.269,28.983 63.106,29.432ZM64.053,38.6L54.914,34.935 51.351,25.902C51.123,25.325 50.575,24.953 49.955,24.953 49.335,24.954 48.786,25.327 48.56,25.905L44.958,35.083 42,36.23 42,16C42,15.569 41.725,15.188 41.316,15.051L32.316,12.051C32.042,11.961 31.744,11.991 31.496,12.136L19.496,19.136C19.189,19.315 19,19.645 19,20L19,29.42 12.504,33.132C12.192,33.31 12,33.641 12,34L12,46C12,46.359 12.192,46.69 12.504,46.868L19,50.58 19,60C19,60.355 19.189,60.685 19.496,60.864L31.496,67.864C31.65,67.954 31.825,68 32,68 32.106,68 32.213,67.983 32.316,67.949L41.316,64.949C41.725,64.813 42,64.431 42,64L42,43.738 45.2,44.961 48.561,54.046C48.777,54.632 49.32,55.017 49.945,55.026L49.969,55.026C50.584,55.026 51.128,54.66 51.359,54.087L55.089,44.845 64.035,41.392C64.614,41.168 64.991,40.623 64.995,40.001 64.999,39.381 64.629,38.831 64.053,38.6ZM32.113,65.908L28.865,64.014 35.53,59.848 34.47,58.186 26.913,62.759 21,58.441 21,50.566 26.555,46.832 25.445,45.168 19.959,48.825 14,45.42 14,40.58 20.496,36.868 19.504,35.132 14,38.277 14,34.58 20,31.152 26,34.58 26,38.434 21.485,41.143 22.515,42.857 27,40.166 31.485,42.857 32.515,41.143 28,38.434 28,34.535 33.555,30.832C33.833,30.646 34,30.334 34,30L34,24 32,24 32,29.465 26.959,32.825 21,29.42 21,20.574 26,17.658 26,27 28,27 28,16.491 32.113,14.092 40,16.721 40,45.434 25.485,54.143 26.515,55.857 40,47.766 40,63.279 32.113,65.908ZM53.964,43.135C53.706,43.235 53.501,43.438 53.397,43.694L49.988,52.14 46.918,43.842C46.818,43.572 46.607,43.358 46.338,43.255L42,41.597 42,38.375 46.09,36.788C46.351,36.687 46.558,36.481 46.659,36.221L49.957,27.818 53.14,35.886C53.209,36.252 53.486,36.548 53.84,36.659L62.129,39.983 53.964,43.135Z"/></svg></span>Amazon Bedrock AgentCore Findings</div>
                 {agentcore_summary}
             </section>
+            {agent_registry_section}
             {agentic_section}
             {finserv_section}
             {compliance_section}
             <section id="methodology" class="section">
                 <div class="section-title"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Assessment Methodology</div>
-                <div class="card"><div class="card-header" style="padding: 12px 16px;"><h3 style="font-size: 14px;">Assessment Notes</h3></div><div class="card-body" style="padding: 12px 16px; font-size: 12px; color: var(--text-2); line-height: 1.6;"><strong style="color: var(--text);">Point-in-time:</strong> Security posture changes as resources are modified. <strong style="color: var(--text);">Scope limited:</strong> Passed checks verify tested controls only. <strong style="color: var(--text);">Context matters:</strong> Adjust severity for compliance requirements and environment type.</div></div>
+                <div class="card"><div class="card-header" style="padding: 12px 16px;"><h3 style="font-size: 14px;">Assessment Notes</h3></div><div class="card-body" style="padding: 12px 16px; font-size: 12px; color: var(--text-2); line-height: 1.6;"><strong style="color: var(--text);">Point-in-time:</strong> Security posture changes as resources are modified. <strong style="color: var(--text);">Scope limited:</strong> Passed checks verify tested controls only. <strong style="color: var(--text);">Scoring:</strong> Direct service rows are aggregated by unique Check ID; any failed assessable row fails the control, a control passes only when all assessable rows pass, and N/A rows are excluded. <strong style="color: var(--text);">Context matters:</strong> Adjust severity for compliance requirements and environment type.</div></div>
                 <div class="card"><div class="card-header"><h3>Assessment Scope</h3></div><div class="card-body"><div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;"><div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface-2); border-radius: 6px;"><span class="service-icon" style="width: 20px; height: 20px;"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><rect fill="#01A88D" width="80" height="80"/><path fill="#FFF" transform="translate(12,12)" d="M52,26.999C50.897,26.999 50,26.103 50,25 50,23.897 50.897,23 52,23 53.103,23 54,23.897 54,25 54,26.103 53.103,26.999 52,26.999L52,26.999ZM20.113,53.908L16.865,52.014 23.53,47.848 22.47,46.152 14.913,50.875 9,47.426 9,38.535 14.555,34.832 13.445,33.168 7.959,36.825 2,33.42 2,28.58 8.496,24.868 7.504,23.132 2,26.277 2,22.58 8,19.152 14,22.58 14,26.434 9.485,29.143 10.515,30.857 15,28.166 19.485,30.857 20.515,29.143 16,26.434 16,22.535 21.555,18.832C21.833,18.646 22,18.334 22,18L22,11 20,11 20,17.465 14.959,20.825 9,17.42 9,8.574 14,5.658 14,14 16,14 16,4.491 20.113,2.092 28,4.721 28,33.434 13.485,42.143 14.515,43.857 28,35.766 28,51.279 20.113,53.908ZM50,38C50,39.103 49.103,40 48,40 46.897,40 46,39.103 46,38 46,36.897 46.897,36 48,36 49.103,36 50,36.897 50,38L50,38ZM40,48C40,49.103 39.103,50 38,50 36.897,50 36,49.103 36,48 36,46.897 36.897,46 38,46 39.103,46 40,46.897 40,48L40,48ZM39,8C39,6.897 39.897,6 41,6 42.103,6 43,6.897 43,8 43,9.103 42.103,10 41,10 39.897,10 39,9.103 39,8L39,8ZM52,21C50.141,21 48.589,22.28 48.142,24L30,24 30,19 41,19C41.553,19 42,18.552 42,18L42,11.858C43.72,11.411 45,9.858 45,8 45,5.794 43.206,4 41,4 38.794,4 37,5.794 37,8 37,9.858 38.28,11.411 40,11.858L40,17 30,17 30,4C30,3.569 29.725,3.188 29.316,3.051L20.316,0.051C20.042,-0.039 19.744,-0.009 19.496,0.136L7.496,7.136C7.188,7.315 7,7.645 7,8L7,17.42 0.504,21.132C0.192,21.31 0,21.641 0,22L0,34C0,34.359 0.192,34.69 0.504,34.868L7,38.58 7,48C7,48.355 7.188,48.685 7.496,48.864L19.496,55.864C19.65,55.954 19.825,56 20,56 20.106,56 20.213,55.983 20.316,55.949L29.316,52.949C29.725,52.812 30,52.431 30,52L30,40 37,40 37,44.142C35.28,44.589 34,46.142 34,48 34,50.206 35.794,52 38,52 40.206,52 42,50.206 42,48 42,46.142 40.72,44.589 39,44.142L39,39C39,38.448 38.553,38 38,38L30,38 30,33 42.5,33 44.638,35.85C44.239,36.472 44,37.207 44,38 44,40.206 45.794,42 48,42 50.206,42 52,40.206 52,38 52,35.794 50.206,34 48,34 47.316,34 46.682,34.188 46.119,34.492L43.8,31.4C43.611,31.148 43.314,31 43,31L30,31 30,26 48.142,26C48.589,27.72 50.141,29 52,29 54.206,29 56,27.206 56,25 56,22.794 54.206,21 52,21L52,21Z"/></svg></span><span style="font-size: 13px; font-weight: 500;">Amazon Bedrock</span></div><div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface-2); border-radius: 6px;"><span class="service-icon" style="width: 20px; height: 20px;"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><rect fill="#01A88D" width="80" height="80"/><path fill="#FFF" d="M54.034,26.034C54.034,26.594 53.578,27.05 53.017,27.05 52.458,27.05 52.002,26.594 52.002,26.034 52.002,25.474 52.458,25.018 53.017,25.018 53.578,25.018 54.034,25.474 54.034,26.034L54.034,26.034ZM48.002,36C48.002,35.449 48.45,35 49.002,35 49.554,35 50.002,35.449 50.002,36 50.002,36.551 49.554,37 49.002,37 48.45,37 48.002,36.551 48.002,36L48.002,36ZM48.002,55C48.002,54.449 48.45,54 49.002,54 49.554,54 50.002,54.449 50.002,55 50.002,55.551 49.554,56 49.002,56 48.45,56 48.002,55.551 48.002,55L48.002,55ZM58.002,42C58.002,42.551 57.554,43 57.002,43 56.45,43 56.002,42.551 56.002,42 56.002,41.449 56.45,41 57.002,41 57.554,41 58.002,41.449 58.002,42L58.002,42ZM65,45.272L59.963,42.382C59.979,42.256 60.002,42.131 60.002,42 60.002,40.346 58.656,39 57.002,39 55.347,39 54.002,40.346 54.002,42 54.002,43.654 55.347,45 57.002,45 57.801,45 58.523,44.681 59.061,44.171L63.886,46.939 59.555,49.105C59.216,49.275 59.002,49.621 59.002,50L59.002,58.441 46.983,65.837 41.003,62.42 41.003,56 46.186,56C46.6,57.161 47.7,58 49.002,58 50.656,58 52.002,56.654 52.002,55 52.002,53.345 50.656,52 49.002,52 47.7,52 46.6,52.838 46.186,54L41.003,54 41.003,40C41.003,39.649 40.818,39.323 40.517,39.142L35.516,36.142 34.487,37.857 39.003,40.566 39.003,43.507 33.002,48.123 33.002,44C33.002,43.696 32.864,43.408 32.627,43.219L28.002,39.519 28.002,34.535 33.556,30.832C33.835,30.646 34.002,30.334 34.002,30L34.002,24 32.002,24 32.002,29.465 27.013,32.79 22.002,29.464 22.002,21.575 27.002,18.659 27.002,27 29.002,27 29.002,17.492 33.005,15.157 39.001,18.616 39.002,31C39.002,31.359 39.194,31.69 39.506,31.868L46.042,35.603C46.024,35.734 46.002,35.864 46.002,36 46.002,37.654 47.347,39 49.002,39 50.656,39 52.002,37.654 52.002,36 52.002,34.346 50.656,33 49.002,33 48.208,33 47.49,33.315 46.953,33.82L41.002,30.419 41.001,18.618 46.964,15.177 58.002,22.536 58.002,25 55.851,25C55.429,23.845 54.318,23.018 53.017,23.018 51.354,23.018 50.002,24.371 50.002,26.034 50.002,27.697 51.354,29.05 53.017,29.05 54.343,29.05 55.471,28.191 55.875,27L58.002,27 58.002,30C58.002,30.36 58.194,30.691 58.506,30.869L65,34.58 65,45.272ZM33.02,65.837L29.867,63.897 35.583,59.814 34.421,58.186 28.018,62.759 21.002,58.441 21.002,50.566 25.516,47.857 24.487,46.142 19.958,48.86 15.002,46.383 15.001,40.617 20.449,37.894 19.555,36.105 15.001,38.381 15.002,34.58 20.963,31.175 26.002,34.519 26.002,39.48 20.449,43.167 21.555,44.833 26.958,41.245 31.002,44.48 31.002,49.662 26.392,53.207 27.611,54.792 39.003,46.03 39.003,62.419 33.02,65.837ZM66.496,33.132L60.002,29.42 60.002,22C60.002,21.666 59.835,21.354 59.556,21.169L47.556,13.169C47.24,12.959 46.832,12.945 46.502,13.135L40.004,16.885 33.502,13.135C33.19,12.955 32.807,12.955 32.498,13.137L20.498,20.137C20.19,20.316 20.002,20.645 20.002,21L20.002,29.42 13.506,33.132C13.194,33.31 13.002,33.641 13.002,34L13.002,34.417C13.001,34.438 13,34.458 13,34.479L13,45.363C13,45.383 13.001,45.403 13.002,45.422L13.002,47C13.002,47.379 13.216,47.725 13.555,47.894L19.002,50.618 19.002,59C19.002,59.347 19.181,59.669 19.477,59.851L32.477,67.851C32.638,67.95 32.82,68 33.002,68 33.173,68 33.344,67.956 33.498,67.868L40.003,64.152 46.506,67.868C46.821,68.049 47.213,68.042 47.526,67.851L60.526,59.851C60.822,59.669 61.002,59.347 61.002,59L61.002,50.618 66.447,47.894C66.786,47.725 67,47.379 67,47L67,34C67,33.641 66.807,33.31 66.496,33.132L66.496,33.132Z"/></svg></span><span style="font-size: 13px; font-weight: 500;">Amazon SageMaker</span></div><div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface-2); border-radius: 6px;"><span class="service-icon" style="width: 20px; height: 20px;"><svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><rect fill="#01A88D" width="80" height="80"/><path fill="#FFF" d="M67.372,28.073L64.178,26.792 62.933,23.634C62.781,23.252 62.412,23.001 62.002,23.001 61.591,23.001 61.222,23.253 61.071,23.636L59.814,26.838 56.638,28.071C56.253,28.22 55.999,28.592 56,29.005 56.001,29.419 56.257,29.79 56.643,29.937L59.89,31.178 61.063,34.348C61.205,34.735 61.572,34.995 61.985,35.001L62,35.001C62.407,35.001 62.774,34.754 62.928,34.375L64.231,31.142 67.36,29.934C67.743,29.786 67.997,29.418 68,29.007 68.003,28.597 67.754,28.226 67.372,28.073ZM63.106,29.432C62.849,29.532 62.643,29.734 62.539,29.991L62.04,31.228 61.607,30.058C61.508,29.788 61.296,29.574 61.027,29.471L59.782,28.996 60.947,28.543C61.207,28.442 61.414,28.237 61.516,27.977L62.004,26.732 62.435,27.822C62.523,28.142 62.767,28.398 63.079,28.506L64.269,28.983 63.106,29.432ZM64.053,38.6L54.914,34.935 51.351,25.902C51.123,25.325 50.575,24.953 49.955,24.953 49.335,24.954 48.786,25.327 48.56,25.905L44.958,35.083 42,36.23 42,16C42,15.569 41.725,15.188 41.316,15.051L32.316,12.051C32.042,11.961 31.744,11.991 31.496,12.136L19.496,19.136C19.189,19.315 19,19.645 19,20L19,29.42 12.504,33.132C12.192,33.31 12,33.641 12,34L12,46C12,46.359 12.192,46.69 12.504,46.868L19,50.58 19,60C19,60.355 19.189,60.685 19.496,60.864L31.496,67.864C31.65,67.954 31.825,68 32,68 32.106,68 32.213,67.983 32.316,67.949L41.316,64.949C41.725,64.813 42,64.431 42,64L42,43.738 45.2,44.961 48.561,54.046C48.777,54.632 49.32,55.017 49.945,55.026L49.969,55.026C50.584,55.026 51.128,54.66 51.359,54.087L55.089,44.845 64.035,41.392C64.614,41.168 64.991,40.623 64.995,40.001 64.999,39.381 64.629,38.831 64.053,38.6ZM32.113,65.908L28.865,64.014 35.53,59.848 34.47,58.186 26.913,62.759 21,58.441 21,50.566 26.555,46.832 25.445,45.168 19.959,48.825 14,45.42 14,40.58 20.496,36.868 19.504,35.132 14,38.277 14,34.58 20,31.152 26,34.58 26,38.434 21.485,41.143 22.515,42.857 27,40.166 31.485,42.857 32.515,41.143 28,38.434 28,34.535 33.555,30.832C33.833,30.646 34,30.334 34,30L34,24 32,24 32,29.465 26.959,32.825 21,29.42 21,20.574 26,17.658 26,27 28,27 28,16.491 32.113,14.092 40,16.721 40,45.434 25.485,54.143 26.515,55.857 40,47.766 40,63.279 32.113,65.908ZM53.964,43.135C53.706,43.235 53.501,43.438 53.397,43.694L49.988,52.14 46.918,43.842C46.818,43.572 46.607,43.358 46.338,43.255L42,41.597 42,38.375 46.09,36.788C46.351,36.687 46.558,36.481 46.659,36.221L49.957,27.818 53.14,35.886C53.209,36.252 53.486,36.548 53.84,36.659L62.129,39.983 53.964,43.135Z"/></svg></span><span style="font-size: 13px; font-weight: 500;">Amazon Bedrock AgentCore</span></div></div><p style="color: var(--text-3); font-size: 12px;">Based on AWS Well-Architected Framework (Generative AI Lens) and service-specific security documentation.</p></div></div>
             </section>
         </main>
@@ -753,6 +756,68 @@ def get_html_template() -> str:
 </html>"""
 
 
+_SCORED_SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3}
+
+
+def _aggregate_scored_controls(
+    findings: List[Dict], contextual_services: set[str]
+) -> List[Dict[str, str]]:
+    """Aggregate direct finding rows into one scored result per Check_ID.
+
+    A control fails when any assessable row fails and passes only when every
+    assessable row passes. Informational and N/A rows do not enter the score.
+    """
+    grouped: Dict[str, Dict[str, Optional[str]]] = {}
+
+    for finding in findings:
+        service = finding.get("_service", "").lower()
+        if service in contextual_services:
+            continue
+
+        check_id = finding.get("check_id", finding.get("Check_ID", "")).strip()
+        status = finding.get("status", finding.get("Status", "")).lower()
+        severity = finding.get("severity", finding.get("Severity", "")).lower()
+        if (
+            not check_id
+            or status not in {"passed", "failed"}
+            or severity not in _SCORED_SEVERITY_RANK
+        ):
+            continue
+
+        result = grouped.setdefault(
+            check_id.upper(),
+            {"passed_severity": None, "failed_severity": None},
+        )
+        severity_key = f"{status}_severity"
+        current_severity = result[severity_key]
+        if (
+            current_severity is None
+            or _SCORED_SEVERITY_RANK[severity] > _SCORED_SEVERITY_RANK[current_severity]
+        ):
+            result[severity_key] = severity
+
+    aggregated = []
+    for check_id, result in sorted(grouped.items()):
+        if result["failed_severity"] is not None:
+            aggregated.append(
+                {
+                    "check_id": check_id,
+                    "status": "failed",
+                    "severity": result["failed_severity"],
+                }
+            )
+        elif result["passed_severity"] is not None:
+            aggregated.append(
+                {
+                    "check_id": check_id,
+                    "status": "passed",
+                    "severity": result["passed_severity"],
+                }
+            )
+
+    return aggregated
+
+
 def generate_html_report(
     all_findings: List[Dict],
     service_findings: Dict[str, List[Dict]],
@@ -822,12 +887,13 @@ def generate_html_report(
     contextual_failed = sum(
         1 for f in all_findings if is_contextual_row(f) and is_failed_scored_row(f)
     )
-    high_count = sum(1 for f in direct_risk_findings if finding_severity(f) == "high")
+    scored_controls = _aggregate_scored_controls(all_findings, contextual_services)
+    high_count = sum(1 for control in scored_controls if control["severity"] == "high")
     medium_count = sum(
-        1 for f in direct_risk_findings if finding_severity(f) == "medium"
+        1 for control in scored_controls if control["severity"] == "medium"
     )
-    low_count = sum(1 for f in direct_risk_findings if finding_severity(f) == "low")
-    scored_findings = high_count + medium_count + low_count
+    low_count = sum(1 for control in scored_controls if control["severity"] == "low")
+    scored_control_count = len(scored_controls)
     actionable_findings = sum(
         1 for f in direct_risk_findings if is_failed_scored_row(f)
     )
@@ -850,22 +916,24 @@ def generate_html_report(
     # Severity-specific pass rates
     high_passed = sum(
         1
-        for f in direct_risk_findings
-        if finding_severity(f) == "high" and finding_status(f) == "passed"
+        for control in scored_controls
+        if control["severity"] == "high" and control["status"] == "passed"
     )
     medium_passed = sum(
         1
-        for f in direct_risk_findings
-        if finding_severity(f) == "medium" and finding_status(f) == "passed"
+        for control in scored_controls
+        if control["severity"] == "medium" and control["status"] == "passed"
     )
     low_passed = sum(
         1
-        for f in direct_risk_findings
-        if finding_severity(f) == "low" and finding_status(f) == "passed"
+        for control in scored_controls
+        if control["severity"] == "low" and control["status"] == "passed"
     )
     passed_count = high_passed + medium_passed + low_passed
     pass_rate = (
-        round((passed_count / scored_findings * 100), 1) if scored_findings > 0 else 0
+        round((passed_count / scored_control_count * 100), 1)
+        if scored_control_count > 0
+        else 0
     )
     high_pass_rate = round((high_passed / high_count * 100), 1) if high_count > 0 else 0
     medium_pass_rate = (
@@ -901,6 +969,7 @@ def generate_html_report(
             "bedrock": "Bedrock",
             "sagemaker": "SageMaker",
             "agentcore": "AgentCore",
+            "agent-registry": "AWS Agent Registry",
             "agentic": "Agentic AI",
             RESPONSIBLE_AI_GRC_SLUG: RESPONSIBLE_AI_GRC_LABEL,
         }
@@ -1319,6 +1388,10 @@ def generate_html_report(
     agentcore_failed = service_stats.get("agentcore", {}).get("failed", 0)
     agentcore_passed = service_stats.get("agentcore", {}).get("passed", 0)
     agentcore_na = service_stats.get("agentcore", {}).get("na", 0)
+    agent_registry_total = service_total("agent-registry")
+    agent_registry_failed = service_stats.get("agent-registry", {}).get("failed", 0)
+    agent_registry_passed = service_stats.get("agent-registry", {}).get("passed", 0)
+    agent_registry_na = service_stats.get("agent-registry", {}).get("na", 0)
     bedrock_summary = generate_assessment_summary(
         "bedrock",
         bedrock_total,
@@ -1339,6 +1412,28 @@ def generate_html_report(
         agentcore_failed,
         agentcore_passed,
         agentcore_na,
+    )
+    agent_registry_summary = generate_assessment_summary(
+        "agent-registry",
+        agent_registry_total,
+        agent_registry_failed,
+        agent_registry_passed,
+        agent_registry_na,
+    )
+    agent_registry_nav = (
+        '<a href="#agent-registry" class="nav-item">'
+        "AWS Agent Registry"
+        f'<span class="count">{agent_registry_total}</span></a>'
+    )
+    agent_registry_service_card = (
+        '<div class="metric"><div class="metric-label">AWS Agent Registry</div>'
+        f'<div class="metric-value">{agent_registry_total}</div>'
+        f'<div class="metric-sub">{agent_registry_failed} Failed · {agent_registry_passed} Passed · {agent_registry_na} N/A</div></div>'
+    )
+    agent_registry_section = (
+        '<section id="agent-registry" class="section">'
+        '<div class="section-title">AWS Agent Registry Findings</div>'
+        f"{agent_registry_summary}</section>"
     )
 
     # Fill template
@@ -1363,7 +1458,7 @@ def generate_html_report(
         failed_high_count=failed_high_count,
         failed_medium_count=failed_medium_count,
         failed_low_count=failed_low_count,
-        scored_findings=scored_findings,
+        scored_controls=scored_control_count,
         total_rows=total_findings,
         high_count=high_count,
         medium_count=medium_count,
@@ -1385,6 +1480,7 @@ def generate_html_report(
         agentcore_total=agentcore_total,
         agentcore_failed=agentcore_failed,
         agentcore_passed=agentcore_passed,
+        agent_registry_service_card=agent_registry_service_card,
         agentic_total=agentic_total,
         agentic_failed=agentic_failed,
         agentic_passed=agentic_passed,
@@ -1393,6 +1489,8 @@ def generate_html_report(
         bedrock_summary=bedrock_summary,
         sagemaker_summary=sagemaker_summary,
         agentcore_summary=agentcore_summary,
+        agent_registry_nav=agent_registry_nav,
+        agent_registry_section=agent_registry_section,
         findings_table_class="single-account-report" if mode != "multi" else "",
         agentic_nav=agentic_nav,
         lens_nav=lens_nav,
@@ -1411,7 +1509,7 @@ def generate_html_report(
         region_risk_section=region_risk_section,
     )
     base_scope_source = (
-        f"Bedrock, SageMaker, and AgentCore checks are based on the "
+        f"Bedrock, SageMaker, AgentCore, and AWS Agent Registry checks are based on the "
         f'<a href="{GENAI_LENS_URL}" target="_blank">AWS Well-Architected Framework Generative AI Lens</a>. '
         f'Agentic AI Security references the <a href="{AGENTIC_AI_LENS_URL}" target="_blank">AWS Well-Architected Agentic AI Lens</a>.'
     )
@@ -1420,13 +1518,20 @@ def generate_html_report(
         base_scope_source,
         1,
     )
+    rendered_html = rendered_html.replace(
+        '<span style="font-size: 13px; font-weight: 500;">Amazon Bedrock AgentCore</span></div></div><p style=',
+        '<span style="font-size: 13px; font-weight: 500;">Amazon Bedrock AgentCore</span></div>'
+        '<div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface-2); border-radius: 6px;">'
+        '<span style="font-size: 13px; font-weight: 500;">AWS Agent Registry</span></div></div><p style=',
+        1,
+    )
     scope_extension_blocks = (
         agentic_scope_block + finserv_scope_industry_block + compliance_scope_block
     )
     if scope_extension_blocks:
         rendered_html = rendered_html.replace(
-            '<span style="font-size: 13px; font-weight: 500;">Amazon Bedrock AgentCore</span></div></div><p style=',
-            '<span style="font-size: 13px; font-weight: 500;">Amazon Bedrock AgentCore</span></div>'
+            '<span style="font-size: 13px; font-weight: 500;">AWS Agent Registry</span></div></div><p style=',
+            '<span style="font-size: 13px; font-weight: 500;">AWS Agent Registry</span></div>'
             + "</div>"
             + scope_extension_blocks
             + "<p style=",
