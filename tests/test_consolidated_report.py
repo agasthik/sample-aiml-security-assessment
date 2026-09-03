@@ -305,6 +305,157 @@ class TestOWASPFindingClassification:
         assert captured["service_stats"]["bedrock"]["failed"] == 0
 
 
+class TestAgentRegistryFindingClassification:
+    """AR-* rows are classified into the AWS Agent Registry assessment area."""
+
+    def _run(self, monkeypatch, results):
+        captured = {}
+        monkeypatch.setattr(
+            consolidated_app,
+            "generate_report_from_template",
+            lambda **kwargs: captured.update(kwargs) or "<html></html>",
+        )
+        consolidated_app.generate_html_report(results)
+        return captured
+
+    def test_ar_rows_from_registry_csv_route_to_agent_registry_bucket(
+        self, monkeypatch
+    ):
+        results = {
+            "execution_id": "exec-123",
+            "account_id": "111122223333",
+            "bedrock": {},
+            "sagemaker": {},
+            "agentcore": {},
+            "agent-registry": {
+                "agent_registry_security_report_exec-123_us-east-1": [
+                    _finding(
+                        "AR-01",
+                        "Global",
+                        status="Failed",
+                        name="AWS Agent Registry IAM Full Access Policy",
+                    ),
+                    _finding(
+                        "AR-05",
+                        "us-east-1",
+                        status="Passed",
+                        name="AWS Agent Registry Customer-Managed KMS Encryption",
+                    ),
+                ],
+            },
+        }
+        captured = self._run(monkeypatch, results)
+        assert captured["service_stats"]["agent-registry"]["failed"] == 1
+        assert captured["service_stats"]["agent-registry"]["passed"] == 1
+        assert all(
+            f["_service"] == "agent-registry"
+            for f in captured["service_findings"]["agent-registry"]
+        )
+        # AgentCore must not absorb Registry rows now that they are separate.
+        assert captured["service_stats"]["agentcore"] == {
+            "passed": 0,
+            "failed": 0,
+            "na": 0,
+        }
+
+    def test_ar_row_landing_in_agentcore_csv_still_routes_to_agent_registry(
+        self, monkeypatch
+    ):
+        """Defensive: the Check_ID prefix wins over the source CSV.
+
+        Agent Registry checks used to live in the AgentCore scanner, so a stale
+        deployment could still emit AR-* rows into the AgentCore CSV. They must
+        be routed by prefix rather than by the file they arrived in.
+        """
+        results = {
+            "execution_id": "exec-123",
+            "account_id": "111122223333",
+            "bedrock": {},
+            "sagemaker": {},
+            "agentcore": {
+                "agentcore_security_report_exec-123_us-east-1": [
+                    _finding(
+                        "AR-08",
+                        "us-east-1",
+                        status="Failed",
+                        name="AWS Agent Registry Record Provenance",
+                    ),
+                ],
+            },
+        }
+        captured = self._run(monkeypatch, results)
+        assert captured["service_stats"]["agent-registry"]["failed"] == 1
+        assert captured["service_stats"]["agentcore"]["failed"] == 0
+
+    def test_ag_rows_from_registry_csv_route_to_the_agentic_lens(self, monkeypatch):
+        """AG-33..AG-38 are synthesized by the Registry Lambda but are lens rows.
+
+        They ship inside the Agent Registry CSV, so prefix routing must move
+        them to the agentic bucket or they would double-count as direct
+        Registry controls.
+        """
+        results = {
+            "execution_id": "exec-123",
+            "account_id": "111122223333",
+            "bedrock": {},
+            "sagemaker": {},
+            "agentcore": {},
+            "agent-registry": {
+                "agent_registry_security_report_exec-123_us-east-1": [
+                    _finding(
+                        "AR-03",
+                        "us-east-1",
+                        status="Failed",
+                        name="AWS Agent Registry Publication Approval Governance",
+                    ),
+                    _finding(
+                        "AG-33",
+                        "us-east-1",
+                        status="Failed",
+                        name="Agentic AI Registry Publication Approval Governance",
+                    ),
+                ],
+            },
+        }
+        captured = self._run(monkeypatch, results)
+        assert captured["service_stats"]["agentic"]["failed"] == 1
+        assert captured["service_stats"]["agent-registry"]["failed"] == 1
+        agentic_ids = {f["Check_ID"] for f in captured["service_findings"]["agentic"]}
+        registry_ids = {
+            f["Check_ID"] for f in captured["service_findings"]["agent-registry"]
+        }
+        assert agentic_ids == {"AG-33"}
+        assert registry_ids == {"AR-03"}
+
+    def test_global_agent_registry_row_is_not_counted_as_a_region(self, monkeypatch):
+        """AR-01/AR-02 are account-scoped and tagged Global, not a scanned region."""
+        results = {
+            "execution_id": "exec-123",
+            "account_id": "111122223333",
+            "bedrock": {},
+            "sagemaker": {},
+            "agentcore": {},
+            "agent-registry": {
+                "agent_registry_security_report_exec-123_us-east-1": [
+                    _finding(
+                        "AR-02",
+                        "Global",
+                        status="Failed",
+                        name="AWS Agent Registry Stale Access",
+                    ),
+                    _finding(
+                        "AR-05",
+                        "us-east-1",
+                        status="Passed",
+                        name="AWS Agent Registry Customer-Managed KMS Encryption",
+                    ),
+                ],
+            },
+        }
+        captured = self._run(monkeypatch, results)
+        assert captured["regions"] == ["us-east-1"]
+
+
 class TestFinServSuppressionWhenOWASPOnly:
     """When Responsible AI GRC runs only as an OWASP dependency (customer did
     not enable it explicitly), FS-* rows must be hidden from the report
