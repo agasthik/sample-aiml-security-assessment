@@ -11,9 +11,10 @@ import json
 import logging
 import os
 import time
+from fnmatch import fnmatchcase
 from io import StringIO
 from datetime import datetime, timezone
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 from botocore.config import Config
 from botocore.exceptions import ClientError, EndpointConnectionError
 
@@ -97,7 +98,6 @@ AGENTCORE_ONLINE_EVALUATION_REFERENCE_URL = (
     "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
     "get-online-evaluations.html"
 )
-
 AGENTIC_AGENTCORE_CHECK_MAPPINGS = {
     "AC-01": {
         "check_id": "AG-15",
@@ -192,14 +192,66 @@ AGENTIC_AGENTCORE_CHECK_MAPPINGS = {
     },
 }
 
-# Error codes returned when a region exists but is not enabled/usable for the
-# account (opt-in regions, disabled regions). The availability probe treats
-# these the same as an endpoint connection failure.
+REGIONAL_AGENTCORE_CHECK_IDS = (
+    "AC-01",
+    "AC-04",
+    "AC-05",
+    "AC-06",
+    "AC-07",
+    "AC-08",
+    "AC-10",
+    "AC-11",
+    "AC-12",
+    "AC-13",
+    "AC-14",
+    "AC-15",
+    "AC-16",
+    "AC-17",
+)
+
+AGENTCORE_RUNTIME_CHECK_IDS = (
+    "AC-01",
+    "AC-04",
+    "AC-05",
+    "AC-06",
+    "AC-07",
+    "AC-08",
+    "AC-10",
+    "AC-11",
+    "AC-12",
+    "AC-13",
+    "AC-14",
+    "AC-15",
+    "AC-16",
+    "AC-17",
+)
+
+NATIVE_AGENTIC_AGENTCORE_CHECK_NAMES = {
+    "AG-24": "Agentic AI Gateway Authentication",
+    "AG-25": "Agentic AI Gateway Policy Enforcement",
+    "AG-26": "Agentic AI Gateway Exception Handling",
+    "AG-27": "Agentic AI Gateway WAF Protection",
+}
+
+# Error codes that establish the target region is not enabled for the account.
+# AWS returns these credential-shaped codes when a request is signed for a
+# region the account has not opted into, so they are regional availability
+# signals rather than credential defects — a genuinely invalid credential also
+# fails the primary region, which the assessment always reaches first.
 REGION_UNAVAILABLE_ERROR_CODES = {
-    "UnrecognizedClientException",
-    "InvalidClientTokenId",
     "AuthFailure",
+    "InvalidClientTokenId",
     "OptInRequired",
+    "UnrecognizedClientException",
+}
+
+# Error codes that only ever indicate an expired or malformed credential, never
+# a disabled region.
+AUTHENTICATION_ERROR_CODES = {
+    "ExpiredToken",
+    "ExpiredTokenException",
+    "InvalidSignatureException",
+    "SignatureDoesNotMatch",
 }
 
 # Execution tracking
@@ -497,6 +549,170 @@ def build_agentic_agentcore_unavailable_findings(
     return unavailable_findings
 
 
+def build_agentcore_timeout_findings(
+    region: str, existing_findings: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Create N/A AC-* and native AG-* rows skipped near the deadline."""
+    existing_check_ids = {finding.get("Check_ID") for finding in existing_findings}
+    timeout_findings = []
+
+    for check_id in REGIONAL_AGENTCORE_CHECK_IDS:
+        if check_id in existing_check_ids:
+            continue
+        timeout_findings.append(
+            create_finding(
+                check_id=check_id,
+                finding_name="AgentCore Assessment Incomplete",
+                finding_details=(
+                    f"{check_id} could not be assessed because the Lambda timeout "
+                    f"was approaching in region {region}."
+                ),
+                resolution="Re-run the assessment to complete the skipped AgentCore checks.",
+                reference=AGENTCORE_STARTER_TOOLKIT_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+                region=region,
+            )
+        )
+
+    for check_id, finding_name in NATIVE_AGENTIC_AGENTCORE_CHECK_NAMES.items():
+        if check_id in existing_check_ids:
+            continue
+        timeout_findings.append(
+            create_finding(
+                check_id=check_id,
+                finding_name=finding_name,
+                finding_details=(
+                    "This AgentCore gateway control could not be assessed because "
+                    f"the Lambda timeout was approaching in region {region}."
+                ),
+                resolution="Re-run the assessment to complete the skipped AgentCore checks.",
+                reference=AGENTIC_AI_LENS_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+                region=region,
+            )
+        )
+
+    return timeout_findings
+
+
+def build_agentic_agentcore_timeout_findings(
+    region: str, existing_findings: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Create N/A mapped AG-* rows still missing after timeout backfill."""
+    existing_check_ids = {finding.get("Check_ID") for finding in existing_findings}
+    timeout_findings = []
+
+    for mapping in AGENTIC_AGENTCORE_CHECK_MAPPINGS.values():
+        if mapping["check_id"] in existing_check_ids:
+            continue
+        timeout_findings.append(
+            create_finding(
+                check_id=mapping["check_id"],
+                finding_name=mapping["finding"],
+                finding_details=(
+                    f"Agentic AI security domain: {mapping['lens_domain']}. "
+                    "This AgentCore-derived control could not be assessed because "
+                    f"the Lambda timeout was approaching in region {region}."
+                ),
+                resolution="Re-run the assessment to complete the skipped AgentCore checks.",
+                reference=AGENTIC_AI_LENS_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+                region=region,
+            )
+        )
+
+    return timeout_findings
+
+
+def prepare_agentcore_timeout_report_findings(
+    findings: List[Dict[str, Any]], region: str
+) -> None:
+    """Backfill deadline-skipped checks and synthesize their Agentic AI rows."""
+    findings.extend(build_agentcore_timeout_findings(region, findings))
+    for finding in findings:
+        if not finding.get("Region"):
+            finding["Region"] = region
+    findings.extend(build_agentic_agentcore_security_findings(findings))
+    findings.extend(build_agentic_agentcore_timeout_findings(region, findings))
+    for finding in findings:
+        if not finding.get("Region"):
+            finding["Region"] = region
+
+
+def prepare_agentcore_runtime_incomplete_report_findings(
+    findings: List[Dict[str, Any]],
+    region: str,
+    error_code: str,
+) -> None:
+    """Backfill Runtime checks skipped after an indeterminate credential probe."""
+    resolution = (
+        "Verify the assessment credentials, session token, signing region, and "
+        "system clock, then retry."
+    )
+    existing_check_ids = {finding.get("Check_ID") for finding in findings}
+
+    for check_id in AGENTCORE_RUNTIME_CHECK_IDS:
+        if check_id in existing_check_ids:
+            continue
+        findings.append(
+            create_finding(
+                check_id=check_id,
+                finding_name="AgentCore Runtime Assessment Incomplete",
+                finding_details=(
+                    f"{check_id} could not be assessed in region {region} because "
+                    "the AgentCore Runtime availability probe returned credential "
+                    f"or authentication error {error_code}."
+                ),
+                resolution=resolution,
+                reference=AGENTCORE_STARTER_TOOLKIT_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+                region=region,
+            )
+        )
+
+    for check_id, finding_name in NATIVE_AGENTIC_AGENTCORE_CHECK_NAMES.items():
+        if check_id in existing_check_ids:
+            continue
+        findings.append(
+            create_finding(
+                check_id=check_id,
+                finding_name=finding_name,
+                finding_details=(
+                    "This AgentCore gateway control could not be assessed in "
+                    f"region {region} because the AgentCore Runtime availability "
+                    "probe returned credential or authentication error "
+                    f"{error_code}."
+                ),
+                resolution=resolution,
+                reference=AGENTIC_AI_LENS_URL,
+                severity=SeverityEnum.INFORMATIONAL,
+                status=StatusEnum.NA,
+                region=region,
+            )
+        )
+
+    for finding in findings:
+        if not finding.get("Region"):
+            finding["Region"] = region
+    runtime_agentic_check_ids = {
+        AGENTIC_AGENTCORE_CHECK_MAPPINGS[check_id]["check_id"]
+        for check_id in AGENTCORE_RUNTIME_CHECK_IDS
+        if check_id in AGENTIC_AGENTCORE_CHECK_MAPPINGS
+    }
+    agentic_findings = build_agentic_agentcore_security_findings(findings)
+    for finding in agentic_findings:
+        if finding.get("Check_ID") in runtime_agentic_check_ids:
+            finding["Resolution"] = resolution
+    findings.extend(agentic_findings)
+    for finding in findings:
+        if not finding.get("Region"):
+            finding["Region"] = region
+
+
 def write_to_s3(
     execution_id: str, csv_content: str, bucket_name: str, region: str = ""
 ) -> str:
@@ -712,6 +928,145 @@ def check_agentcore_vpc_configuration() -> List[Dict[str, Any]]:
     return findings
 
 
+AGENT_PLATFORM_IAM_NAMESPACES = {"bedrock-agentcore"}
+
+
+def _policy_document(policy: Dict[str, Any]) -> Dict[str, Any]:
+    """Return one cached IAM policy document as a mapping."""
+    document = policy.get("document", {})
+    if isinstance(document, str):
+        document = json.loads(document)
+    if not isinstance(document, dict):
+        raise ValueError("IAM policy document is not a mapping")
+    return document
+
+
+def _allow_statements(policy: Dict[str, Any]):
+    """Yield Allow statements from one cached attached or inline policy."""
+    statements = _policy_document(policy).get("Statement", [])
+    if not isinstance(statements, list):
+        statements = [statements]
+    for statement in statements:
+        if isinstance(statement, dict) and statement.get("Effect") == "Allow":
+            yield statement
+
+
+def _statement_actions(statement: Dict[str, Any]) -> List[str]:
+    """Return normalized action strings from one IAM statement."""
+    actions = statement.get("Action", [])
+    if isinstance(actions, str):
+        actions = [actions]
+    return [str(action).strip().lower() for action in actions]
+
+
+def _statement_not_actions(statement: Dict[str, Any]) -> List[str]:
+    """Return normalized NotAction strings from one IAM statement."""
+    not_actions = statement.get("NotAction", [])
+    if isinstance(not_actions, str):
+        not_actions = [not_actions]
+    return [str(action).strip().lower() for action in not_actions]
+
+
+def _statement_resources(statement: Dict[str, Any]) -> List[str]:
+    """Return normalized resource strings from one IAM statement."""
+    resources = statement.get("Resource", [])
+    if isinstance(resources, str):
+        resources = [resources]
+    return [str(resource) for resource in resources]
+
+
+def _is_agent_platform_action(action: str) -> bool:
+    """Return whether an IAM action grants AgentCore access."""
+    action_parts = action.split(":", 1)
+    return len(action_parts) == 2 and action_parts[0] in AGENT_PLATFORM_IAM_NAMESPACES
+
+
+def _not_action_excludes_namespace(pattern: str, namespace: str) -> bool:
+    """Return whether one NotAction pattern excludes every action in a service."""
+    if pattern == "*":
+        return True
+    pattern_parts = pattern.split(":", 1)
+    if len(pattern_parts) != 2:
+        return False
+    service_pattern, action_pattern = pattern_parts
+    return action_pattern == "*" and fnmatchcase(namespace, service_pattern)
+
+
+def _not_action_targets_agent_platform(exclusions: List[str]) -> bool:
+    """Return whether NotAction exclusions name an agent platform namespace."""
+    for pattern in exclusions:
+        pattern_parts = pattern.split(":", 1)
+        if len(pattern_parts) != 2:
+            continue
+        service_pattern = pattern_parts[0]
+        if any(
+            fnmatchcase(namespace, service_pattern)
+            for namespace in AGENT_PLATFORM_IAM_NAMESPACES
+        ):
+            return True
+    return False
+
+
+def _not_action_allows_agent_platform_access(statement: Dict[str, Any]) -> bool:
+    """Return whether an Allow/NotAction statement still grants platform access."""
+    if "NotAction" not in statement:
+        return False
+    exclusions = _statement_not_actions(statement)
+    if not _not_action_targets_agent_platform(exclusions):
+        # The exclusions name no agent platform namespace, so this is a
+        # service-agnostic administrator-style grant rather than an
+        # AgentCore-specific one. These checks scope themselves to explicit
+        # platform namespaces, the same reason a bare `Action: "*"` is ignored.
+        return False
+    return any(
+        not any(
+            _not_action_excludes_namespace(pattern, namespace) for pattern in exclusions
+        )
+        for namespace in AGENT_PLATFORM_IAM_NAMESPACES
+    )
+
+
+def _policy_has_wildcard_agent_platform_access(policy: Dict[str, Any]) -> bool:
+    """Return whether a policy grants broad platform access on all resources."""
+    for statement in _allow_statements(policy):
+        if "*" not in _statement_resources(statement):
+            continue
+        if _not_action_allows_agent_platform_access(statement):
+            return True
+        for action in _statement_actions(statement):
+            action_parts = action.split(":", 1)
+            if len(action_parts) != 2:
+                continue
+            service_namespace, action_pattern = action_parts
+            if service_namespace in AGENT_PLATFORM_IAM_NAMESPACES and any(
+                wildcard in action_pattern for wildcard in ("*", "?")
+            ):
+                return True
+    return False
+
+
+def _permissions_include_agent_platform_access(
+    permissions: Dict[str, Any],
+    principal_label: str,
+) -> bool:
+    """Inspect attached and inline policies for AgentCore access."""
+    attached_policies = permissions.get("attached_policies", [])
+    inline_policies = permissions.get("inline_policies", [])
+
+    for policy in [*attached_policies, *inline_policies]:
+        try:
+            for statement in _allow_statements(policy):
+                if _not_action_allows_agent_platform_access(statement) or any(
+                    _is_agent_platform_action(action)
+                    for action in _statement_actions(statement)
+                ):
+                    return True
+        except Exception as error:
+            logger.warning(f"Error parsing policy for {principal_label}: {error}")
+
+    return False
+
+
 def check_agentcore_full_access_roles(
     permission_cache: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
@@ -719,8 +1074,8 @@ def check_agentcore_full_access_roles(
     Check for IAM roles with overly permissive AgentCore access.
 
     Identifies:
-    - Roles with BedrockAgentCoreFullAccess managed policy
-    - Roles with wildcard AgentCore permissions
+    - Roles with BedrockAgentCoreFullAccess
+    - Roles with wildcard or allow-except AgentCore permissions
 
     Args:
         permission_cache: Cached IAM permissions data
@@ -751,14 +1106,14 @@ def check_agentcore_full_access_roles(
             return findings
 
         full_access_roles = []
-        wildcard_roles = []
+        wildcard_roles = set()
 
         # Iterate over role_permissions dict (role_name -> permissions)
         for role_name, permissions in role_permissions.items():
             attached_policies = permissions.get("attached_policies", [])
             inline_policies = permissions.get("inline_policies", [])
 
-            # Check for BedrockAgentCoreFullAccess managed policy
+            # Check for AgentCore full-access managed policies.
             for policy in attached_policies:
                 policy_name = policy.get("name", "")
                 if (
@@ -768,41 +1123,16 @@ def check_agentcore_full_access_roles(
                     full_access_roles.append(role_name)
                     break
 
-            # Check for wildcard AgentCore permissions in inline policies
-            for policy in inline_policies:
-                policy_name = policy.get("name", "")
-                policy_doc = policy.get("document", {})
+            # Check attached and inline documents for wildcard or allow-except
+            # AgentCore permissions.
+            for policy in [*attached_policies, *inline_policies]:
                 try:
-                    if isinstance(policy_doc, str):
-                        policy_doc = json.loads(policy_doc)
-
-                    statements = policy_doc.get("Statement", [])
-                    if not isinstance(statements, list):
-                        statements = [statements]
-
-                    for statement in statements:
-                        if statement.get("Effect") == "Allow":
-                            actions = statement.get("Action", [])
-                            if isinstance(actions, str):
-                                actions = [actions]
-
-                            resources = statement.get("Resource", [])
-                            if isinstance(resources, str):
-                                resources = [resources]
-
-                            # Check for wildcard AgentCore permissions
-                            for action in actions:
-                                if (
-                                    "bedrock-agentcore:*" in action
-                                    or "bedrock-agentcore-control:*" in action
-                                ):
-                                    if "*" in resources:
-                                        wildcard_roles.append(role_name)
-                                        break
-
-                except Exception as e:
+                    if _policy_has_wildcard_agent_platform_access(policy):
+                        wildcard_roles.add(role_name)
+                        break
+                except Exception as error:
                     logger.warning(
-                        f"Error parsing inline policy for role {role_name}: {e}"
+                        f"Error parsing policy for role {role_name}: {error}"
                     )
 
         # Generate findings for full access roles
@@ -811,7 +1141,7 @@ def check_agentcore_full_access_roles(
                 create_finding(
                     check_id="AC-02",
                     finding_name="AgentCore IAM Full Access Policy",
-                    finding_details=f"The following roles have BedrockAgentCoreFullAccess policy: {', '.join(full_access_roles)}",
+                    finding_details=f"The following roles have AgentCore full-access policies: {', '.join(full_access_roles)}",
                     resolution="Replace with least-privilege policies scoped to specific AgentCore resources and actions",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
                     severity=SeverityEnum.HIGH,
@@ -825,8 +1155,8 @@ def check_agentcore_full_access_roles(
                 create_finding(
                     check_id="AC-02",
                     finding_name="AgentCore IAM Wildcard Permissions",
-                    finding_details=f"The following roles have wildcard AgentCore permissions on all resources: {', '.join(wildcard_roles)}",
-                    resolution="Scope permissions to specific AgentCore resources using resource ARNs",
+                    finding_details=f"The following roles have wildcard or allow-except AgentCore permissions on all resources: {', '.join(sorted(wildcard_roles))}",
+                    resolution="Replace wildcard or allow-except permissions with required AgentCore actions and scope resources using ARNs",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
                     severity=SeverityEnum.HIGH,
                     status=StatusEnum.FAILED,
@@ -914,52 +1244,9 @@ def check_stale_agentcore_access(
         for role_name, permissions in role_permissions.items():
             # Build role ARN from role name
             role_arn = f"arn:aws:iam::{account_id}:role/{role_name}"
-            attached_policies = permissions.get("attached_policies", [])
-            inline_policies = permissions.get("inline_policies", [])
-
-            has_agentcore_permission = False
-
-            # Check attached policies
-            for policy in attached_policies:
-                policy_name = policy.get("name", "")
-                if "AgentCore" in policy_name or "agentcore" in policy_name.lower():
-                    has_agentcore_permission = True
-                    break
-
-            # Check inline policies
-            if not has_agentcore_permission:
-                for policy in inline_policies:
-                    policy_name = policy.get("name", "")
-                    policy_doc = policy.get("document", {})
-                    try:
-                        if isinstance(policy_doc, str):
-                            policy_doc = json.loads(policy_doc)
-
-                        statements = policy_doc.get("Statement", [])
-                        if not isinstance(statements, list):
-                            statements = [statements]
-
-                        for statement in statements:
-                            if statement.get("Effect") == "Allow":
-                                actions = statement.get("Action", [])
-                                if isinstance(actions, str):
-                                    actions = [actions]
-
-                                for action in actions:
-                                    if (
-                                        "bedrock-agentcore" in action.lower()
-                                        or "agentcore" in action.lower()
-                                    ):
-                                        has_agentcore_permission = True
-                                        break
-
-                                if has_agentcore_permission:
-                                    break
-
-                    except Exception as e:
-                        logger.warning(
-                            f"Error parsing inline policy for role {role_name}: {e}"
-                        )
+            has_agentcore_permission = _permissions_include_agent_platform_access(
+                permissions, f"role {role_name}"
+            )
 
             if has_agentcore_permission and role_arn:
                 agentcore_principals.append(
@@ -970,52 +1257,9 @@ def check_stale_agentcore_access(
         for user_name, permissions in user_permissions.items():
             # Build user ARN from user name
             user_arn = f"arn:aws:iam::{account_id}:user/{user_name}"
-            attached_policies = permissions.get("attached_policies", [])
-            inline_policies = permissions.get("inline_policies", [])
-
-            has_agentcore_permission = False
-
-            # Check attached policies
-            for policy in attached_policies:
-                policy_name = policy.get("name", "")
-                if "AgentCore" in policy_name or "agentcore" in policy_name.lower():
-                    has_agentcore_permission = True
-                    break
-
-            # Check inline policies
-            if not has_agentcore_permission:
-                for policy in inline_policies:
-                    policy_name = policy.get("name", "")
-                    policy_doc = policy.get("document", {})
-                    try:
-                        if isinstance(policy_doc, str):
-                            policy_doc = json.loads(policy_doc)
-
-                        statements = policy_doc.get("Statement", [])
-                        if not isinstance(statements, list):
-                            statements = [statements]
-
-                        for statement in statements:
-                            if statement.get("Effect") == "Allow":
-                                actions = statement.get("Action", [])
-                                if isinstance(actions, str):
-                                    actions = [actions]
-
-                                for action in actions:
-                                    if (
-                                        "bedrock-agentcore" in action.lower()
-                                        or "agentcore" in action.lower()
-                                    ):
-                                        has_agentcore_permission = True
-                                        break
-
-                                if has_agentcore_permission:
-                                    break
-
-                    except Exception as e:
-                        logger.warning(
-                            f"Error parsing inline policy for user {user_name}: {e}"
-                        )
+            has_agentcore_permission = _permissions_include_agent_platform_access(
+                permissions, f"user {user_name}"
+            )
 
             if has_agentcore_permission and user_arn:
                 agentcore_principals.append(
@@ -1045,10 +1289,34 @@ def check_stale_agentcore_access(
         stale_principals = []
         never_accessed_principals = []
 
-        for principal in agentcore_principals:
+        for principal_index, principal in enumerate(agentcore_principals):
             principal_arn = principal["arn"]
             principal_name = principal["name"]
             principal_type = principal["type"]
+
+            if not check_timeout():
+                remaining_principals = len(agentcore_principals) - principal_index
+                logger.warning(
+                    "Stopping stale-access checks with "
+                    f"{remaining_principals} principal(s) remaining because the "
+                    "Lambda timeout is approaching"
+                )
+                findings.append(
+                    create_finding(
+                        check_id="AC-03",
+                        finding_name="AgentCore Stale Access Check Incomplete",
+                        finding_details=(
+                            f"Stopped before completing the assessment of "
+                            f"{remaining_principals} IAM principal(s) because the "
+                            "Lambda timeout was approaching"
+                        ),
+                        resolution="Re-run the assessment to evaluate the remaining principals",
+                        reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
+                        severity=SeverityEnum.INFORMATIONAL,
+                        status=StatusEnum.NA,
+                    )
+                )
+                break
 
             try:
                 # Generate service last accessed details
@@ -1066,10 +1334,19 @@ def check_stale_agentcore_access(
                 wait_interval = 2
                 elapsed_time = 0
                 job_status = "IN_PROGRESS"
+                lambda_timeout_approaching = False
 
                 while job_status == "IN_PROGRESS" and elapsed_time < max_wait_time:
+                    if not check_timeout():
+                        lambda_timeout_approaching = True
+                        break
+
                     time.sleep(wait_interval)  # nosemgrep: arbitrary-sleep
                     elapsed_time += wait_interval
+
+                    if not check_timeout():
+                        lambda_timeout_approaching = True
+                        break
 
                     get_response = iam_client.get_service_last_accessed_details(
                         JobId=job_id
@@ -1080,7 +1357,7 @@ def check_stale_agentcore_access(
                         # Check for AgentCore service access
                         services = get_response.get("ServicesLastAccessed", [])
 
-                        agentcore_service = None
+                        matching_services = []
                         for service in services:
                             service_name = service.get("ServiceName", "")
                             service_namespace = service.get("ServiceNamespace", "")
@@ -1091,19 +1368,28 @@ def check_stale_agentcore_access(
                                 or "agentcore" in service_namespace.lower()
                                 or "bedrock-agentcore" in service_namespace.lower()
                             ):
-                                agentcore_service = service
-                                break
+                                matching_services.append(service)
 
-                        if agentcore_service:
-                            last_authenticated = agentcore_service.get(
-                                "LastAuthenticated"
-                            )
+                        if matching_services:
+                            last_authenticated_values = [
+                                service.get("LastAuthenticated")
+                                for service in matching_services
+                                if service.get("LastAuthenticated")
+                            ]
 
-                            if last_authenticated:
+                            if last_authenticated_values:
                                 # Calculate days since last access
-                                last_access_date = datetime.fromisoformat(
-                                    str(last_authenticated).replace("Z", "+00:00")
-                                )
+                                last_access_dates = []
+                                for last_authenticated in last_authenticated_values:
+                                    last_access_date = datetime.fromisoformat(
+                                        str(last_authenticated).replace("Z", "+00:00")
+                                    )
+                                    if last_access_date.tzinfo is None:
+                                        last_access_date = last_access_date.replace(
+                                            tzinfo=timezone.utc
+                                        )
+                                    last_access_dates.append(last_access_date)
+                                last_access_date = max(last_access_dates)
                                 current_date = datetime.now(timezone.utc)
                                 days_since_access = (
                                     current_date - last_access_date
@@ -1145,6 +1431,31 @@ def check_stale_agentcore_access(
                         )
                         break
 
+                if lambda_timeout_approaching:
+                    remaining_principals = len(agentcore_principals) - principal_index
+                    logger.warning(
+                        "Stopping stale-access checks while assessing "
+                        f"{principal_type} {principal_name}, with "
+                        f"{remaining_principals} principal(s) incomplete, because "
+                        "the Lambda timeout is approaching"
+                    )
+                    findings.append(
+                        create_finding(
+                            check_id="AC-03",
+                            finding_name="AgentCore Stale Access Check Incomplete",
+                            finding_details=(
+                                f"Stopped before completing the assessment of "
+                                f"{remaining_principals} IAM principal(s) because "
+                                "the Lambda timeout was approaching"
+                            ),
+                            resolution="Re-run the assessment to evaluate the remaining principals",
+                            reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
+                            severity=SeverityEnum.INFORMATIONAL,
+                            status=StatusEnum.NA,
+                        )
+                    )
+                    break
+
                 if job_status == "IN_PROGRESS":
                     logger.warning(
                         f"Job timed out for {principal_type} {principal_name} after {max_wait_time}s"
@@ -1156,8 +1467,8 @@ def check_stale_agentcore_access(
                             finding_details=f"Could not determine last access for {principal_type} '{principal_name}' — IAM job timed out after {max_wait_time}s",
                             resolution="Re-run the assessment or manually check service last accessed details for this principal",
                             reference="https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_last-accessed.html",
-                            severity=SeverityEnum.LOW,
-                            status=StatusEnum.FAILED,
+                            severity=SeverityEnum.INFORMATIONAL,
+                            status=StatusEnum.NA,
                         )
                     )
 
@@ -3515,9 +3826,13 @@ def lambda_handler(event, context):
                         )
                     )
 
+        # AWS Agent Registry has its own Lambda, report artifact, and timeout
+        # budget. AgentCore proceeds directly to its Runtime availability probe.
+        deadline_reached = False
         # Reset per-invocation so a warm container cannot leak a previous
         # region's client if creation below fails.
         agentcore_client = None
+        runtime_probe_auth_error_code = None
         try:
             agentcore_client = boto3.client(
                 "bedrock-agentcore-control", config=boto3_config, region_name=region
@@ -3548,6 +3863,13 @@ def lambda_handler(event, context):
                         f"AgentCore not accessible in region {region} ({error_code}), skipping"
                     )
                     agentcore_client = None
+                elif error_code in AUTHENTICATION_ERROR_CODES:
+                    runtime_probe_auth_error_code = error_code
+                    logger.warning(
+                        "AgentCore Runtime availability probe returned credential "
+                        f"or authentication error {error_code}; writing an "
+                        "incomplete assessment"
+                    )
                 else:
                     # Service is reachable but returned another API error (e.g. access
                     # denied) — proceed; individual checks handle their own errors.
@@ -3565,6 +3887,47 @@ def lambda_handler(event, context):
                     f"AgentCore availability probe raised an unexpected error, "
                     f"proceeding with checks: {e}"
                 )
+
+        if runtime_probe_auth_error_code is not None:
+            all_findings.append(
+                create_finding(
+                    check_id="AC-00",
+                    finding_name="AgentCore Runtime Assessment Incomplete",
+                    finding_details=(
+                        "Amazon Bedrock AgentCore Runtime checks could not be "
+                        f"assessed in region {region} because the availability "
+                        "probe returned credential or authentication error "
+                        f"{runtime_probe_auth_error_code}."
+                    ),
+                    resolution=(
+                        "Verify the assessment credentials, session token, signing "
+                        "region, and system clock, then retry."
+                    ),
+                    reference=AGENTCORE_STARTER_TOOLKIT_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                    region=region,
+                )
+            )
+            prepare_agentcore_runtime_incomplete_report_findings(
+                all_findings,
+                region,
+                runtime_probe_auth_error_code,
+            )
+            csv_content = generate_csv_report(all_findings)
+            s3_url = write_to_s3(execution_id, csv_content, BUCKET_NAME, region=region)
+            return {
+                "statusCode": 200,
+                "body": json.dumps(
+                    {
+                        "message": (
+                            "AgentCore Runtime assessment was incomplete because "
+                            f"the credentials were rejected in {region}"
+                        ),
+                        "s3_url": s3_url,
+                    }
+                ),
+            }
 
         # If AgentCore not available, produce an N/A report (plus any global IAM
         # findings already collected on the primary region) and exit early
@@ -3648,6 +4011,7 @@ def lambda_handler(event, context):
                 logger.error(
                     f"Timeout approaching, skipping remaining checks after {check_name}"
                 )
+                deadline_reached = True
                 break
 
             try:
@@ -3677,16 +4041,23 @@ def lambda_handler(event, context):
                     )
                 )
 
-        # Inject region into all findings that don't have it set
-        for finding in all_findings:
-            if not finding.get("Region"):
-                finding["Region"] = region
+        if deadline_reached:
+            logger.warning(
+                "AgentCore regional checks stopped near the Lambda timeout; "
+                "backfilling skipped controls as N/A"
+            )
+            prepare_agentcore_timeout_report_findings(all_findings, region)
+        else:
+            # Inject region into all findings that don't have it set
+            for finding in all_findings:
+                if not finding.get("Region"):
+                    finding["Region"] = region
 
-        logger.info("Building Agentic AI Security findings from AgentCore results")
-        all_findings.extend(build_agentic_agentcore_security_findings(all_findings))
-        for finding in all_findings:
-            if not finding.get("Region"):
-                finding["Region"] = region
+            logger.info("Building Agentic AI Security findings from AgentCore results")
+            all_findings.extend(build_agentic_agentcore_security_findings(all_findings))
+            for finding in all_findings:
+                if not finding.get("Region"):
+                    finding["Region"] = region
 
         # Generate CSV report
         logger.info(f"Generating CSV report with {len(all_findings)} total findings")

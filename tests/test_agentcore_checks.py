@@ -1,5 +1,5 @@
 """
-Tests for AgentCore security assessment checks (AC-01 through AC-13).
+Tests for Amazon Bedrock AgentCore security assessment checks (AC-01 through AC-17).
 
 AgentCore checks differ from Bedrock/SageMaker:
 - Return List[Dict] directly (not a dict with 'csv_data' key)
@@ -18,7 +18,9 @@ import sys
 import os
 import importlib.util
 from unittest.mock import patch, MagicMock
-from botocore.exceptions import ClientError, EndpointConnectionError
+
+import pytest
+from botocore.exceptions import ClientError
 
 sys.path.insert(0, "aiml-security-assessment/functions/security/agentcore_assessments")
 from tests.test_helpers import extract_csv_data, assert_finding_schema
@@ -161,6 +163,282 @@ class TestAC02FullAccessRoles:
         has_failed = any(f["Status"] == "Failed" for f in findings)
         assert has_failed
 
+    def test_ac02_detects_wildcard_in_generic_attached_policy_document(self):
+        permission_cache = {
+            "role_permissions": {
+                "AgentCoreOperator": {
+                    "attached_policies": [
+                        {
+                            "name": "AgentCoreOps",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "Action": "bedrock-agentcore:*",
+                                    "Resource": "*",
+                                }
+                            },
+                        }
+                    ],
+                    "inline_policies": [],
+                }
+            }
+        }
+
+        findings = agentcore_app.check_agentcore_full_access_roles(permission_cache)
+
+        wildcard_finding = next(
+            finding
+            for finding in findings
+            if finding["Finding"] == "AgentCore IAM Wildcard Permissions"
+        )
+        assert wildcard_finding["Status"] == "Failed"
+        assert "AgentCoreOperator" in wildcard_finding["Finding_Details"]
+
+    @pytest.mark.parametrize(
+        "action",
+        [
+            "bedrock-agentcore:*",
+            "bedrock-agentcore:Get*",
+            "bedrock-agentcore:*Runtime*",
+            "BEDROCK-AGENTCORE:GetAgentRuntim?",
+        ],
+        ids=["full", "prefix", "embedded", "case-insensitive-question-mark"],
+    )
+    def test_ac02_detects_agent_platform_wildcard_action_patterns(self, action):
+        permission_cache = {
+            "role_permissions": {
+                "WildcardRole": {
+                    "attached_policies": [],
+                    "inline_policies": [
+                        {
+                            "name": "WildcardPolicy",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "Action": action,
+                                    "Resource": "*",
+                                }
+                            },
+                        }
+                    ],
+                }
+            }
+        }
+
+        findings = agentcore_app.check_agentcore_full_access_roles(permission_cache)
+
+        wildcard_finding = next(
+            finding
+            for finding in findings
+            if finding["Finding"] == "AgentCore IAM Wildcard Permissions"
+        )
+        assert wildcard_finding["Status"] == "Failed"
+        assert "WildcardRole" in wildcard_finding["Finding_Details"]
+
+    @pytest.mark.parametrize(
+        "not_action",
+        [
+            ["bedrock-agentcore:DeleteAgentRuntime"],
+        ],
+        ids=["partial-agentcore"],
+    )
+    def test_ac02_detects_allow_not_action_that_includes_platform_services(
+        self, not_action
+    ):
+        permission_cache = {
+            "role_permissions": {
+                "AllowExceptRole": {
+                    "attached_policies": [],
+                    "inline_policies": [
+                        {
+                            "name": "AllowExceptPolicy",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "NotAction": not_action,
+                                    "Resource": "*",
+                                }
+                            },
+                        }
+                    ],
+                }
+            }
+        }
+
+        findings = agentcore_app.check_agentcore_full_access_roles(permission_cache)
+
+        wildcard_finding = next(
+            finding
+            for finding in findings
+            if finding["Finding"] == "AgentCore IAM Wildcard Permissions"
+        )
+        assert wildcard_finding["Status"] == "Failed"
+        assert "AllowExceptRole" in wildcard_finding["Finding_Details"]
+        assert "allow-except" in wildcard_finding["Finding_Details"]
+
+    @pytest.mark.parametrize(
+        "not_action",
+        [
+            ["iam:*", "organizations:*"],
+            ["s3:DeleteBucket"],
+        ],
+        ids=["administrator-except-iam", "administrator-except-one-action"],
+    )
+    def test_ac02_ignores_not_action_that_names_no_platform_namespace(self, not_action):
+        """A NotAction naming no platform namespace is an administrator-style
+        grant, which AC-02 ignores exactly as it ignores ``Action: "*"``."""
+        permission_cache = {
+            "role_permissions": {
+                "AllowExceptRole": {
+                    "attached_policies": [],
+                    "inline_policies": [
+                        {
+                            "name": "AllowExceptPolicy",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "NotAction": not_action,
+                                    "Resource": "*",
+                                }
+                            },
+                        }
+                    ],
+                }
+            }
+        }
+
+        findings = agentcore_app.check_agentcore_full_access_roles(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Passed"
+
+    @pytest.mark.parametrize(
+        "not_action",
+        [
+            ["bedrock-agentcore:*", "bedrock-agentcore:*"],
+            ["bedrock-*:*", "bedrock-agentcore:*"],
+            "*",
+            "*:*",
+        ],
+        ids=["both-namespaces", "service-pattern", "all-actions", "all-services"],
+    )
+    def test_ac02_ignores_not_action_that_excludes_all_platform_access(
+        self, not_action
+    ):
+        permission_cache = {
+            "role_permissions": {
+                "ExcludedPlatformRole": {
+                    "attached_policies": [],
+                    "inline_policies": [
+                        {
+                            "name": "ExcludedPlatformPolicy",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "NotAction": not_action,
+                                    "Resource": "*",
+                                }
+                            },
+                        }
+                    ],
+                }
+            }
+        }
+
+        findings = agentcore_app.check_agentcore_full_access_roles(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Passed"
+
+    @pytest.mark.parametrize(
+        ("action", "resource"),
+        [
+            ("bedrock-agentcore:GetAgentRuntime", "*"),
+            ("unrelated-service:Get*", "*"),
+            ("bedrock-agentcore-control:*", "*"),
+            (
+                "bedrock-agentcore:Get*",
+                "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/runtime-1",
+            ),
+        ],
+        ids=[
+            "exact-action",
+            "unrelated-service",
+            "invalid-iam-prefix",
+            "scoped-resource",
+        ],
+    )
+    def test_ac02_ignores_non_risky_or_unrelated_action_patterns(
+        self, action, resource
+    ):
+        permission_cache = {
+            "role_permissions": {
+                "ScopedRole": {
+                    "attached_policies": [],
+                    "inline_policies": [
+                        {
+                            "name": "ScopedPolicy",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "Action": action,
+                                    "Resource": resource,
+                                }
+                            },
+                        }
+                    ],
+                }
+            }
+        }
+
+        findings = agentcore_app.check_agentcore_full_access_roles(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Passed"
+
+    @pytest.mark.parametrize(
+        "statements",
+        [
+            {
+                "Effect": "Allow",
+                "Action": "*",
+                "Resource": "*",
+            },
+            [
+                {
+                    "Effect": "Allow",
+                    "Action": "*",
+                    "Resource": "*",
+                },
+                {
+                    "Effect": "Deny",
+                    "Action": "bedrock-agentcore:*",
+                    "Resource": "*",
+                },
+            ],
+        ],
+        ids=["administrator-access", "administrator-access-with-platform-deny"],
+    )
+    def test_ac02_ignores_service_agnostic_wildcard_actions(self, statements):
+        permission_cache = {
+            "role_permissions": {
+                "Administrator": {
+                    "attached_policies": [
+                        {
+                            "name": "AdministratorAccess",
+                            "document": {"Statement": statements},
+                        }
+                    ],
+                    "inline_policies": [],
+                }
+            }
+        }
+
+        findings = agentcore_app.check_agentcore_full_access_roles(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Passed"
+
     @patch("agentcore_app.agentcore_client")
     def test_ac02_empty_cache_returns_findings(self, mock_ac, empty_permission_cache):
         result = agentcore_app.check_agentcore_full_access_roles(empty_permission_cache)
@@ -177,6 +455,20 @@ class TestAC02FullAccessRoles:
 # ===================================================================
 # AC-03: check_stale_agentcore_access
 # ===================================================================
+def _agent_platform_policy(name, action):
+    return {
+        "name": name,
+        "arn": f"arn:aws:iam::123456789012:policy/{name}",
+        "document": {
+            "Statement": {
+                "Effect": "Allow",
+                "Action": action,
+                "Resource": "*",
+            }
+        },
+    }
+
+
 class TestAC03StaleAccess:
     """AC-03: Check stale AgentCore access."""
 
@@ -218,6 +510,541 @@ class TestAC03StaleAccess:
         result = agentcore_app.check_stale_agentcore_access(empty_permission_cache)
         for f in extract_csv_data(result):
             assert_finding_schema(f)
+
+    @pytest.mark.parametrize(
+        ("principal_key", "principal_name"),
+        [("role_permissions", "AgentCoreRole"), ("user_permissions", "AgentCoreUser")],
+        ids=["role", "user"],
+    )
+    @patch("agentcore_app.time.sleep")
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_recognizes_generic_attached_policy_documents(
+        self,
+        mock_iam,
+        mock_boto_client,
+        mock_sleep,
+        principal_key,
+        principal_name,
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        mock_iam.generate_service_last_accessed_details.return_value = {
+            "JobId": "job-1"
+        }
+        mock_iam.get_service_last_accessed_details.return_value = {
+            "JobStatus": "COMPLETED",
+            "ServicesLastAccessed": [
+                {
+                    "ServiceName": "Amazon Bedrock AgentCore",
+                    "ServiceNamespace": "bedrock-agentcore",
+                    "LastAuthenticated": agentcore_app.get_current_utc_date(),
+                }
+            ],
+        }
+        permission_cache = {
+            "role_permissions": {},
+            "user_permissions": {},
+        }
+        permission_cache[principal_key][principal_name] = {
+            "attached_policies": [
+                {
+                    "name": "AgentCoreOps",
+                    "document": {
+                        "Statement": {
+                            "Effect": "Allow",
+                            "Action": "bedrock-agentcore:ListAgentRuntimes",
+                            "Resource": "*",
+                        }
+                    },
+                }
+            ],
+            "inline_policies": [],
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert findings[0]["Status"] == "Passed"
+        mock_iam.generate_service_last_accessed_details.assert_called_once()
+
+    @patch("agentcore_app.time.sleep")
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_includes_allow_not_action_principal(
+        self, mock_iam, mock_boto_client, mock_sleep
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        mock_iam.generate_service_last_accessed_details.return_value = {
+            "JobId": "job-1"
+        }
+        mock_iam.get_service_last_accessed_details.return_value = {
+            "JobStatus": "COMPLETED",
+            "ServicesLastAccessed": [
+                {
+                    "ServiceName": "Amazon Bedrock AgentCore",
+                    "ServiceNamespace": "bedrock-agentcore",
+                    "LastAuthenticated": agentcore_app.get_current_utc_date(),
+                }
+            ],
+        }
+        permission_cache = {
+            "role_permissions": {
+                "AllowExceptRole": {
+                    "attached_policies": [],
+                    "inline_policies": [
+                        {
+                            "name": "AllowExceptPolicy",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "NotAction": ["bedrock-agentcore:StopAgentRuntime"],
+                                    "Resource": "*",
+                                }
+                            },
+                        }
+                    ],
+                }
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert findings[0]["Status"] == "Passed"
+        mock_iam.generate_service_last_accessed_details.assert_called_once()
+
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_ignores_not_action_that_names_no_platform_namespace(
+        self, mock_iam, mock_boto_client
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        permission_cache = {
+            "role_permissions": {
+                "AllowExceptRole": {
+                    "attached_policies": [],
+                    "inline_policies": [
+                        {
+                            "name": "AllowExceptPolicy",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "NotAction": ["iam:*", "organizations:*"],
+                                    "Resource": "*",
+                                }
+                            },
+                        }
+                    ],
+                }
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        mock_iam.generate_service_last_accessed_details.assert_not_called()
+
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_ignores_not_action_excluding_both_platform_namespaces(
+        self, mock_iam, mock_boto_client
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        permission_cache = {
+            "role_permissions": {
+                "ExcludedPlatformRole": {
+                    "attached_policies": [],
+                    "inline_policies": [
+                        {
+                            "name": "ExcludedPlatformPolicy",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "NotAction": [
+                                        "bedrock-agentcore:*",
+                                        "bedrock-agentcore:*",
+                                    ],
+                                    "Resource": "*",
+                                }
+                            },
+                        }
+                    ],
+                }
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        mock_iam.generate_service_last_accessed_details.assert_not_called()
+
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_ignores_service_agnostic_wildcard_actions(
+        self, mock_iam, mock_boto_client
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        permission_cache = {
+            "role_permissions": {
+                "Administrator": {
+                    "attached_policies": [
+                        {
+                            "name": "AdministratorAccess",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "Action": "*",
+                                    "Resource": "*",
+                                }
+                            },
+                        }
+                    ],
+                    "inline_policies": [],
+                }
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert (
+            findings[0]["Finding_Details"]
+            == "No IAM principals with AgentCore permissions found"
+        )
+        mock_iam.generate_service_last_accessed_details.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("policy_name", "statement"),
+        [
+            (
+                "DenyAgentCoreAccess",
+                {
+                    "Effect": "Deny",
+                    "Action": "bedrock-agentcore:*",
+                    "Resource": "*",
+                },
+            ),
+            (
+                "AgentCoreDocumentationOnly",
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:GetObject",
+                    "Resource": "arn:aws:s3:::example-docs/*",
+                },
+            ),
+        ],
+        ids=["deny-only", "misleading-name"],
+    )
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_attached_policy_names_do_not_imply_access(
+        self, mock_iam, mock_boto_client, policy_name, statement
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        permission_cache = {
+            "role_permissions": {
+                "NoAgentPlatformAccess": {
+                    "attached_policies": [
+                        {
+                            "name": policy_name,
+                            "arn": (f"arn:aws:iam::123456789012:policy/{policy_name}"),
+                            "document": {"Statement": statement},
+                        }
+                    ],
+                    "inline_policies": [],
+                }
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert (
+            findings[0]["Finding_Details"]
+            == "No IAM principals with AgentCore permissions found"
+        )
+        mock_iam.generate_service_last_accessed_details.assert_not_called()
+
+    @patch("agentcore_app.check_timeout", return_value=False)
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_timeout_before_first_principal_returns_incomplete_na(
+        self, mock_iam, mock_boto_client, mock_check_timeout
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        permission_cache = {
+            "role_permissions": {
+                "RuntimeReader": {
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentCoreReadOnly",
+                            "bedrock-agentcore:ListAgentRuntimes",
+                        )
+                    ],
+                    "inline_policies": [],
+                },
+                "AgentCoreReader": {
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentCoreReadOnly",
+                            "bedrock-agentcore:ListAgentRuntimes",
+                        )
+                    ],
+                    "inline_policies": [],
+                },
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+        assert "2 IAM principal(s)" in findings[0]["Finding_Details"]
+        mock_iam.generate_service_last_accessed_details.assert_not_called()
+        mock_check_timeout.assert_called_once()
+
+    @patch("agentcore_app.check_timeout", side_effect=[True, True, False])
+    @patch("agentcore_app.time.sleep")
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_timeout_during_polling_stops_before_next_principal(
+        self,
+        mock_iam,
+        mock_boto_client,
+        mock_sleep,
+        mock_check_timeout,
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        mock_iam.generate_service_last_accessed_details.return_value = {
+            "JobId": "job-1"
+        }
+        permission_cache = {
+            "role_permissions": {
+                "RuntimeReader": {
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentCoreReadOnly",
+                            "bedrock-agentcore:ListAgentRuntimes",
+                        )
+                    ],
+                    "inline_policies": [],
+                },
+                "AgentCoreReader": {
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentCoreReadOnly",
+                            "bedrock-agentcore:ListAgentRuntimes",
+                        )
+                    ],
+                    "inline_policies": [],
+                },
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+        assert "2 IAM principal(s)" in findings[0]["Finding_Details"]
+        mock_iam.generate_service_last_accessed_details.assert_called_once()
+        mock_iam.get_service_last_accessed_details.assert_not_called()
+        mock_sleep.assert_called_once_with(2)
+        assert mock_check_timeout.call_count == 3
+
+    @patch(
+        "agentcore_app.check_timeout",
+        side_effect=[True, True, True, False],
+    )
+    @patch("agentcore_app.time.sleep")
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_timeout_preserves_completed_principal_findings(
+        self,
+        mock_iam,
+        mock_boto_client,
+        mock_sleep,
+        mock_check_timeout,
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        mock_iam.generate_service_last_accessed_details.return_value = {
+            "JobId": "job-1"
+        }
+        mock_iam.get_service_last_accessed_details.return_value = {
+            "JobStatus": "COMPLETED",
+            "ServicesLastAccessed": [
+                {
+                    "ServiceName": "Amazon Bedrock AgentCore",
+                    "ServiceNamespace": "bedrock-agentcore",
+                    "LastAuthenticated": "2020-01-01T00:00:00+00:00",
+                }
+            ],
+        }
+        permission_cache = {
+            "role_permissions": {
+                "StaleRuntimeReader": {
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentCoreReadOnly",
+                            "bedrock-agentcore:ListAgentRuntimes",
+                        )
+                    ],
+                    "inline_policies": [],
+                },
+                "AgentCoreReader": {
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentCoreReadOnly",
+                            "bedrock-agentcore:ListAgentRuntimes",
+                        )
+                    ],
+                    "inline_policies": [],
+                },
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert {finding["Status"] for finding in findings} == {"Failed", "N/A"}
+        stale_finding = next(
+            finding
+            for finding in findings
+            if finding["Finding"] == "AgentCore Stale Access"
+        )
+        incomplete_finding = next(
+            finding
+            for finding in findings
+            if finding["Finding"] == "AgentCore Stale Access Check Incomplete"
+        )
+        assert "StaleRuntimeReader" in stale_finding["Finding_Details"]
+        assert "1 IAM principal(s)" in incomplete_finding["Finding_Details"]
+        assert incomplete_finding["Severity"] == "Informational"
+        mock_iam.generate_service_last_accessed_details.assert_called_once()
+        mock_iam.get_service_last_accessed_details.assert_called_once_with(
+            JobId="job-1"
+        )
+        mock_sleep.assert_called_once_with(2)
+        assert mock_check_timeout.call_count == 4
+
+    @patch("agentcore_app.check_timeout", return_value=True)
+    @patch("agentcore_app.time.sleep")
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_iam_job_timeout_is_informational_na(
+        self,
+        mock_iam,
+        mock_boto_client,
+        mock_sleep,
+        mock_check_timeout,
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        mock_iam.generate_service_last_accessed_details.return_value = {
+            "JobId": "job-1"
+        }
+        mock_iam.get_service_last_accessed_details.return_value = {
+            "JobStatus": "IN_PROGRESS"
+        }
+        permission_cache = {
+            "role_permissions": {
+                "RuntimeReader": {
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentCoreReadOnly",
+                            "bedrock-agentcore:ListAgentRuntimes",
+                        )
+                    ],
+                    "inline_policies": [],
+                }
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        assert findings[0]["Severity"] == "Informational"
+        assert "IAM job timed out after 30s" in findings[0]["Finding_Details"]
+        assert mock_iam.get_service_last_accessed_details.call_count == 15
+        assert mock_sleep.call_count == 15
+        assert mock_check_timeout.call_count == 31
+
+    @patch("agentcore_app.time.sleep")
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_uses_most_recent_matching_service_access(
+        self, mock_iam, mock_boto_client, mock_sleep
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        mock_iam.generate_service_last_accessed_details.return_value = {
+            "JobId": "job-1"
+        }
+        mock_iam.get_service_last_accessed_details.return_value = {
+            "JobStatus": "COMPLETED",
+            "ServicesLastAccessed": [
+                {
+                    "ServiceName": "Amazon Bedrock AgentCore",
+                    "ServiceNamespace": "bedrock-agentcore",
+                    "LastAuthenticated": "2020-01-01T00:00:00+00:00",
+                },
+                {
+                    "ServiceName": "Amazon Bedrock AgentCore",
+                    "ServiceNamespace": "bedrock-agentcore",
+                    "LastAuthenticated": agentcore_app.get_current_utc_date(),
+                },
+            ],
+        }
+        permission_cache = {
+            "role_permissions": {
+                "AgentPlatformReader": {
+                    "attached_policies": [
+                        _agent_platform_policy(
+                            "AgentCoreReadOnly",
+                            "bedrock-agentcore:ListAgentRuntimes",
+                        )
+                    ],
+                    "inline_policies": [],
+                }
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert findings[0]["Status"] == "Passed"
 
 
 # ===================================================================
@@ -1399,170 +2226,3 @@ class TestProposedAgentCoreChecks:
 
 
 # ===================================================================
-# lambda_handler: multi-region gating and availability probe
-# ===================================================================
-def _agentcore_event(region="us-east-1", region_index=0):
-    return {
-        "Region": region,
-        "RegionIndex": region_index,
-        "Execution": {"Name": "test-execution-1"},
-        "StateMachine": {"Name": "test-sm"},
-    }
-
-
-def _valid_slr_role():
-    """A valid service-linked-role get_role response so AC-09 passes cleanly."""
-    return {
-        "Role": {
-            "RoleName": "AWSServiceRoleForBedrockAgentCoreNetwork",
-            "AssumeRolePolicyDocument": {
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Principal": {"Service": "agentcore.bedrock.amazonaws.com"},
-                        "Action": "sts:AssumeRole",
-                    }
-                ]
-            },
-        }
-    }
-
-
-class TestAgentCoreHandlerMultiRegion:
-    """lambda_handler primary-region gating (AC-02/AC-03/AC-09) + availability probe (AC-00)."""
-
-    def _run_handler(self, agentcore_side_effect, event):
-        """Run the handler with a per-service boto3.client dispatch. The
-        bedrock-agentcore-control probe (list_agent_runtimes) uses
-        agentcore_side_effect to simulate availability; iam is given a valid SLR
-        response. Returns (response, findings) where findings is the flat list
-        passed to generate_csv_report."""
-        captured = {}
-
-        def fake_csv(findings):
-            captured["findings"] = findings
-            return "csv"
-
-        iam_mock = MagicMock()
-        iam_mock.get_role.return_value = _valid_slr_role()
-        iam_mock.exceptions.NoSuchEntityException = type(
-            "NoSuchEntityException", (Exception,), {}
-        )
-
-        sts_mock = MagicMock()
-        sts_mock.get_caller_identity.return_value = {"Account": "123456789012"}
-
-        agentcore_mock = MagicMock()
-        agentcore_mock.list_agent_runtimes.side_effect = agentcore_side_effect
-
-        def client_dispatch(service, *args, **kwargs):
-            if service == "iam":
-                return iam_mock
-            if service == "sts":
-                return sts_mock
-            if service == "bedrock-agentcore-control":
-                return agentcore_mock
-            return MagicMock()
-
-        with (
-            patch("agentcore_app.boto3.client", side_effect=client_dispatch),
-            patch.object(
-                agentcore_app,
-                "get_permissions_cache",
-                return_value={"role_permissions": {}, "user_permissions": {}},
-            ),
-            patch.object(agentcore_app, "generate_csv_report", side_effect=fake_csv),
-            patch.object(agentcore_app, "write_to_s3", return_value="s3://b/r.csv"),
-        ):
-            resp = agentcore_app.lambda_handler(event, None)
-
-        return resp, captured.get("findings", [])
-
-    def test_primary_region_emits_global_iam_checks_tagged_global(self):
-        # On the primary region, AC-02, AC-03 and AC-09 (all IAM-global) must be
-        # emitted and tagged "Global", even when AgentCore is unavailable.
-        resp, findings = self._run_handler(
-            EndpointConnectionError(endpoint_url="https://agentcore.invalid"),
-            _agentcore_event(region="ap-south-2", region_index=0),
-        )
-        assert resp["statusCode"] == 200
-
-        check_ids = {f["Check_ID"] for f in findings}
-        assert "AC-02" in check_ids
-        assert "AC-03" in check_ids
-        assert "AC-09" in check_ids
-        for f in findings:
-            if f["Check_ID"] in ("AC-02", "AC-03", "AC-09"):
-                assert f["Region"] == "Global"
-        # The availability finding is tagged with the scanned region.
-        ac00 = [f for f in findings if f["Check_ID"] == "AC-00"]
-        assert ac00 and ac00[0]["Region"] == "ap-south-2"
-
-    def test_non_primary_region_skips_global_iam_checks(self):
-        # On a non-primary region the IAM-global checks must NOT run.
-        resp, findings = self._run_handler(
-            EndpointConnectionError(endpoint_url="https://agentcore.invalid"),
-            _agentcore_event(region="eu-west-1", region_index=3),
-        )
-        assert resp["statusCode"] == 200
-
-        check_ids = {f["Check_ID"] for f in findings}
-        assert "AC-02" not in check_ids
-        assert "AC-03" not in check_ids
-        assert "AC-09" not in check_ids
-        expected_agentic_ids = {f"AG-{i:02d}" for i in range(15, 28)} | {
-            "AG-28",
-            "AG-29",
-            "AG-31",
-            "AG-32",
-        }
-        assert check_ids == {"AC-00"} | expected_agentic_ids
-
-    def test_optin_region_error_treated_as_unavailable(self):
-        # A region-not-enabled ClientError code makes agentcore_client None, so
-        # the handler emits the AC-00 availability finding and exits early.
-        resp, findings = self._run_handler(
-            _make_client_error("UnrecognizedClientException"),
-            _agentcore_event(region="me-south-1", region_index=1),
-        )
-        assert resp["statusCode"] == 200
-        ac00 = [f for f in findings if f["Check_ID"] == "AC-00"]
-        assert ac00 and ac00[0]["Status"] == "N/A"
-
-    def test_access_denied_probe_proceeds_with_checks(self):
-        # AccessDenied is NOT a region-unavailable code: the service is reachable,
-        # so the handler proceeds and runs regional checks (no AC-00 emitted).
-        resp, findings = self._run_handler(
-            _make_client_error("AccessDeniedException"),
-            _agentcore_event(region="us-east-1", region_index=0),
-        )
-        assert resp["statusCode"] == 200
-        check_ids = {f["Check_ID"] for f in findings}
-        assert "AC-00" not in check_ids
-        # Regional checks ran (e.g. AC-01 VPC, AC-04 observability present).
-        assert len(check_ids) > 3
-
-    def test_unexpected_probe_error_proceeds_with_checks(self):
-        # An unexpected, non-ClientError probe failure (e.g. a boto3/botocore SDK
-        # param/operation mismatch surfacing as ParamValidationError) says nothing
-        # about regional availability. The handler must NOT treat it as
-        # unavailable (which would emit a false AC-00 N/A and skip every check);
-        # it should proceed and run the regional checks.
-        try:
-            from botocore.exceptions import ParamValidationError
-
-            probe_error = ParamValidationError(
-                report="maxResults is not a valid parameter"
-            )
-        except Exception:
-            probe_error = TypeError("unexpected SDK signature")
-
-        resp, findings = self._run_handler(
-            probe_error,
-            _agentcore_event(region="us-east-1", region_index=0),
-        )
-        assert resp["statusCode"] == 200
-        check_ids = {f["Check_ID"] for f in findings}
-        # No false "not available" finding, and the regional checks executed.
-        assert "AC-00" not in check_ids
-        assert len(check_ids) > 3
