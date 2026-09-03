@@ -261,7 +261,18 @@ class TestAC02FullAccessRoles:
         assert wildcard_finding["Status"] == "Failed"
         assert "WildcardRole" in wildcard_finding["Finding_Details"]
 
-    def test_ac02_detects_allow_not_action_that_includes_platform_services(self):
+    @pytest.mark.parametrize(
+        "not_action",
+        [
+            ["bedrock-agentcore:DeleteAgentRuntime"],
+            ["bedrock-agentcore:*"],
+            ["agent-registry:*", "iam:*"],
+        ],
+        ids=["partial-agentcore", "agentcore-only", "registry-only"],
+    )
+    def test_ac02_detects_allow_not_action_that_includes_platform_services(
+        self, not_action
+    ):
         permission_cache = {
             "role_permissions": {
                 "AllowExceptRole": {
@@ -272,7 +283,7 @@ class TestAC02FullAccessRoles:
                             "document": {
                                 "Statement": {
                                     "Effect": "Allow",
-                                    "NotAction": ["iam:*", "organizations:*"],
+                                    "NotAction": not_action,
                                     "Resource": "*",
                                 }
                             },
@@ -292,6 +303,42 @@ class TestAC02FullAccessRoles:
         assert wildcard_finding["Status"] == "Failed"
         assert "AllowExceptRole" in wildcard_finding["Finding_Details"]
         assert "allow-except" in wildcard_finding["Finding_Details"]
+
+    @pytest.mark.parametrize(
+        "not_action",
+        [
+            ["iam:*", "organizations:*"],
+            ["s3:DeleteBucket"],
+        ],
+        ids=["administrator-except-iam", "administrator-except-one-action"],
+    )
+    def test_ac02_ignores_not_action_that_names_no_platform_namespace(self, not_action):
+        """A NotAction naming no platform namespace is an administrator-style
+        grant, which AC-02 ignores exactly as it ignores ``Action: "*"``."""
+        permission_cache = {
+            "role_permissions": {
+                "AllowExceptRole": {
+                    "attached_policies": [],
+                    "inline_policies": [
+                        {
+                            "name": "AllowExceptPolicy",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "NotAction": not_action,
+                                    "Resource": "*",
+                                }
+                            },
+                        }
+                    ],
+                }
+            }
+        }
+
+        findings = agentcore_app.check_agentcore_full_access_roles(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "Passed"
 
     @pytest.mark.parametrize(
         "not_action",
@@ -623,7 +670,7 @@ class TestAC03StaleAccess:
                             "document": {
                                 "Statement": {
                                     "Effect": "Allow",
-                                    "NotAction": ["iam:*", "organizations:*"],
+                                    "NotAction": ["bedrock-agentcore:StopAgentRuntime"],
                                     "Resource": "*",
                                 }
                             },
@@ -638,6 +685,41 @@ class TestAC03StaleAccess:
 
         assert findings[0]["Status"] == "Passed"
         mock_iam.generate_service_last_accessed_details.assert_called_once()
+
+    @patch("agentcore_app.boto3.client")
+    @patch("agentcore_app.iam_client")
+    def test_ac03_ignores_not_action_that_names_no_platform_namespace(
+        self, mock_iam, mock_boto_client
+    ):
+        mock_boto_client.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        permission_cache = {
+            "role_permissions": {
+                "AllowExceptRole": {
+                    "attached_policies": [],
+                    "inline_policies": [
+                        {
+                            "name": "AllowExceptPolicy",
+                            "document": {
+                                "Statement": {
+                                    "Effect": "Allow",
+                                    "NotAction": ["iam:*", "organizations:*"],
+                                    "Resource": "*",
+                                }
+                            },
+                        }
+                    ],
+                }
+            },
+            "user_permissions": {},
+        }
+
+        findings = agentcore_app.check_stale_agentcore_access(permission_cache)
+
+        assert len(findings) == 1
+        assert findings[0]["Status"] == "N/A"
+        mock_iam.generate_service_last_accessed_details.assert_not_called()
 
     @patch("agentcore_app.boto3.client")
     @patch("agentcore_app.iam_client")
@@ -2222,6 +2304,11 @@ class TestProposedAgentCoreChecks:
 # ===================================================================
 # AC-18 through AC-23: AWS Agent Registry
 # ===================================================================
+# Sentinel distinguishing "the service omitted this optional field" from
+# "the service returned it empty", which AC-18 grades differently.
+_OMITTED = object()
+
+
 def _registry_item(
     *,
     registry_id="reg-1",
@@ -2237,7 +2324,8 @@ def _registry_item(
         "status": status,
     }
     detail = dict(summary)
-    detail["approvalConfiguration"] = approval_configuration or {}
+    if approval_configuration is not _OMITTED:
+        detail["approvalConfiguration"] = approval_configuration or {}
     detail["discoveryConfiguration"] = discovery_configuration or {
         "authorizerType": "AWS_IAM"
     }
@@ -2264,14 +2352,16 @@ def _record_item(
         "displayName": f"Record {record_id}",
         "status": status,
     }
-    detail = dict(summary)
     if created_by is not None:
-        detail["createdBy"] = created_by
+        summary["createdBy"] = created_by
     if created_by_auto_detection is not None:
-        detail["createdByAutoDetection"] = created_by_auto_detection
+        summary["createdByAutoDetection"] = created_by_auto_detection
     if provenance is not None:
-        detail["provenance"] = provenance
-    return {"registry": registry, "summary": summary, "detail": detail}
+        summary["provenanceSummaryList"] = provenance
+    # ``get_agent_registry_record_inventory`` stores the ListRegistryRecords
+    # summary as both the summary and the detail, so mirror that exact shape
+    # instead of inventing keys the production inventory never produces.
+    return {"registry": registry, "summary": summary, "detail": summary}
 
 
 def _record_inventory(*items, registry_inventory=None):
@@ -2363,6 +2453,25 @@ class TestAgentRegistryChecks:
     @pytest.mark.parametrize(
         "error",
         [
+            _make_client_error("ExpiredToken", "Token expired"),
+            _make_client_error("SignatureDoesNotMatch", "Bad signature"),
+        ],
+        ids=["expired-token", "bad-signature"],
+    )
+    @patch("agentcore_app.agent_registry_control_client")
+    def test_registry_inventory_does_not_treat_credential_defects_as_unavailable(
+        self, mock_registry, error
+    ):
+        mock_registry.get_paginator.return_value.paginate.side_effect = error
+
+        inventory = agentcore_app.get_agent_registry_inventory()
+
+        assert inventory["unavailable"] is False
+        assert inventory["list_error"] is error
+
+    @pytest.mark.parametrize(
+        "error",
+        [
             EndpointConnectionError(endpoint_url="https://agent-registry.invalid"),
             _make_client_error("InvalidClientTokenId", "Invalid credentials"),
             _make_client_error("AuthFailure", "Authentication failed"),
@@ -2378,15 +2487,40 @@ class TestAgentRegistryChecks:
         ],
     )
     @patch("agentcore_app.agent_registry_control_client")
-    def test_registry_inventory_does_not_treat_transport_or_auth_as_unavailable(
+    def test_registry_inventory_treats_disabled_region_signals_as_unavailable(
         self, mock_registry, error
     ):
         mock_registry.get_paginator.return_value.paginate.side_effect = error
 
         inventory = agentcore_app.get_agent_registry_inventory()
 
-        assert inventory["unavailable"] is False
+        assert inventory["unavailable"] is True
         assert inventory["list_error"] is error
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            EndpointConnectionError(endpoint_url="https://agent-registry.invalid"),
+            _make_client_error(
+                "UnrecognizedClientException", "Unrecognized credentials"
+            ),
+        ],
+        ids=["endpoint", "unrecognized-client"],
+    )
+    @patch("agentcore_app.agent_registry_control_client")
+    def test_registry_check_reports_disabled_region_without_network_remediation(
+        self, mock_registry, error
+    ):
+        mock_registry.get_paginator.return_value.paginate.side_effect = error
+
+        inventory = agentcore_app.get_agent_registry_inventory()
+        finding = agentcore_app.check_agent_registry_approval_governance(inventory)[0]
+
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+        assert "not available in this region" in finding["Finding_Details"]
+        assert "DNS resolution" not in finding["Resolution"]
+        assert "credentials" not in finding["Resolution"]
 
     @patch("agentcore_app.agent_registry_control_client")
     def test_registry_inventory_marks_opt_in_required_as_unavailable(
@@ -2728,15 +2862,15 @@ class TestAgentRegistryChecks:
                 "Verify DNS resolution",
             ),
             (
-                _make_client_error("InvalidClientTokenId", "Invalid credentials"),
+                _make_client_error("ExpiredToken", "Token expired"),
                 "Verify the assessment credentials",
             ),
             (
-                _make_client_error("AuthFailure", "Authentication failed"),
+                _make_client_error("SignatureDoesNotMatch", "Bad signature"),
                 "Verify the assessment credentials",
             ),
         ],
-        ids=["endpoint", "invalid-token", "auth-failure"],
+        ids=["endpoint", "expired-token", "bad-signature"],
     )
     @pytest.mark.parametrize(
         ("check", "uses_record_inventory"),
@@ -2855,6 +2989,21 @@ class TestAgentRegistryChecks:
         assert finding["Check_ID"] == "AC-18"
         assert finding["Status"] == "Passed"
         assert "requires manual review" in finding["Finding_Details"]
+
+    def test_ac18_absent_approval_configuration_returns_na(self):
+        finding = agentcore_app.check_agent_registry_approval_governance(
+            {
+                "items": [_registry_item(approval_configuration=_OMITTED)],
+                "errors": [],
+                "list_error": None,
+                "unavailable": False,
+            }
+        )[0]
+
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+        assert "optional approval configuration" in finding["Finding_Details"]
+        assert "requires manual review" not in finding["Finding_Details"]
 
     @patch.dict(
         os.environ,
@@ -3327,11 +3476,81 @@ class TestAgentRegistryChecks:
 
         assert finding["Status"] == "Passed"
 
+    def test_ac23_auto_detected_record_without_optional_source_type_returns_na(self):
+        finding = agentcore_app.check_agent_registry_record_provenance(
+            _record_inventory(
+                _record_item(
+                    created_by_auto_detection=True,
+                    provenance=[
+                        {
+                            "relation": "DETECTED_FROM",
+                            "sourceId": (
+                                "arn:aws:bedrock-agentcore:us-east-1:"
+                                "111122223333:runtime/runtime-1"
+                            ),
+                        }
+                    ],
+                )
+            )
+        )[0]
+
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+        assert "optional provenance source type" in finding["Finding_Details"]
+
+    @pytest.mark.parametrize(
+        "provenance",
+        [None, []],
+        ids=["missing", "empty"],
+    )
+    def test_ac23_auto_detected_record_without_provenance_returns_na(self, provenance):
+        finding = agentcore_app.check_agent_registry_record_provenance(
+            _record_inventory(
+                _record_item(
+                    created_by_auto_detection=True,
+                    provenance=provenance,
+                )
+            )
+        )[0]
+
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+        assert "optional provenance metadata" in finding["Finding_Details"]
+        assert "Refresh or recreate" not in finding["Resolution"]
+
+    def test_ac23_invalid_entry_outranks_missing_source_type(self):
+        finding = agentcore_app.check_agent_registry_record_provenance(
+            _record_inventory(
+                _record_item(
+                    created_by_auto_detection=True,
+                    provenance=[
+                        {
+                            "relation": "DETECTED_FROM",
+                            "sourceId": (
+                                "arn:aws:bedrock-agentcore:us-east-1:"
+                                "111122223333:gateway/gateway-1"
+                            ),
+                            "sourceType": "AWS::BedrockAgentCore::Runtime",
+                        },
+                        {
+                            "relation": "DETECTED_FROM",
+                            "sourceId": "not-an-arn",
+                        },
+                    ],
+                )
+            )
+        )[0]
+
+        assert finding["Status"] == "Failed"
+        assert finding["Severity"] == "Medium"
+        assert (
+            "does not include valid DETECTED_FROM provenance"
+            in (finding["Finding_Details"])
+        )
+
     @pytest.mark.parametrize(
         "provenance",
         [
-            None,
-            [],
             [
                 {
                     "relation": "COPIED_FROM",
@@ -3380,8 +3599,6 @@ class TestAgentRegistryChecks:
             ],
         ],
         ids=[
-            "missing",
-            "empty",
             "wrong-relation",
             "invalid-source",
             "wrong-service",
@@ -3428,7 +3645,21 @@ class TestAgentRegistryChecks:
         assert finding["Status"] == "N/A"
         assert finding["Severity"] == "Informational"
 
-    @pytest.mark.parametrize("created_by", [None, "invalid"])
+    def test_ac23_manual_record_without_optional_creator_account_returns_na(self):
+        finding = agentcore_app.check_agent_registry_record_provenance(
+            _record_inventory(
+                _record_item(
+                    created_by=None,
+                    created_by_auto_detection=False,
+                )
+            )
+        )[0]
+
+        assert finding["Status"] == "N/A"
+        assert finding["Severity"] == "Informational"
+        assert "optional creator account attribution" in finding["Finding_Details"]
+
+    @pytest.mark.parametrize("created_by", ["invalid"])
     def test_ac23_manual_record_without_creator_account_fails(self, created_by):
         finding = agentcore_app.check_agent_registry_record_provenance(
             _record_inventory(

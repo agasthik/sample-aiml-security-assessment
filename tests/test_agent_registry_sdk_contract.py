@@ -4,14 +4,28 @@ from pathlib import Path
 
 import boto3
 import botocore
+import botocore.loaders
+import botocore.session
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_SDK_VERSION = "1.43.85"
+BOTOCORE_DATA_PATH = Path(botocore.__file__).resolve().parent / "data"
+
+
+def _bundled_botocore_session():
+    """Create a session that can resolve models only from pinned Botocore data."""
+    data_loader = botocore.loaders.Loader(
+        extra_search_paths=[str(BOTOCORE_DATA_PATH)],
+        include_default_search_paths=False,
+    )
+    botocore_session = botocore.session.Session()
+    botocore_session.register_component("data_loader", data_loader)
+    return botocore_session
 
 
 def _agent_registry_control_client():
-    return boto3.client(
+    return _bundled_botocore_session().create_client(
         "agent-registry-control",
         region_name="us-east-1",
         aws_access_key_id="testing",
@@ -20,7 +34,7 @@ def _agent_registry_control_client():
 
 
 def _agent_registry_data_client():
-    return boto3.client(
+    return _bundled_botocore_session().create_client(
         "agent-registry",
         region_name="us-east-1",
         aws_access_key_id="testing",
@@ -31,6 +45,16 @@ def _agent_registry_data_client():
 def test_agent_registry_sdk_version_is_pinned_to_required_model():
     assert boto3.__version__ == REQUIRED_SDK_VERSION
     assert botocore.__version__ == REQUIRED_SDK_VERSION
+
+
+def test_sdk_contract_resolves_only_bundled_botocore_models():
+    session = _bundled_botocore_session()
+    data_loader = session.get_component("data_loader")
+
+    assert BOTOCORE_DATA_PATH.is_dir()
+    assert [Path(path).resolve() for path in data_loader.search_paths] == [
+        BOTOCORE_DATA_PATH
+    ]
 
 
 def test_all_runtime_requirements_use_the_tested_sdk_contract():

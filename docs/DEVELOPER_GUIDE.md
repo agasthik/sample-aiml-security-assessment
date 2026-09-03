@@ -850,6 +850,12 @@ end-to-end. Concrete steps:
      permissions policy. Diff `2-aiml-security-codebuild.yaml`'s local
      `MemberRole` against `1-aiml-security-member-roles.yaml` to confirm
      parity — this pair drifts easily.
+   - The multi-account canonical member role has two customer-managed policy
+     documents because IAM's inline-policy quota is cumulative per role.
+     Keep each document within the 5,500-character rendered budget enforced
+     by `tests/test_member_role_policy_size.py`; do not split grants into
+     multiple inline policies, which would still share the 10,240-character
+     quota.
 
 5. **Add the Step Functions Choice state** in
    `aiml-security-assessment/statemachine/assessments.asl.json`:

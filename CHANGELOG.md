@@ -26,6 +26,9 @@ section.
 
 - Standardized all AWS SDK dependencies on exact `boto3==1.43.85` and
   `botocore==1.43.85` pins.
+- Split the multi-account member role's assessment grants into customer-managed
+  policies and added a rendered-policy size guard, preventing StackSet
+  deployment failures as IAM permissions grow.
 - Expanded the AgentCore assessment to inventory AWS Agent Registry resources
   and records using the generally available control-plane APIs.
 - Added end-user guidance for determining whether an upgrade requires only a
@@ -38,6 +41,13 @@ section.
 
 ### Fixed
 
+- Treat absent optional Agent Registry AC-23 creator attribution, provenance,
+  and provenance source-type metadata as indeterminate N/A findings instead of
+  false failures, and keep reporting a mismatched lineage as failed even when
+  another provenance entry omits its source type.
+- Report an Agent Registry registry that omits the optional
+  `approvalConfiguration` as an AC-18 informational N/A instead of passing a
+  manual-approval control that was never observed.
 - Restrict AC-02 wildcard findings and AC-03 stale-access discovery to explicit
   `bedrock-agentcore` and `agent-registry` IAM action namespaces so generic
   administrator policies are not misreported as AgentCore-specific grants.
@@ -52,8 +62,10 @@ section.
   checks before writing the regional CSV.
 - Make AC-18 auto-approval remediation conditional on the configured baseline
   so advisory findings do not instruct operators to enable manual approval.
-- Evaluate `Allow`/`NotAction` allow-except policies in AC-02 and AC-03 unless
-  their exclusions fully cover both AgentCore and Agent Registry namespaces.
+- Evaluate `Allow`/`NotAction` allow-except policies in AC-02 and AC-03 only
+  when their exclusions name an AgentCore or Agent Registry namespace without
+  fully covering both, so an administrator-style grant is scored the same
+  whether it is written as `Action: "*"` or as `NotAction`.
 - Describe an absent AC-19 discovery authorization configuration as
   unconfigured rather than as an unrecognized authorizer type.
 - Treat AC-19 IAM and constrained JWT authorizer configurations as
@@ -71,10 +83,16 @@ section.
 - Preserve registry client initialization and API failures as indeterminate
   assessment results instead of reporting them as regional unavailability.
 - Provide error-specific remediation for registry list and detail failures.
-- Preserve Registry endpoint, credential, and authentication failures as
-  incomplete assessments with network- or credential-specific remediation.
-- Preserve AgentCore Runtime credential and authentication probe failures as
-  incomplete `N/A` assessments instead of emitting false security failures.
+- Report AgentCore and Agent Registry as unavailable in regions the account has
+  not enabled. A missing regional endpoint and the credential-shaped codes AWS
+  returns for a disabled region (`UnrecognizedClientException`,
+  `InvalidClientTokenId`, `AuthFailure`) are classified as regional
+  unavailability, so scanning all partition regions no longer produces
+  per-region rows advising operators to troubleshoot DNS, VPC routing, or
+  credentials.
+- Preserve genuinely expired or malformed credentials (`ExpiredToken`,
+  `SignatureDoesNotMatch`) and other API failures as incomplete assessments
+  with credential- or error-specific remediation.
 - Require AC-23 auto-detected provenance source ARNs to use the AgentCore
   service and a runtime or gateway resource matching the declared source type.
 - Preserve case-insensitive wildcard matching while supporting embedded and
@@ -90,7 +108,8 @@ section.
   `deployment/aiml-security-single-account.yaml` changed.
 - **Multi-account member-role StackSet update required first** because
   `deployment/1-aiml-security-member-roles.yaml` changed with the Agent
-  Registry permissions required by the new checks.
+  Registry permissions required by the new checks and now creates the
+  customer-managed member-role policies.
 - **Multi-account central infrastructure update required** because
   `deployment/2-aiml-security-codebuild.yaml` changed.
 - Deployments pinned to a tag or commit must update the `GitHubBranch`

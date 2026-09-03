@@ -16,7 +16,7 @@ import time
 from fnmatch import fnmatchcase
 from io import StringIO
 from datetime import datetime, timezone
-from typing import Dict, List, Any
+from typing import Any, Dict, List, Optional
 from botocore.config import Config
 from botocore.exceptions import ClientError, EndpointConnectionError
 
@@ -311,21 +311,25 @@ NATIVE_AGENTIC_AGENTCORE_CHECK_NAMES = {
     "AG-27": "Agentic AI Gateway WAF Protection",
 }
 
-# Error codes that specifically establish the target region is not enabled for
-# the account. Transport and authentication errors remain indeterminate because
-# they do not prove regional service availability.
+# Error codes that establish the target region is not enabled for the account.
+# AWS returns these credential-shaped codes when a request is signed for a
+# region the account has not opted into, so they are regional availability
+# signals rather than credential defects — a genuinely invalid credential also
+# fails the primary region, which the assessment always reaches first.
 REGION_UNAVAILABLE_ERROR_CODES = {
+    "AuthFailure",
+    "InvalidClientTokenId",
     "OptInRequired",
+    "UnrecognizedClientException",
 }
 
+# Error codes that only ever indicate an expired or malformed credential, never
+# a disabled region.
 AUTHENTICATION_ERROR_CODES = {
-    "AuthFailure",
     "ExpiredToken",
     "ExpiredTokenException",
-    "InvalidClientTokenId",
     "InvalidSignatureException",
     "SignatureDoesNotMatch",
-    "UnrecognizedClientException",
 }
 
 # Execution tracking
@@ -480,6 +484,11 @@ def get_agent_registry_inventory(
             if isinstance(page_registries, list):
                 summaries.extend(page_registries)
     except EndpointConnectionError as error:
+        # There is no regional agent-registry-control endpoint to resolve, which
+        # is how Agent Registry presents in a region where it is not offered.
+        # The AgentCore availability probe classifies this the same way, so both
+        # paths report regional unavailability rather than a network defect.
+        inventory["unavailable"] = True
         inventory["list_error"] = error
         return inventory
     except ClientError as error:
@@ -1505,11 +1514,32 @@ def _not_action_excludes_namespace(pattern: str, namespace: str) -> bool:
     return action_pattern == "*" and fnmatchcase(namespace, service_pattern)
 
 
+def _not_action_targets_agent_platform(exclusions: List[str]) -> bool:
+    """Return whether NotAction exclusions name an agent platform namespace."""
+    for pattern in exclusions:
+        pattern_parts = pattern.split(":", 1)
+        if len(pattern_parts) != 2:
+            continue
+        service_pattern = pattern_parts[0]
+        if any(
+            fnmatchcase(namespace, service_pattern)
+            for namespace in AGENT_PLATFORM_IAM_NAMESPACES
+        ):
+            return True
+    return False
+
+
 def _not_action_allows_agent_platform_access(statement: Dict[str, Any]) -> bool:
     """Return whether an Allow/NotAction statement still grants platform access."""
     if "NotAction" not in statement:
         return False
     exclusions = _statement_not_actions(statement)
+    if not _not_action_targets_agent_platform(exclusions):
+        # The exclusions name no agent platform namespace, so this is a
+        # service-agnostic administrator-style grant rather than an
+        # AgentCore-specific one. These checks scope themselves to explicit
+        # platform namespaces, the same reason a bare `Action: "*"` is ignored.
+        return False
     return any(
         not any(
             _not_action_excludes_namespace(pattern, namespace) for pattern in exclusions
@@ -2952,6 +2982,27 @@ def check_agent_registry_approval_governance(
             )
             continue
 
+        if "approvalConfiguration" not in detail:
+            findings.append(
+                create_finding(
+                    check_id="AC-18",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Registry '{registry_name}' ({registry_id}) did not "
+                        "return the optional approval configuration needed to "
+                        "establish how submitted records are reviewed."
+                    ),
+                    resolution=(
+                        "No action required. Retry after the service returns "
+                        "approval configuration metadata for the registry."
+                    ),
+                    reference=AGENT_REGISTRY_APPROVAL_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
+                )
+            )
+            continue
+
         approval = detail.get("approvalConfiguration") or {}
         auto_approval_rules = approval.get("autoApprovalRules") or []
         if auto_approval_rules:
@@ -3751,8 +3802,18 @@ AGENTCORE_PROVENANCE_RESOURCE_PREFIXES = {
 }
 
 
-def _source_arn_matches_provenance_type(source_id: Any, source_type: Any) -> bool:
-    """Return whether an AgentCore source ARN matches its declared source type."""
+def _source_arn_matches_provenance_type(
+    source_id: Any, source_type: Any
+) -> Optional[bool]:
+    """Return whether an AgentCore source ARN matches its declared source type.
+
+    ``sourceType`` is optional in provenance entries. Preserve that distinction
+    from an invalid value so AC-23 can report incomplete service metadata as
+    indeterminate instead of a remediable security failure.
+    """
+    if source_type is None:
+        return None
+
     expected_resource_prefix = AGENTCORE_PROVENANCE_RESOURCE_PREFIXES.get(source_type)
     if expected_resource_prefix is None or not isinstance(source_id, str):
         return False
@@ -3776,19 +3837,35 @@ def _source_arn_matches_provenance_type(source_id: Any, source_type: Any) -> boo
     return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]*", resource_id))
 
 
-def _valid_auto_detected_provenance(entries: Any) -> bool:
-    """Return whether an auto-detected record has attributable source lineage."""
-    if not isinstance(entries, list) or not entries:
+def _valid_auto_detected_provenance(entries: Any) -> Optional[bool]:
+    """Return whether auto-detected provenance is valid, invalid, or incomplete.
+
+    ``None`` means the service omitted the optional ``sourceType`` needed to
+    correlate lineage. A definitively invalid entry outranks a missing
+    ``sourceType`` so a mismatched lineage is still reported as a failure.
+    Callers must handle absent provenance before calling this helper.
+    """
+    if not isinstance(entries, list):
         return False
 
-    return any(
-        isinstance(entry, dict)
-        and entry.get("relation") == "DETECTED_FROM"
-        and _source_arn_matches_provenance_type(
+    missing_source_type = False
+    invalid_source = False
+    for entry in entries:
+        if not isinstance(entry, dict) or entry.get("relation") != "DETECTED_FROM":
+            continue
+        source_matches = _source_arn_matches_provenance_type(
             entry.get("sourceId"), entry.get("sourceType")
         )
-        for entry in entries
-    )
+        if source_matches is True:
+            return True
+        if source_matches is None:
+            missing_source_type = True
+        else:
+            invalid_source = True
+
+    if invalid_source:
+        return False
+    return None if missing_source_type else False
 
 
 def check_agent_registry_record_provenance(
@@ -3848,10 +3925,52 @@ def check_agent_registry_record_provenance(
             auto_detected = summary.get("createdByAutoDetection")
 
         if auto_detected is True:
-            provenance = detail.get("provenance")
+            provenance = detail.get("provenanceSummaryList")
             if provenance is None:
                 provenance = summary.get("provenanceSummaryList")
+            if not isinstance(provenance, list) or not provenance:
+                findings.append(
+                    create_finding(
+                        check_id="AC-23",
+                        finding_name=finding_name,
+                        finding_details=(
+                            f"Auto-detected registry record "
+                            f"'{context['record_name']}' ({context['record_id']}) "
+                            "did not return the optional provenance metadata "
+                            "needed to validate its AgentCore lineage."
+                        ),
+                        resolution=(
+                            "No action required. Retry after the service returns "
+                            "provenance metadata for the record."
+                        ),
+                        reference=AGENT_REGISTRY_PROVENANCE_REFERENCE_URL,
+                        severity=SeverityEnum.INFORMATIONAL,
+                        status=StatusEnum.NA,
+                    )
+                )
+                continue
             valid = _valid_auto_detected_provenance(provenance)
+            if valid is None:
+                findings.append(
+                    create_finding(
+                        check_id="AC-23",
+                        finding_name=finding_name,
+                        finding_details=(
+                            f"Auto-detected registry record "
+                            f"'{context['record_name']}' ({context['record_id']}) "
+                            "did not return the optional provenance source type "
+                            "needed to validate its AgentCore lineage."
+                        ),
+                        resolution=(
+                            "No action required. Retry after the service returns "
+                            "source type metadata for the record provenance."
+                        ),
+                        reference=AGENT_REGISTRY_PROVENANCE_REFERENCE_URL,
+                        severity=SeverityEnum.INFORMATIONAL,
+                        status=StatusEnum.NA,
+                    )
+                )
+                continue
             findings.append(
                 create_finding(
                     check_id="AC-23",
@@ -3893,6 +4012,25 @@ def check_agent_registry_record_provenance(
                     reference=AGENT_REGISTRY_PROVENANCE_REFERENCE_URL,
                     severity=SeverityEnum.MEDIUM,
                     status=StatusEnum.PASSED,
+                )
+            )
+        elif auto_detected is False and not created_by:
+            findings.append(
+                create_finding(
+                    check_id="AC-23",
+                    finding_name=finding_name,
+                    finding_details=(
+                        f"Manually created registry record "
+                        f"'{context['record_name']}' ({context['record_id']}) "
+                        "did not return optional creator account attribution."
+                    ),
+                    resolution=(
+                        "No action required. Retry after the service returns "
+                        "creator metadata for the record."
+                    ),
+                    reference=AGENT_REGISTRY_PROVENANCE_REFERENCE_URL,
+                    severity=SeverityEnum.INFORMATIONAL,
+                    status=StatusEnum.NA,
                 )
             )
         elif auto_detected is False:

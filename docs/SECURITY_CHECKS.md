@@ -497,12 +497,12 @@ investigation and remediation.
 ### AC-02: AWS IAM Full Access
 
 - **Severity:** High
-- **Description:** Checks attached and inline policy documents for AgentCore or Agent Registry full-access managed policies, wildcard IAM action patterns, and `Allow`/`NotAction` allow-except statements that still grant either platform namespace when they apply to all resources. Only the valid `bedrock-agentcore` and `agent-registry` IAM namespaces are evaluated.
+- **Description:** Checks attached and inline policy documents for AgentCore or Agent Registry full-access managed policies, wildcard IAM action patterns, and `Allow`/`NotAction` allow-except statements that still grant either platform namespace when they apply to all resources. Only the valid `bedrock-agentcore` and `agent-registry` IAM namespaces are evaluated. Service-agnostic administrator-style grants are out of scope in both forms: a bare `Action: "*"` and a `NotAction` whose exclusions name no platform namespace are treated alike and not reported as AgentCore-specific grants.
 
 ### AC-03: Stale Access
 
 - **Severity:** Low
-- **Description:** Detects unused AgentCore and Agent Registry permissions by inspecting `Allow` and `NotAction` grants in attached and inline policy documents before querying IAM service-last-accessed history. Attached policy names alone are never treated as proof of access. This identifies candidate grants from the cached policy documents; it is not a complete effective-permissions simulation across boundaries, session policies, or organization controls.
+- **Description:** Detects unused AgentCore and Agent Registry permissions by inspecting `Allow` and `NotAction` grants in attached and inline policy documents before querying IAM service-last-accessed history. As in AC-02, a `NotAction` whose exclusions name no platform namespace is a service-agnostic administrator grant and is not treated as an AgentCore-specific permission. Attached policy names alone are never treated as proof of access. This identifies candidate grants from the cached policy documents; it is not a complete effective-permissions simulation across boundaries, session policies, or organization controls.
 
 ### AC-04: Observability
 
@@ -577,7 +577,7 @@ investigation and remediation.
 ### AC-18: Agent Registry Publication Approval Governance
 
 - **Severity:** Informational by default; Medium when required
-- **Description:** Uses the GA `agent-registry-control` API to verify whether each READY registry requires manual review for submitted records. Registries with `APPROVE_ALL` are informational by default. Set `RequireAgentRegistryManualApproval` to `true` (`REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL` in the Lambda) to make automatic approval fail.
+- **Description:** Uses the GA `agent-registry-control` API to verify whether each READY registry requires manual review for submitted records. Registries with `APPROVE_ALL` are informational by default. Set `RequireAgentRegistryManualApproval` to `true` (`REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL` in the Lambda) to make automatic approval fail. `approvalConfiguration` is optional in the GA response; a registry that omits it is reported as informational N/A because manual review was never observed, not as a pass.
 
 ### AC-19: Agent Registry Discovery Authorization
 
@@ -602,7 +602,7 @@ investigation and remediation.
 ### AC-23: Agent Registry Record Provenance
 
 - **Severity:** Medium
-- **Description:** Verifies manually created records retain a 12-digit creator-account attribution and auto-detected records include a `DETECTED_FROM` provenance summary whose `bedrock-agentcore` ARN matches its declared source type: `runtime/...` for `AWS::BedrockAgentCore::Runtime` or `gateway/...` for `AWS::BedrockAgentCore::Gateway`. Manual records without valid creator attribution and auto-detected records without correlated lineage fail. Missing optional origin-mode metadata is reported as informational N/A.
+- **Description:** Verifies manually created records retain a 12-digit creator-account attribution and auto-detected records include a `DETECTED_FROM` provenance summary whose `bedrock-agentcore` ARN matches its declared source type: `runtime/...` for `AWS::BedrockAgentCore::Runtime` or `gateway/...` for `AWS::BedrockAgentCore::Gateway`. Invalid creator values and invalid correlated lineage fail. The Agent Registry GA API can omit origin-mode, creator-attribution, provenance, and provenance source-type metadata from record responses; AC-23 reports unavailable optional metadata as informational N/A rather than an operator-remediable failure.
 
 ---
 
