@@ -19,6 +19,8 @@ Metadata:
           - RequireBedrockZeroDataRetention
           - RequireMarketplaceEndpointCMK
           - RequireAgentCoreOnlineEvaluation
+          - RequireAgentRegistryManualApproval
+          - RequireAgentRegistryCMK
           - AgentCoreTokenVaultId
           - ApprovedExternalAccountIds
           - ApprovedOrganizationIds
@@ -67,6 +69,16 @@ Parameters:
     Default: "false"
     AllowedValues: ["true", "false"]
     Description: Fail AC-17 when no complete active online evaluation configuration is found.
+  RequireAgentRegistryManualApproval:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Fail AR-03 when an Agent Registry automatically approves submitted records.
+  RequireAgentRegistryCMK:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Fail AR-05 when an Agent Registry uses the default AWS owned encryption key.
   AgentCoreTokenVaultId:
     Type: String
     Default: default
@@ -94,6 +106,7 @@ Resources:
         BedrockSecurityAssessmentFunction: !GetAtt BedrockSecurityAssessmentFunction.Arn
         SagemakerSecurityAssessmentFunction: !GetAtt SagemakerSecurityAssessmentFunction.Arn
         AgentCoreSecurityAssessmentFunction: !GetAtt AgentCoreSecurityAssessmentFunction.Arn
+        AgentRegistrySecurityAssessmentFunction: !GetAtt AgentRegistrySecurityAssessmentFunction.Arn
         ResponsibleAIGRCAssessmentFunction: !GetAtt ResponsibleAIGRCAssessmentFunction.Arn
         OWASPSecurityAssessmentFunction: !GetAtt OWASPSecurityAssessmentFunction.Arn
         GenerateConsolidatedReportFunction: !GetAtt GenerateConsolidatedReportFunction.Arn
@@ -112,6 +125,8 @@ Resources:
             FunctionName: !Ref SagemakerSecurityAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref AgentCoreSecurityAssessmentFunction
+        - LambdaInvokePolicy:
+            FunctionName: !Ref AgentRegistrySecurityAssessmentFunction
         - LambdaInvokePolicy:
             FunctionName: !Ref ResponsibleAIGRCAssessmentFunction
         - LambdaInvokePolicy:
@@ -559,6 +574,57 @@ Resources:
                 - s3:GetBucketTagging
                 - s3:HeadBucket
               Resource: 'arn:aws:s3:::*'
+
+
+  AgentRegistrySecurityAssessmentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'aiml-security-${AWS::StackName}-AgentRegistryAssessment'
+      CodeUri: functions/security/agent_registry_assessments/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      Timeout: 600
+      MemorySize: 1024
+      Environment:
+        Variables:
+          AIML_ASSESSMENT_BUCKET_NAME: !Ref AIMLAssessmentBucket
+          TARGET_REGIONS: !Ref TargetRegions
+          REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL: !Ref RequireAgentRegistryManualApproval
+          REQUIRE_AGENT_REGISTRY_CMK: !Ref RequireAgentRegistryCMK
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref AIMLAssessmentBucket
+        - Statement:
+            - Sid: IAMPermissions
+              Effect: Allow
+              Action:
+                - iam:ListRoles
+                - iam:ListUsers
+                - iam:ListAttachedRolePolicies
+                - iam:ListAttachedUserPolicies
+                - iam:ListRolePolicies
+                - iam:ListUserPolicies
+                - iam:GetRolePolicy
+                - iam:GetUserPolicy
+                - iam:GetPolicy
+                - iam:GetPolicyVersion
+                - iam:GenerateServiceLastAccessedDetails
+                - iam:GetServiceLastAccessedDetails
+                - sts:GetCallerIdentity
+              Resource: '*'
+            - Sid: AgentRegistryListPermissions
+              Effect: Allow
+              Action:
+                - agent-registry:ListRegistries
+              Resource: '*'
+            - Sid: AgentRegistryReadPermissions
+              Effect: Allow
+              Action:
+                - agent-registry:GetRegistry
+                - agent-registry:ListRegistryRecords
+              Resource: !Sub 'arn:${AWS::Partition}:agent-registry:*:${AWS::AccountId}:registry/*'
 
 
   ResponsibleAIGRCAssessmentFunction:

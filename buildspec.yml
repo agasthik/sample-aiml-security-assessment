@@ -127,6 +127,8 @@ phases:
         SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER="ParameterKey=RequireBedrockZeroDataRetention,ParameterValue=${REQUIRE_BEDROCK_ZERO_DATA_RETENTION:-false}"
         SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER="ParameterKey=RequireMarketplaceEndpointCMK,ParameterValue=${REQUIRE_MARKETPLACE_ENDPOINT_CMK:-true}"
         SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER="ParameterKey=RequireAgentCoreOnlineEvaluation,ParameterValue=${REQUIRE_AGENTCORE_ONLINE_EVALUATION:-false}"
+        SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER="ParameterKey=RequireAgentRegistryManualApproval,ParameterValue=${REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL:-false}"
+        SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER="ParameterKey=RequireAgentRegistryCMK,ParameterValue=${REQUIRE_AGENT_REGISTRY_CMK:-false}"
         SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER="ParameterKey=AgentCoreTokenVaultId,ParameterValue=${AGENTCORE_TOKEN_VAULT_ID:-default}"
         SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER="ParameterKey=ApprovedExternalAccountIds,ParameterValue=\"${APPROVED_EXTERNAL_ACCOUNT_IDS:-}\""
         SAM_APPROVED_ORGANIZATION_IDS_PARAMETER="ParameterKey=ApprovedOrganizationIds,ParameterValue=\"${APPROVED_ORGANIZATION_IDS:-}\""
@@ -134,6 +136,8 @@ phases:
         export SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER
         export SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER
         export SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER
+        export SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER
+        export SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER
         export SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER
         export SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER
         export SAM_APPROVED_ORGANIZATION_IDS_PARAMETER
@@ -212,7 +216,7 @@ phases:
             fi
 
             echo "Deploying to account $accountId"
-            if ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name "aiml-security-$accountId" --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
+            if ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name "aiml-security-$accountId" --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
               echo "ERROR: Deploy failed for account $accountId"
               failed_accounts+=($accountId)
               unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
@@ -243,7 +247,7 @@ phases:
             aws cloudformation delete-stack --stack-name aws-sam-cli-managed-default
             aws cloudformation wait stack-delete-complete --stack-name aws-sam-cli-managed-default 2>/dev/null || true
           fi
-          if ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name aiml-security-mgmt --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
+          if ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name aiml-security-mgmt --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
             echo "ERROR: Deploy failed for management account"
             failed_accounts+=($AWS_ACCOUNT_ID)
           else
@@ -268,7 +272,7 @@ phases:
         else
           echo "Single account deployment"
           STACK_NAME="aiml-sec-${AWS_ACCOUNT_ID}"
-          if ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name "$STACK_NAME" --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
+          if ! sam deploy --template-file .aws-sam/build/template.yaml --stack-name "$STACK_NAME" --capabilities CAPABILITY_IAM --no-confirm-changeset --no-fail-on-empty-changeset --resolve-s3 --region "$AWS_DEFAULT_REGION" --parameter-overrides "$SAM_TARGET_REGIONS_PARAMETER" "$SAM_REQUIRE_BEDROCK_ZERO_DATA_RETENTION_PARAMETER" "$SAM_REQUIRE_MARKETPLACE_ENDPOINT_CMK_PARAMETER" "$SAM_REQUIRE_AGENTCORE_ONLINE_EVALUATION_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL_PARAMETER" "$SAM_REQUIRE_AGENT_REGISTRY_CMK_PARAMETER" "$SAM_AGENTCORE_TOKEN_VAULT_ID_PARAMETER" "$SAM_APPROVED_EXTERNAL_ACCOUNT_IDS_PARAMETER" "$SAM_APPROVED_ORGANIZATION_IDS_PARAMETER"; then
             echo "ERROR: SAM deploy failed for single account"
             exit 1
           fi

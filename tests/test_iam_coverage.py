@@ -163,6 +163,12 @@ REQUIRED_AGENTCORE_ACTIONS = {
     "bedrock-agentcore:GetResourcePolicy",
 }
 
+REQUIRED_AGENT_REGISTRY_ACTIONS = {
+    "agent-registry:ListRegistries",
+    "agent-registry:GetRegistry",
+    "agent-registry:ListRegistryRecords",
+}
+
 _ACTION_RE = re.compile(r"-\s+([a-z0-9-]+:[A-Za-z0-9]+)")
 
 # Matches a top-level (2-space-indented) CloudFormation logical resource ID line,
@@ -281,6 +287,7 @@ def test_required_agentcore_actions_are_granted(template):
 _RESPONSIBLE_AI_GRC_FUNCTION_ID = "ResponsibleAIGRCAssessmentFunction"
 _SAGEMAKER_FUNCTION_ID = "SagemakerSecurityAssessmentFunction"
 _AGENTCORE_FUNCTION_ID = "AgentCoreSecurityAssessmentFunction"
+_AGENT_REGISTRY_FUNCTION_ID = "AgentRegistrySecurityAssessmentFunction"
 
 
 @pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=lambda p: os.path.basename(p))
@@ -353,11 +360,30 @@ def test_required_agentcore_actions_are_granted_to_the_agentcore_function(templa
     )
 
 
+@pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=lambda p: os.path.basename(p))
+def test_required_agent_registry_actions_are_granted_to_the_registry_function(
+    template,
+):
+    granted = _granted_actions_for_resource(template, _AGENT_REGISTRY_FUNCTION_ID)
+    missing = sorted(a for a in REQUIRED_AGENT_REGISTRY_ACTIONS if a not in granted)
+    assert not missing, (
+        f"{os.path.basename(template)}: {_AGENT_REGISTRY_FUNCTION_ID}'s own policy "
+        f"block is missing required IAM action(s): {missing}. A grant present "
+        "elsewhere in this file does not help this function at runtime."
+    )
+
+
 # Known service prefixes used by this tool. `bedrock-agent:` is intentionally
 # absent: it is NOT a valid IAM namespace. Amazon Bedrock Knowledge Base / Data
 # Source / Flow / Agent actions all use the `bedrock:` prefix; AgentCore uses
-# `bedrock-agentcore:`. A `bedrock-agent:` grant silently authorizes nothing.
-_INVALID_ACTION_PREFIXES = ("bedrock-agent:", "bedrock-agentcore-control:")
+# `bedrock-agentcore:` and AWS Agent Registry uses `agent-registry:`. The boto3
+# client names `bedrock-agent`, `bedrock-agentcore-control`, and
+# `agent-registry-control` are not IAM namespaces and silently authorize nothing.
+_INVALID_ACTION_PREFIXES = (
+    "agent-registry-control:",
+    "bedrock-agent:",
+    "bedrock-agentcore-control:",
+)
 _INVALID_ACTION_NAMES = {
     "bedrock:ListModelInvocations",
     "bedrock-agentcore:GetAgentRuntimeResourcePolicy",
@@ -371,7 +397,7 @@ _INVALID_ACTION_NAMES = {
     ids=lambda p: os.path.basename(p),
 )
 def test_no_invalid_iam_action_prefixes(template):
-    """Guard against reintroducing the invalid `bedrock-agent:` IAM prefix.
+    """Guard against using boto3 service names as IAM action prefixes.
 
     cfn-lint's W3037 is suppressed repo-wide (its action DB lags new services),
     so this test is the positive guard that catches a wrong-prefix typo that
@@ -388,15 +414,18 @@ def test_no_invalid_iam_action_prefixes(template):
         f"{os.path.basename(template)} uses invalid IAM action(s): {bad}. "
         "Bedrock KB/DataSource/Flow/Agent actions use the 'bedrock:' prefix "
         "(AgentCore uses 'bedrock-agentcore:'); boto3 client names such as "
-        "'bedrock-agent' and 'bedrock-agentcore-control' are not IAM namespaces. "
+        "'bedrock-agent', 'bedrock-agentcore-control', and "
+        "'agent-registry-control' are not IAM namespaces. AWS Agent Registry "
+        "actions use the 'agent-registry:' prefix. "
         "AgentCore resource policies use the generic bedrock-agentcore:GetResourcePolicy "
         "action."
     )
 
 
 def test_invalid_prefix_guard_detects_a_bad_action():
-    """Self-test: the invalid-prefix guard trips on a `bedrock-agent:` action."""
+    """Self-test: the invalid-prefix guard trips on boto3 client-name prefixes."""
     sample = {
+        "agent-registry-control:ListRegistries",
         "bedrock:ListKnowledgeBases",
         "bedrock-agent:ListKnowledgeBases",
         "bedrock-agentcore-control:GetResourcePolicy",
@@ -409,6 +438,7 @@ def test_invalid_prefix_guard_detects_a_bad_action():
         or a in _INVALID_ACTION_NAMES
     )
     assert bad == [
+        "agent-registry-control:ListRegistries",
         "bedrock-agent:ListKnowledgeBases",
         "bedrock-agentcore-control:GetResourcePolicy",
         "bedrock-agentcore:GetGatewayResourcePolicy",
