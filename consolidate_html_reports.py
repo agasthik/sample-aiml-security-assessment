@@ -97,6 +97,7 @@ def consolidate_html_reports():
         "bedrock",
         "sagemaker",
         "agentcore",
+        "agent-registry",
         "agentic",
         "responsible-ai-grc",
     ] + compliance_slugs
@@ -167,6 +168,8 @@ def consolidate_html_reports():
                                 service = "sagemaker"
                             elif check_id.startswith("AC-"):
                                 service = "agentcore"
+                            elif check_id.startswith("AR-"):
+                                service = "agent-registry"
                             elif check_id.startswith("AG-"):
                                 service = "agentic"
                             elif check_id.startswith("FS-"):
@@ -188,6 +191,8 @@ def consolidate_html_reports():
                                     service = "sagemaker"
                                 elif "agentcore" in finding_name:
                                     service = "agentcore"
+                                elif "agent registry" in finding_name:
+                                    service = "agent-registry"
                                 else:
                                     service = "bedrock"
 
