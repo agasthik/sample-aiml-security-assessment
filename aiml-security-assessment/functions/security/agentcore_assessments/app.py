@@ -35,7 +35,6 @@ iam_client = None
 ec2_client = None
 ecr_client = None
 logs_client = None
-xray_client = None
 cloudwatch_client = None
 agentcore_client = None
 

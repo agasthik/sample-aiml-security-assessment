@@ -72,7 +72,11 @@ section.
   `S3CrudPolicy`, and remove stale IAM, SageMaker, GuardDuty, AgentCore, ECR,
   Logs, EC2, Lambda, ECS, CloudTrail, and S3 actions. The IAM permission-cache
   Lambda retains only the identity and policy reads it actually performs.
-  Per-resource reads are ARN-scoped wherever the AWS service supports it,
+  Per-resource reads are ARN-scoped wherever the AWS service supports it;
+  account-level enumeration APIs that do not support resource-level
+  authorization (`bedrock:ListGuardrails`, `bedrock:ListPrompts`,
+  `bedrock:ListAutomatedReasoningPolicies`, `sagemaker:ListPipelineExecutions`)
+  remain on `Resource: "*"` so their checks are not silently denied.
   IAM service-last-access job creation is limited to roles and users in the
   assessed account using partition-aware principal ARNs, and AgentCore metric
   publication is constrained to the `AIMLSecurity/AgentCore` CloudWatch
