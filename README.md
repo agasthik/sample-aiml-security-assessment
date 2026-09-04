@@ -86,7 +86,7 @@ The framework generates professional, interactive security assessment reports wi
 
 This serverless assessment framework automatically evaluates your AI/ML workloads against AWS security best practices. It uses AWS serverless services to gather data from the control plane and generate reports containing the status of various security checks, severity levels, and recommended actions.
 
-Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), [Amazon Bedrock AgentCore](https://aws.github.io/bedrock-agentcore-starter-toolkit/), AWS Agent Registry, [Amazon SageMaker AI](https://aws.amazon.com/sagemaker/ai/), or the optional Responsible AI GRC assessment.
+Designed for workloads using [Amazon Bedrock](https://aws.amazon.com/bedrock/), [Amazon Bedrock AgentCore](https://aws.github.io/bedrock-agentcore-starter-toolkit/), [AWS Agent Registry](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/registry.html), [Amazon SageMaker AI](https://aws.amazon.com/sagemaker/ai/), or the optional Responsible AI GRC assessment.
 
 ### Why Use This Framework?
 
