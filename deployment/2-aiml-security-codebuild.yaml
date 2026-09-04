@@ -472,8 +472,10 @@ Resources:
                 Resource:
                   - !Sub "arn:${AWS::Partition}:states:*:${AWS::AccountId}:stateMachine:aiml-security-*"
                   - !Sub "arn:${AWS::Partition}:states:*:${AWS::AccountId}:stateMachine:aiml-sec-*"
+                  - !Sub "arn:${AWS::Partition}:states:*:${AWS::AccountId}:stateMachine:AIMLAssessmentStateMachine-*"
                   - !Sub "arn:${AWS::Partition}:states:*:${AWS::AccountId}:execution:aiml-security-*:*"
                   - !Sub "arn:${AWS::Partition}:states:*:${AWS::AccountId}:execution:aiml-sec-*:*"
+                  - !Sub "arn:${AWS::Partition}:states:*:${AWS::AccountId}:execution:AIMLAssessmentStateMachine-*:*"
               - Sid: AssessmentAndSamBucketConfiguration
                 Action:
                   - s3:CreateBucket
