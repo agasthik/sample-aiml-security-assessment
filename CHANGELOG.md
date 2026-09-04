@@ -92,6 +92,10 @@ section.
 
 ### Fixed
 
+- Restore CodeBuild and cross-account member-role access to start and poll the
+  SAM-generated `AIMLAssessmentStateMachine-*` state machines. The
+  least-privilege policies now explicitly include the generated state-machine
+  and execution ARN patterns without widening access to unrelated workflows.
 - Prevented `FS-22` from flagging assessment-created roles solely for Bedrock
   inventory APIs that AWS requires to use `Resource: "*"`. It still flags
   wildcard Bedrock actions and exact Knowledge Base actions that support ARN

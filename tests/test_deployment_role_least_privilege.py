@@ -124,6 +124,14 @@ def test_codebuild_role_scopes_every_action_with_a_resource_arn():
             "states:*:${AWS::AccountId}:stateMachine:aiml-security-*"
             in codebuild_policy
         )
+        assert (
+            "states:*:${AWS::AccountId}:stateMachine:AIMLAssessmentStateMachine-*"
+            in codebuild_policy
+        )
+        assert (
+            "states:*:${AWS::AccountId}:execution:AIMLAssessmentStateMachine-*:*"
+            in codebuild_policy
+        )
         assert "s3:::aws-sam-cli-managed-default-*" in codebuild_policy
         assert "Sid: IAMBasicLoggingPolicy" in codebuild_policy
         assert "iam:PolicyARN" in codebuild_policy
@@ -145,6 +153,8 @@ def test_member_role_scopes_create_operations_and_has_no_wildcard_resource():
     assert "changeSet/samcli-deploy*/*" in text
     assert "states:CreateStateMachine" in text
     assert "stateMachine:aiml-security-*" in text
+    assert "stateMachine:AIMLAssessmentStateMachine-*" in text
+    assert "execution:AIMLAssessmentStateMachine-*:*" in text
     assert "s3:CreateBucket" in text
     assert "s3:::aiml-security-*" in text
     assert "iam:UpdateAssumeRolePolicy" in text
