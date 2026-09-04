@@ -77,10 +77,10 @@ _SECTION_CHECKS = [
     # to AccessDenied -> N/A). Scope these assertions to the OWASP policy block.
     {
         "path": os.path.join(_REPO_ROOT, "aiml-security-assessment", "template.yaml"),
-        "start": "- Sid: OWASPBedrockPermissions",
+        "start": "- Sid: OWASPBedrockGuardrailList",
         "end": "AIMLAssessmentBucket",
         "required": {
-            "bedrock:ListGuardrails",  # OW-12
+            "bedrock:ListGuardrails",  # OW-12 (account-level list on Resource '*')
             "bedrock:GetGuardrail",  # OW-12
             "lambda:ListFunctions",  # OW-11
         },
@@ -89,10 +89,10 @@ _SECTION_CHECKS = [
         "path": os.path.join(
             _REPO_ROOT, "aiml-security-assessment", "template-multi-account.yaml"
         ),
-        "start": "- Sid: OWASPBedrockPermissions",
+        "start": "- Sid: OWASPBedrockGuardrailList",
         "end": "AIMLAssessmentBucket",
         "required": {
-            "bedrock:ListGuardrails",  # OW-12
+            "bedrock:ListGuardrails",  # OW-12 (account-level list on Resource '*')
             "bedrock:GetGuardrail",  # OW-12
             "lambda:ListFunctions",  # OW-11
         },

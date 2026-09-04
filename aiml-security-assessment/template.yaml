@@ -335,17 +335,20 @@ Resources:
                 - bedrock:GetAccountDataRetention
                 - bedrock:ListMarketplaceModelEndpoints
                 - bedrock:ListEnforcedGuardrailsConfiguration
+                # These account-level enumerations do not support
+                # resource-level authorization in IAM.
+                - bedrock:ListGuardrails
+                - bedrock:ListPrompts
+                - bedrock:ListAutomatedReasoningPolicies
               Resource: '*'
             - Sid: BedrockGuardrailRead
               Effect: Allow
               Action:
-                - bedrock:ListGuardrails
                 - bedrock:GetGuardrail
               Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:guardrail/*'
             - Sid: BedrockPromptRead
               Effect: Allow
               Action:
-                - bedrock:ListPrompts
                 - bedrock:GetPrompt
               Resource:
                 - !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:prompt/*'
@@ -390,7 +393,6 @@ Resources:
             - Sid: BedrockAutomatedReasoningRead
               Effect: Allow
               Action:
-                - bedrock:ListAutomatedReasoningPolicies
                 - bedrock:GetAutomatedReasoningPolicy
               Resource:
                 - !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:automated-reasoning-policy/*'
@@ -529,6 +531,9 @@ Resources:
                 - sagemaker:ListArtifacts
                 - sagemaker:ListAssociations
                 - sagemaker:ListClusters
+                # ListPipelineExecutions is an account-level enumeration that
+                # does not support resource-level authorization in IAM.
+                - sagemaker:ListPipelineExecutions
               Resource: '*'
             - Sid: SageMakerResourceReadPermissions
               Effect: Allow
@@ -538,7 +543,6 @@ Resources:
                 - sagemaker:DescribeTrainingJob
                 - sagemaker:ListModelPackages
                 - sagemaker:DescribeFeatureGroup
-                - sagemaker:ListPipelineExecutions
                 - sagemaker:DescribeProcessingJob
                 - sagemaker:DescribeMonitoringSchedule
                 - sagemaker:DescribeModel
@@ -845,11 +849,12 @@ Resources:
                 - bedrock:GetModelInvocationLoggingConfiguration
                 - bedrock:ListAgents
                 - bedrock:ListKnowledgeBases
+                - bedrock:ListGuardrails
+                - bedrock:ListAutomatedReasoningPolicies
               Resource: '*'
             - Sid: BedrockGuardrailRead
               Effect: Allow
               Action:
-                - bedrock:ListGuardrails
                 - bedrock:GetGuardrail
               Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:guardrail/*'
             - Sid: BedrockCustomModelTagRead
@@ -857,13 +862,6 @@ Resources:
               Action:
                 - bedrock:ListTagsForResource
               Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:custom-model/*'
-            - Sid: BedrockAutomatedReasoningRead
-              Effect: Allow
-              Action:
-                - bedrock:ListAutomatedReasoningPolicies
-              Resource:
-                - !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:automated-reasoning-policy/*'
-                - !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:automated-reasoning-policy/*:*'
             - Sid: BedrockAgentRead
               Effect: Allow
               Action:
@@ -1005,10 +1003,16 @@ Resources:
               Action:
                 - s3:PutObject
               Resource: !Sub '${AIMLAssessmentBucket.Arn}/owasp_security_report_*.csv'
+            - Sid: OWASPBedrockGuardrailList
+              Effect: Allow
+              Action:
+                # ListGuardrails is an account-level enumeration that does not
+                # support resource-level authorization in IAM.
+                - bedrock:ListGuardrails
+              Resource: '*'
             - Sid: OWASPBedrockPermissions
               Effect: Allow
               Action:
-                - bedrock:ListGuardrails
                 - bedrock:GetGuardrail
               Resource: !Sub 'arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:guardrail/*'
             - Sid: OWASPLambdaPermissions

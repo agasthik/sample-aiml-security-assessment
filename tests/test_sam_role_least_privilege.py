@@ -471,6 +471,14 @@ def test_bedrock_resource_level_actions_are_arn_scoped(template):
         "BedrockAccountInventoryPermissions",
     )
     assert re.search(r"Resource:\s+['\"]\*['\"]", inventory)
+    # Account-level enumerations with no resource-level authorization support
+    # stay on the wildcard inventory statement.
+    for action in (
+        "bedrock:ListGuardrails",
+        "bedrock:ListPrompts",
+        "bedrock:ListAutomatedReasoningPolicies",
+    ):
+        assert action in inventory
     for action in (
         "bedrock:GetKnowledgeBase",
         "bedrock:GetAgent",
@@ -555,10 +563,12 @@ def test_sagemaker_and_guardduty_resource_reads_are_arn_scoped(template):
         "SageMakerAccountInventoryPermissions",
     )
     assert "sagemaker:ListNotebookInstances" in inventory
+    # ListPipelineExecutions is an account-level enumeration with no
+    # resource-level authorization support, so it stays on Resource '*'.
+    assert "sagemaker:ListPipelineExecutions" in inventory
     for action in (
         "sagemaker:DescribeNotebookInstance",
         "sagemaker:ListModelPackages",
-        "sagemaker:ListPipelineExecutions",
         "sagemaker:GetModelPackageGroupPolicy",
     ):
         assert action not in inventory
@@ -569,10 +579,10 @@ def test_sagemaker_and_guardduty_resource_reads_are_arn_scoped(template):
         "SagemakerSecurityAssessmentFunction",
         "SageMakerResourceReadPermissions",
     )
+    assert "sagemaker:ListPipelineExecutions" not in reads
     for action in (
         "sagemaker:DescribeNotebookInstance",
         "sagemaker:ListModelPackages",
-        "sagemaker:ListPipelineExecutions",
         "sagemaker:GetModelPackageGroupPolicy",
     ):
         assert action in reads
@@ -662,6 +672,10 @@ def test_responsible_ai_bedrock_and_owasp_reads_are_arn_scoped(template):
         "BedrockAccountInventoryPermissions",
     )
     assert re.search(r"Resource:\s+['\"]\*['\"]", inventory)
+    # Account-level enumerations with no resource-level authorization support
+    # stay on the wildcard inventory statement.
+    assert "bedrock:ListGuardrails" in inventory
+    assert "bedrock:ListAutomatedReasoningPolicies" in inventory
     for action in (
         "bedrock:GetAgent",
         "bedrock:GetGuardrail",
@@ -674,9 +688,6 @@ def test_responsible_ai_bedrock_and_owasp_reads_are_arn_scoped(template):
     for sid, resource in {
         "BedrockGuardrailRead": "bedrock:*:${AWS::AccountId}:guardrail/*",
         "BedrockCustomModelTagRead": "bedrock:*:${AWS::AccountId}:custom-model/*",
-        "BedrockAutomatedReasoningRead": (
-            "bedrock:*:${AWS::AccountId}:automated-reasoning-policy/*"
-        ),
         "BedrockAgentRead": "bedrock:*:${AWS::AccountId}:agent/*",
         "BedrockKnowledgeBaseDataSourceRead": (
             "bedrock:*:${AWS::AccountId}:knowledge-base/*"
@@ -688,11 +699,19 @@ def test_responsible_ai_bedrock_and_owasp_reads_are_arn_scoped(template):
         assert resource in statement
         assert not re.search(r"Resource:\s+['\"]\*['\"]", statement)
 
+    # GetGuardrail stays ARN-scoped; ListGuardrails is a wildcard enumeration.
     owasp = _statement_block(
         template, "OWASPSecurityAssessmentFunction", "OWASPBedrockPermissions"
     )
+    assert "bedrock:GetGuardrail" in owasp
     assert "bedrock:*:${AWS::AccountId}:guardrail/*" in owasp
     assert not re.search(r"Resource:\s+['\"]\*['\"]", owasp)
+
+    owasp_list = _statement_block(
+        template, "OWASPSecurityAssessmentFunction", "OWASPBedrockGuardrailList"
+    )
+    assert "bedrock:ListGuardrails" in owasp_list
+    assert re.search(r"Resource:\s+['\"]\*['\"]", owasp_list)
 
 
 @pytest.mark.parametrize("template", _SAM_TEMPLATES, ids=os.path.basename)

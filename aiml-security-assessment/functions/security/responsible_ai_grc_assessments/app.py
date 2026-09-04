@@ -2774,9 +2774,11 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                         + "\n".join(f"- {i}" for i in issues[:10])
                     ),
                     resolution=(
-                        "Replace wildcard bedrock:* with specific actions such as "
-                        "bedrock:Retrieve, bedrock:RetrieveAndGenerate. "
-                        "Scope resources to specific Knowledge Base ARNs."
+                        "Replace wildcard Bedrock actions (e.g. bedrock:*) with "
+                        "specific actions such as bedrock:Retrieve, "
+                        "bedrock:RetrieveAndGenerate, and scope Knowledge Base "
+                        "actions to specific Knowledge Base ARNs instead of "
+                        "Resource '*'."
                     ),
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
                     severity="High",
@@ -2789,7 +2791,11 @@ def check_knowledge_base_iam_least_privilege(permission_cache) -> Dict[str, Any]
                 create_finding(
                     check_id="FS-22",
                     finding_name="Knowledge Base IAM Permissions Look Appropriate",
-                    finding_details="No wildcard KB permissions found in reviewed roles.",
+                    finding_details=(
+                        "No wildcard Bedrock permissions and no unscoped "
+                        "(Resource '*') Knowledge Base actions found in reviewed "
+                        "roles."
+                    ),
                     resolution="No action required.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
                     severity="High",
