@@ -46,7 +46,56 @@ section.
   sample by `sample-reports/scripts/build_changes_sample.py`; the screenshot
   comes from `sample-reports/scripts/capture_changes_screenshot.py`.
 
+- **AWS AI Security Framework (AISF) mapping.** Each producer row now names the
+  AISF controls it asserts in a new `Compliance_Frameworks` CSV column, in one
+  of three forms: `AISF <control>` when this check alone asserts the whole
+  control, `AISF <control> (N of M checks)` when the control is asserted in
+  full by M checks together and this is one of them, and
+  `AISF <control> (partial)` when the check asserts less than the control
+  requires. A check that maps to several controls carries them pipe-joined.
+  The column names 103 of the 105 machine-checkable AISF controls. Of the 105,
+  64 are asserted in full, 39 in part, and 2 are not implementable from
+  configuration. See
+  [the tag vocabulary](docs/SECURITY_CHECKS_AISF.md#the-qualifier-is-what-makes-a-partly-asserted-control-safe-to-name)
+  in `docs/SECURITY_CHECKS_AISF.md`. Behavior worth knowing:
+  - **CSV consumers:** the Bedrock, SageMaker AI, AgentCore and AWS Agent
+    Registry CSVs gain a `Compliance_Frameworks` column. The Responsible AI GRC
+    CSV already had one, and its `FS-` rows keep carrying regulatory framework
+    ids there, so the one column now holds two vocabularies: split on `|` and
+    read `AISF `-prefixed elements as AISF tags. The OWASP CSV has no such
+    column. A parser that maps columns by position, or that rejects unknown
+    columns, needs updating.
+  - The HTML report adds an **AWS AI Security Framework** section under "By
+    Compliance Standard", beside OWASP Top 10 for LLM. It renders `AISF-05`
+    (knowledge base vector store encryption, from `BR-20`), `AISF-07` (batch
+    inference network and encryption, from `SM-18` and `SM-42`) and `AISF-08`
+    (notebook access control, from `SM-09`, `SM-01` and `SM-03`). A row is
+    `Failed` when any source check present for the account and Region failed,
+    even if another source check is absent (the details name it), `Passed`
+    only when every source check is present and passed, and `N/A` naming the
+    absent checks otherwise.
+  - The section needs no deployment parameter, makes no AWS API call, and adds
+    no scan time, because each row restates checks that already ran. `AISF-`
+    rows are excluded from the 277-check total, the pass rate and Open Action
+    Items, as OWASP-mapped rows are.
+  - An informational `AISF-00` row appears per account and Region where a
+    mapped source check from a selected service was absent, so partial
+    coverage reads as unassessed. A control whose source checks all belong to
+    a deselected service gets no row and no `AISF-00` mention, because the
+    report already shows that service as Not selected. The section's scope
+    text names each such control and the service that removed it, and counts
+    only the controls the report can show. A source check belongs to the
+    service whose Lambda emits it, so an `AG-` row derived from a Bedrock
+    check follows the Bedrock selection, not the AgentCore one.
+  - Only a control asserted in full gets a derived row. `AISF-01` to `AISF-04`
+    and `AISF-06` were retired before release, because each restated a check
+    that asserts only part of its control, and the ids are never reused.
+  - The mappings are preliminary. Validate them with your security and
+    compliance team before using a row as audit evidence.
+
 - **69 new checks**, growing the catalog from 208 to 277 checks (162 core).
+  Each one carries its AISF control in `Compliance_Frameworks` where one
+  applies.
   - **Amazon Bedrock (17):** `BR-41` Central Guardrail Enforcement, `BR-42`
     Foundation Model Invocation Allow-List, `BR-43` Region Invocation Control,
     `BR-44` Marketplace Model Subscription Control, `BR-45` API Key Governance,
@@ -487,7 +536,7 @@ central infrastructure updates first. Then apply this feature's parameters
 and rerun CodeBuild to deploy the assessment/report changes. No additional
 IAM permissions are introduced by service selection.
 
-**New checks.** Apply these updates in order.
+**New checks and AISF mapping.** Apply these updates in order.
 
 1. **Multi-account member-role StackSet update required first** because
    `deployment/1-aiml-security-member-roles.yaml` changed. The member
