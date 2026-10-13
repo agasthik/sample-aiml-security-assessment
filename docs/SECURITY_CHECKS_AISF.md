@@ -22,9 +22,10 @@ ids. They are distinct from Prowler's `AISF-AI-06`-style requirement ids, which
   than coverage: 64 of the 105 are covered by checks that already ship and assert
   the whole control, 39 are asserted only in part, and 2 are not implementable
   from configuration, because each asks about evidence no AWS API returns. These
-  are the figures the report's own scope text states, and
-  `tests/test_aisf_derived_standard.py` reconciles that text against
-  `AISF_DERIVED_MAP`.
+  are the figures the report's own scope text states. The report counts the
+  derived controls from `AISF_DERIVED_MAP`, and
+  `tests/test_aisf_derived_standard.py` pins the covered and partial figures to
+  the producers' tag maps and this bullet to the scope text.
   Five ids, `AISF-01`, `AISF-02`, `AISF-03`, `AISF-04` and `AISF-06`, are
   retired: each restated a check that asserts only part of its control, so the
   view no longer derives them, and the ids are never reallocated.
@@ -303,11 +304,17 @@ the account:
    emits it: `BR-`, `SM-`, `AC-` and `AR-` by prefix, and each `AG-` id through
    `AGENTIC_SOURCE_SERVICE`, because Bedrock, AgentCore and Agent Registry all
    emit `AG-` rows. `TestAgenticSourceAttribution` fails if that table drifts
-   from the three Agentic mapping dictionaries.
-3. Update the figures in `_aisf_scope_text()` in `report_template.py`, which
-   builds the AISF entry's scope text, and the coverage bullet in this file.
-   `test_scope_text_states_the_denominator_and_it_reconciles` fails if the
-   scope text disagrees with `AISF_DERIVED_MAP`.
+   from the three Agentic mapping dictionaries or from any `AG-` id a producer
+   names. A source no table attributes is logged at runtime and is never
+   removed by service selection, so its control still renders.
+3. Update the coverage bullet in this file, the AISF figures in `CHANGELOG.md`,
+   and the `derived=3` fallback on the registry entry in `report_template.py`.
+   The report computes its own derived count from `AISF_DERIVED_MAP` through
+   `aisf_mappings.aisf_scope()`. If the control moved from `(partial)` to
+   covered, also update `AISF_COVERED_CONTROLS` and `AISF_PARTIAL_CONTROLS` in
+   `report_template.py`. `TestScopeTextCountsComeFromTheData` and
+   `test_scope_text_states_the_denominator_and_it_reconciles` fail until the
+   figures agree.
 4. Add the row to the check catalogue above with its own per-control section.
 5. Change the control's tags in the `aisf_compliance_<module>.py` map of each
    producer that emits an incumbent: a control that became covered is bare or

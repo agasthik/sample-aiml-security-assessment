@@ -175,17 +175,34 @@ AGENTIC_SOURCE_SERVICE = {
 }
 
 
-def source_service(check_id: str) -> Optional[str]:
-    """The service switch that runs a source check, or None if unknown."""
+# What `source_service()` returns for a source no table attributes, such as an
+# AG- id added to a producer and not to AGENTIC_SOURCE_SERVICE. Never a key in
+# a service selection, so no deselected service can remove the control: its row
+# or AISF-00 mention still renders. Raising instead would be caught by the
+# per-mapping handler in `derive_aisf_findings()` and drop the control unseen.
+UNATTRIBUTED_SERVICE = "unattributed"
+
+
+def source_service(check_id: str) -> str:
+    """The service switch that runs a source check, or UNATTRIBUTED_SERVICE."""
     check_id = check_id.upper()
     if check_id in AGENTIC_SOURCE_SERVICE:
         return AGENTIC_SOURCE_SERVICE[check_id]
-    return SOURCE_PREFIX_TO_SERVICE.get(check_id.split("-", 1)[0])
+    service = SOURCE_PREFIX_TO_SERVICE.get(check_id.split("-", 1)[0])
+    if service is None:
+        logger.warning(
+            f"AISF: source check {check_id} is attributed to no service, so "
+            "selection cannot remove its control"
+        )
+        return UNATTRIBUTED_SERVICE
+    return service
 
 
 def _source_selected(check_id: str, selected_services: Dict[str, bool]) -> bool:
     service = source_service(check_id)
-    return selected_services.get(service, True) if service else True
+    if service == UNATTRIBUTED_SERVICE:
+        return True
+    return selected_services.get(service, True)
 
 
 def omitted_aisf_controls(
@@ -209,6 +226,20 @@ def omitted_aisf_controls(
                 services.append(service)
         omitted.append((mapping["check_id"], services))
     return omitted
+
+
+def aisf_scope(
+    selected_services: Optional[Dict[str, bool]] = None,
+) -> Dict[str, Any]:
+    """The figures the AISF scope text takes from this module.
+
+    `report_template.py` is loaded by path and cannot import this module, so
+    both consolidators pass this as `compliance_scope["aisf"]`.
+    """
+    return {
+        "derived": len(AISF_DERIVED_MAP),
+        "omitted": omitted_aisf_controls(selected_services),
+    }
 
 
 def _source_check_ids() -> set:
