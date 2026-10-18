@@ -175,7 +175,7 @@ codebase do not constitute end-to-end support for those partitions.
    - Leave empty to scan only the deployment region (default)
    - Comma- or space-separated list (for example, `us-east-1,us-west-2,eu-west-1` or `us-east-1 us-west-2 eu-west-1`)
 
-6. Review the optional [security policy baselines](#optional-security-policy-baselines), especially the Marketplace endpoint CMK requirement, which defaults to enabled.
+6. Review the optional [security policy baselines](#optional-security-policy-baselines), especially the Marketplace endpoint CMK requirement, which defaults to enabled, and the [optional read permissions](#optional-read-permissions).
 7. Acknowledge IAM capabilities and click **Submit**.
 8. Once complete, CodeBuild automatically runs the assessment.
 9. View results: go to the stack **Outputs** tab → copy `AssessmentBucket` → open the report under the `/{account_id}/` prefix in that S3 bucket.
@@ -202,7 +202,7 @@ Deploy [2-aiml-security-codebuild.yaml](deployment/2-aiml-security-codebuild.yam
 1. Upload the template and set `MultiAccountScan` to `true`
 2. Optionally set `TargetRegions` for multi-region scanning
 3. Optionally provide an email address for notifications
-4. Configure the optional [security policy baselines](#optional-security-policy-baselines); the central values are propagated to every per-account SAM deployment
+4. Configure the optional [security policy baselines](#optional-security-policy-baselines) and [optional read permissions](#optional-read-permissions); the central values are propagated to every per-account SAM deployment
 5. Acknowledge IAM capabilities and submit
 6. Stack creation automatically triggers the assessment across all accounts
 
@@ -319,15 +319,21 @@ enforced by default.
 
 | CloudFormation parameter | Default | Affected check | Behavior |
 | --- | --- | --- | --- |
-| `RequireBedrockZeroDataRetention` | `false` | BR-37 | Deprecated and no longer read; still accepted so existing stacks update. BR-37 fails `default`, `inherit` and `provider_data_share` at every setting, and passes only `none`. |
 | `RequireMarketplaceEndpointCMK` | `true` | BR-40 | When `true`, a Bedrock Marketplace model endpoint without a customer-managed KMS key fails. BR-40 uses `kms:DescribeKey` and requires `KeyManager=CUSTOMER`; AWS-managed keys do not pass. When `false`, a missing or AWS-managed key is reported as an informational `N/A` hardening advisory. |
 | `RequireAgentCoreOnlineEvaluation` | `false` | AC-17 | When `true`, a region with no AgentCore runtime fails unless a running online evaluation configuration exists. When `false`, that region is informational. Every runtime is judged either way. |
 | `RequireAgentRegistryCMK` | `false` | AR-05 | When `true`, registries using the default AWS owned encryption key fail. When `false`, AWS owned key encryption is reported as an informational hardening advisory; registries with a customer-managed KMS key pass. |
-| `EnableAgentCoreArtifactObjectReads` | `false` | AC-34, AC-35 | When `true`, the AgentCore function holds `s3:GetObject` and `s3:GetObjectVersion` on `arn:${AWS::Partition}:s3:::*/*` and `ecr:BatchGetImage` and `ecr:GetDownloadUrlForLayer` on the account's repositories, and scans runtime code archives, container image layers and S3 tool schemas. When `false`, those grants are not created and each content row is an informational `N/A` naming this parameter. `ecr:DescribeImages` is granted either way. |
 | `AgentCoreTokenVaultId` | `default` | AC-14 | Names a regional AgentCore Identity token vault whose customer-managed KMS encryption is assessed, beside every vault a credential provider ARN names. |
 | `ApprovedExternalAccountIds` | Empty | SM-30 | Comma-separated 12-digit AWS account IDs approved to receive SageMaker Model Registry access. Accounts outside the configured boundary fail. |
 | `ApprovedOrganizationIds` | Empty | SM-30 | Comma-separated AWS Organizations IDs approved to receive SageMaker Model Registry access. Organizations outside the configured boundary fail. |
-| `EnableSageMakerArtifactObjectReads` | `false` | SM-43 | When `true`, the SageMaker Lambda role gets `s3:GetObject` on every object (`arn:<partition>:s3:::*/*`) so SM-43 can call `HeadObject` on each single-object model artifact and compare its current `ETag` and own encryption. That grant also allows downloading any object the bucket policy does not deny. When `false`, the grant is absent and the per-object leg is an informational `N/A` row naming this parameter; an endpoint whose artifact objects were not read is `N/A` there, not `Passed`. |
+
+The CloudFormation console lists two older parameters separately, under
+**Legacy Compatibility (leave unchanged)**. `RequireBedrockZeroDataRetention`
+(default `false`) is deprecated and no longer read; it is still accepted so
+existing stacks update. BR-37 fails `default`, `inherit` and
+`provider_data_share` at every setting, and passes only `none`.
+`EnableFinServAssessment` is the legacy alias for
+`EnableResponsibleAIGRCAssessment`; see
+[Responsible AI GRC alias migration guide](docs/RESPONSIBLE_AI_GRC_ALIAS_MIGRATION.md).
 
 For the approved-account and approved-organization lists, do not include spaces.
 Leaving both lists empty means SM-30 still detects public access, but external
@@ -368,6 +374,20 @@ These parameters are available in both top-level deployment templates and both
 direct SAM templates. CodeBuild passes the selected values to every deployed
 assessment stack. Updating a value requires a CloudFormation stack update and a
 new assessment run.
+
+## Optional Read Permissions
+
+These two parameters do not change a pass or fail threshold. Each one adds an
+IAM grant that lets a check read object or image contents, so they are listed
+in their own **Optional Read Permissions** group in the CloudFormation console.
+Both default to `false`. Like the baselines above, they are available in both
+top-level deployment templates and both direct SAM templates, and a change
+needs a stack update and a new assessment run.
+
+| CloudFormation parameter | Default | Affected check | Behavior |
+| --- | --- | --- | --- |
+| `EnableAgentCoreArtifactObjectReads` | `false` | AC-34, AC-35 | When `true`, the AgentCore function holds `s3:GetObject` and `s3:GetObjectVersion` on `arn:${AWS::Partition}:s3:::*/*` and `ecr:BatchGetImage` and `ecr:GetDownloadUrlForLayer` on the account's repositories, and scans runtime code archives, container image layers and S3 tool schemas. When `false`, those grants are not created and each content row is an informational `N/A` naming this parameter. `ecr:DescribeImages` is granted either way. |
+| `EnableSageMakerArtifactObjectReads` | `false` | SM-43 | When `true`, the SageMaker Lambda role gets `s3:GetObject` on every object (`arn:<partition>:s3:::*/*`) so SM-43 can call `HeadObject` on each single-object model artifact and compare its current `ETag` and own encryption. That grant also allows downloading any object the bucket policy does not deny. When `false`, the grant is absent and the per-object leg is an informational `N/A` row naming this parameter; an endpoint whose artifact objects were not read is `N/A` there, not `Passed`. |
 
 ---
 
@@ -698,7 +718,7 @@ The deployment uses multiple IAM roles with different trust and permission bound
 
   None of the three can be turned off with a deployment parameter. To withhold one, remove it from the SAM template before deploying. The checks that need it then report `N/A`.
 
-  Two content-reading grant sets are opt-in instead. The SM-43 grant, `s3:GetObject` on every object, exists only when `EnableSageMakerArtifactObjectReads` is `true`, and the AgentCore role reads object and image contents (AC-34, AC-35) only when `EnableAgentCoreArtifactObjectReads` is `true`. Both default to `false`; see [Optional Security Policy Baselines](#optional-security-policy-baselines).
+  Two content-reading grant sets are opt-in instead. The SM-43 grant, `s3:GetObject` on every object, exists only when `EnableSageMakerArtifactObjectReads` is `true`, and the AgentCore role reads object and image contents (AC-34, AC-35) only when `EnableAgentCoreArtifactObjectReads` is `true`. Both default to `false`; see [Optional Read Permissions](#optional-read-permissions).
 
 If you need to reduce scope, review the role policies in:
 

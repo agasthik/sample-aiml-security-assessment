@@ -22,7 +22,11 @@ section.
   `security_assessment_changes_<YYYYMMDD_HHMMSS>.html` and `.csv` next to its
   main report, comparing the run with the account's previous usable run and
   labeling each finding Resolved, Still open, Regressed, New, No longer
-  reported, or No longer assessed. It reads only the existing findings CSVs,
+  reported, or No longer assessed. It reads only the existing findings CSVs.
+  Like the main report, it derives the AWS AI Security Framework (AISF) rows
+  from them with the main report's own mapping, so AISF controls are compared
+  too, and an AISF row changes only when one of its source checks does
+  (account-wide rows stay under `Global`, so they pair across runs). It
   runs in the CodeBuild post-build phase in both deployment modes, and can't
   fail a run: problems are logged as warnings, and the step is skipped when
   little build time is left. The first run of an account is skipped. See
@@ -404,6 +408,22 @@ back `Passed` names what it could not read.
 - Pinned `boto3` and `botocore` 1.43.108 in every function's
   `requirements.txt` and in `tests/requirements.txt`.
 
+- Reorganized the CloudFormation console parameter groups in
+  `deployment/aiml-security-single-account.yaml` and
+  `deployment/2-aiml-security-codebuild.yaml` into Assessment Scope, Services
+  to Assess, Optional Assessments, Reporting, Advanced Options, Optional
+  Security Policy Baselines, Optional Read Permissions, and Legacy
+  Compatibility. The two artifact-read switches
+  (`EnableAgentCoreArtifactObjectReads`, `EnableSageMakerArtifactObjectReads`)
+  now sit in their own group because they add IAM grants, and the legacy
+  `EnableFinServAssessment` and deprecated `RequireBedrockZeroDataRetention`
+  parameters moved to the Legacy Compatibility group. The service switch
+  descriptions now say which derived Agentic AI and AWS AI Security Framework
+  results are left out when a service is deselected, and that each affected
+  OWASP control gets an informational `N/A` selection-coverage row instead of
+  the rows mapped from that service. No parameter
+  was added, removed, or renamed, and no default or allowed value changed.
+
 ### Deprecated
 
 - The `RequireBedrockZeroDataRetention` deployment parameter is deprecated and
@@ -414,6 +434,9 @@ back `Passed` names what it could not read.
 
 ### Fixed
 
+- The changes since last assessment report now names AISF controls skipped
+  because a mapping failed while producing them. Other derived controls remain
+  in the comparison, and the report still cannot fail the assessment run.
 - Preserve default-enabled artifact completeness checks when an older CodeBuild
   project has not yet received service-selection environment variables.
 - Derive selection notices and scope descriptions from the selected assessments.
@@ -491,6 +514,12 @@ back `Passed` names what it could not read.
 
 ### Deployment impact
 
+- **Console parameter groups:** No action is required. The new grouping and
+  descriptions appear in the CloudFormation console the next time
+  `deployment/aiml-security-single-account.yaml` or
+  `deployment/2-aiml-security-codebuild.yaml` is used to create or update a
+  stack. Assessments and reports are unchanged, and no member-role StackSet
+  update is needed.
 - **Service selection:** Update `deployment/aiml-security-single-account.yaml`
   for single-account deployments or `deployment/2-aiml-security-codebuild.yaml`
   for multi-account central infrastructure, set the desired service switches,
@@ -501,7 +530,9 @@ back `Passed` names what it could not read.
 - **Changes since last assessment report:** A CodeBuild run is required,
   because `buildspec.yml` changed and the new `assessment_history/` package
   runs in the post-build phase. If `GitHubBranch` pins a tag or commit, update
-  it first. Updating `deployment/aiml-security-single-account.yaml` or
+  it first. The AISF skipped-control note fix also takes effect on the next
+  CodeBuild run using this revision; it requires no infrastructure update.
+  Updating `deployment/aiml-security-single-account.yaml` or
   `deployment/2-aiml-security-codebuild.yaml` is optional: it adds the
   `EnableAssessmentHistory` parameter, needed only to be able to turn the
   report off. No member-role StackSet update is required. The first run after

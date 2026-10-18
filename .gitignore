@@ -46,3 +46,6 @@ tmp/
 
 .ruff_cache/
 .ash/
+
+design-plans/
+test-resources/

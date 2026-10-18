@@ -183,7 +183,32 @@ Only what ran in both runs is compared:
   scanned in both runs.
 
 Check IDs that appear in only one run (for example, after upgrading the
-framework) are listed in the report as a note.
+framework) are listed in the report as a note. Only scanner check IDs are
+counted; derived AISF IDs never are, because both runs are derived with the
+same mapping.
+
+**AWS AI Security Framework (AISF) rows** aren't in any findings CSV: the main
+report derives them from the service findings each time it's built. The
+changes report does the same, with the main report's own mapping
+(`generate_consolidated_report/aisf_mappings.py`), from each run's compared
+findings: only services selected in both runs, and regions scanned in both
+runs. Both runs are derived with the current mapping, so a mapping change in
+a new release doesn't show as a change in findings; an AISF row changes only
+when one of its source checks does. Account-wide (`Global`) source rows are
+derived on their own, so their AISF rows stay under `Global` in every run,
+even beside regional rows; the main report folds them into the regional rows
+instead. A regional AISF row is listed only for a control with a source row
+in that region. The `AISF-00` coverage row is under `Global` only for an
+account with no regional rows, as in the main report; otherwise each region's
+`AISF-00` names the controls with no source there. Every AISF control today
+draws on a single service, so a service selected in only one run removes its
+controls from both runs alike; a test fails if a mapping adds a control that
+spans two services. If the AISF rows can't be derived, the rest of the report
+is still written, and its notes and the build log say
+`AWS AI Security Framework rows not compared: <reason>`. A derived row that
+can't be read is skipped on its own and named in a note; the other rows are
+still compared. A mapping that fails while producing a control is also named
+in a note, while other controls remain in the comparison.
 
 ## Change states
 
@@ -264,9 +289,10 @@ choice carries over between the two reports).
   reported, and No longer assessed, for the four services only (Bedrock,
   SageMaker, AgentCore, AWS Agent Registry), or those of them selected in both
   runs; the note under the counts names any service left out. With none of
-  the four selected in both runs, the counts show "—". Most Agentic AI Security and
-  OWASP rows are derived from service findings, so one change can appear in
-  several areas; counts are shown per area and not added across areas.
+  the four selected in both runs, the counts show "—". Most Agentic AI Security,
+  OWASP, and AWS AI Security Framework rows are derived from service findings,
+  so one change can appear in several areas; counts are shown per area and not
+  added across areas.
 - **Counts by area:** under the main report's headings (By Service, By Lens,
   By Governance Framework, By Compliance Standard).
 - **Changes table:** the main report's columns, with **Change** in place of
@@ -297,7 +323,7 @@ One row per compared finding, in these columns:
 | Column | Contents |
 | --- | --- |
 | `Account_ID` | The account |
-| `Assessment_Area` | `bedrock`, `sagemaker`, `agentcore`, `agent-registry`, `agentic`, `responsible-ai-grc`, or `owasp` |
+| `Assessment_Area` | `bedrock`, `sagemaker`, `agentcore`, `agent-registry`, `agentic`, `responsible-ai-grc`, `owasp`, or `aisf` |
 | `Region`, `Check_ID`, `Finding` | As in the findings CSVs |
 | `Change` | One of the change states above, including `Not failing` |
 | `Previous_Status`, `Current_Status` | `Passed`, `Failed`, `N/A`, or `Not present` |
@@ -327,6 +353,10 @@ can contain resource names chosen by anyone who can create resources.
 | `Skipped N more run(s)` | More than five runs were passed over |
 | `Not compared (not selected in both runs): <service> (<which run>)` | A core service selected in only one of the two runs, or in neither; it's left out of the comparison and the counts |
 | `No core service was selected in both runs, so there are no headline counts; see the changes CSV` | Only Responsible AI GRC or OWASP were compared |
+| `AWS AI Security Framework rows not compared: <reason>` | The AISF rows couldn't be derived (for example, `aisf_mappings.py` couldn't be loaded); every other row is still compared |
+| `AWS AI Security Framework rows not compared for N derived row(s) (<ids>): <reason>` | Those derived rows couldn't be read and were skipped; every other AISF row is still compared |
+| `AWS AI Security Framework rows not compared for N mapping error(s) (<ids>): <reason>` | A mapping failed while producing the named AISF controls; other controls are still compared |
+| `AWS AI Security Framework controls not compared (a source check's service was not selected in both runs): <ids>` | Those controls draw on a service selected in only one run, so they're left out of the comparison |
 | `WARNING: ENABLE_<SERVICE>='<value>' is not true or false; the services with CSVs are taken as selected` | A service switch has an unexpected value |
 | `WARNING: ENABLE_<SERVICE> is '<value>', not true or false, so the run record does not list the selected services` | Single-account: the record is still written; later runs judge this run by its files |
 | `WARNING: Could not write the assessment run record s3://...` | Single-account: no record for this run; it will be judged by its files |
@@ -408,6 +438,7 @@ Each folder must hold one complete run. The setting is ignored in this mode.
 | `assessment_history/models.py` | Record shapes, change states, CSV columns |
 | `assessment_history/normalize.py` | The changing values blanked out in matching step 1 |
 | `assessment_history/compare.py` | The comparison (no AWS calls) |
+| `assessment_history/derived.py` | The AWS AI Security Framework rows, derived with the main report's `aisf_mappings.py` |
 | `assessment_history/discover.py` | Finding and reading an account's runs in S3 or a local folder |
 | `assessment_history/render_common.py`, `render_changes.py` | The HTML page, using the main report's styling |
 | `assessment_history/__main__.py` | The command line the build runs |
