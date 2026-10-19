@@ -80,11 +80,32 @@ recent catalog expansions. Twelve have direct OWASP mappings. The remaining
 - `AG-28` through `AG-32` are synthesized from BR/AC source findings. Mapping
   them again would duplicate source evidence for `AG-28` through `AG-31` and
   would bypass the deliberate `AC-17` non-mapping for `AG-32`.
-- `AR-01` through `AR-08` assess AWS Agent Registry IAM access and governance.
-  `AG-33` through `AG-38` synthesize related evidence. None directly proves an
-  OWASP LLM01–LLM10 control, so Registry CSVs are intentionally not read by the
-  OWASP Lambda and all fourteen Registry-derived controls are excluded from
-  OWASP mapping.
+- `AR-01` through `AR-10` assess AWS Agent Registry IAM access, governance and
+  lifecycle event routing. `AG-33` through `AG-38` synthesize related evidence.
+  None directly proves an OWASP LLM01–LLM10 control, so Registry CSVs are
+  intentionally not read by the OWASP Lambda and all sixteen Registry-derived
+  controls are excluded from OWASP mapping.
+
+### Source rows filtered by finding name
+
+Three SageMaker check IDs also emit rows for controls other than the one their
+OWASP mapping names. For these, only source rows whose `Finding` starts with
+the listed text become OW rows:
+
+| Source | OW rows | Mapped source findings | Not mapped |
+| --- | --- | --- | --- |
+| `SM-10` | OW-03 | `SageMaker Notebook ...`, which includes `SageMaker Notebook Subnet Internet Exposure` and `SageMaker Notebook Direct Internet Access in VPC` | `SageMaker Studio Domain Network Boundary` and `SageMaker Studio Domain Subnet Internet Exposure` |
+| `SM-11` | OW-03, OW-10 | `SageMaker Model Network Isolation ...` | AI Lambda function network boundary, endpoint config encryption and subnet exposure, model VPC attachment, endpoint model network path, private invoke path and invocation source network rows |
+| `SM-22` | OW-04, OW-09 | `Model Approval Workflow ...`, `Deployed Model Registration` | Model Registry cross-account visibility and lifecycle stage rows |
+
+A `SageMaker Check Incomplete` row, written when a SageMaker check stops on an
+unexpected error, and a `SageMaker Check Not Assessed (Timeout)` row match none
+of these prefixes, so for `SM-10`, `SM-11` and `SM-22` they map to no OW row.
+Every other mapped SageMaker check ID (`SM-01`, `SM-03`, `SM-06`, `SM-07`,
+`SM-14`, `SM-15`, `SM-21`, `SM-23`, `SM-25`, `SM-26`, `SM-27`, `SM-28`, `SM-30`)
+has no prefix filter, so such a row becomes an `N/A` `Informational` row under
+each OW ID that source maps to: an `SM-14` incomplete row, for example, yields
+an `N/A` OW-03 row.
 
 ## Extensibility
 
