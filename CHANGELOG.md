@@ -488,6 +488,20 @@ back `Passed` names what it could not read.
   sets `UsePreviousValue=true` for it or reads it from a saved parameter file,
   so drop it before updating. Direct AWS SAM users drop it from their
   parameter overrides for the same reason.
+- Fixed stale or broken AWS documentation links in assessment findings. The
+  BR-01 reference no longer joins two URLs into one broken link. Removed or
+  renamed pages now point to their current AWS documentation, covering the
+  BR-00, BR-03, BR-40, SM-02, SM-14, SM-27, SM-28, AC-00, AC-01, AC-02, AC-04,
+  AC-07, AC-13, FS-27, FS-31, FS-36, FS-61, FS-62, FS-65, and FS-68 findings.
+  Bedrock AgentCore links moved off the retired Starter Toolkit site, and
+  the README and docs links that had moved or been removed were updated. The
+  Responsible AI and GRC checks guide now says `nodejs20.x` was deprecated on
+  April 30, 2026, instead of describing it as upcoming. The AWS Security Agent
+  text in the penetration-testing guidance and the FS-54 finding now notes
+  that it is part of AWS Continuum, says its Regions have expanded since the
+  March 2026 launch, and points to the service-availability note on the
+  Security Agent Resilience page for the current Regions. The FS-54 reference
+  link now goes to that page.
 
 ### Deployment impact
 
@@ -529,6 +543,10 @@ back `Passed` names what it could not read.
   instead. The templates no longer declare the old parameter and
   `buildspec.yml` no longer reads the old variable, so a stack updated
   without the new name deploys with `false` and loses the grants.
+- **Reference link fixes:** A CodeBuild run is required to redeploy the
+  assessment Lambdas, because the Bedrock, SageMaker AI, AgentCore, and
+  Responsible AI GRC assessment code changed. No template or IAM changes, so no
+  infrastructure update and no member-role StackSet update are required.
 
 These instructions assume the 2.0.0 prerequisites below are already applied.
 When upgrading from an earlier release, complete the 2.0.0 member-role and

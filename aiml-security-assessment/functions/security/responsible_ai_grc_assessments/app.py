@@ -3610,7 +3610,7 @@ def check_automated_reasoning_policies() -> Dict[str, Any]:
                         "guardrailProfileArn configured (crossRegionDetails in GetGuardrail response).\n"
                         "5. Reference: AWS Announcement — Automated Reasoning checks GA (August 2025)."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/automated-reasoning.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-automated-reasoning-checks.html",
                     severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-27"],
@@ -3632,7 +3632,7 @@ def check_automated_reasoning_policies() -> Dict[str, Any]:
                         "automatedReasoningPolicy.policies list and that the "
                         "guardrail is applied to your Bedrock inference calls."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/automated-reasoning.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-automated-reasoning-checks.html",
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-27"],
@@ -3923,7 +3923,7 @@ def check_knowledge_base_data_source_sync(inventory) -> Dict[str, Any]:
                     finding_name="No Knowledge Bases Found",
                     finding_details="No Bedrock Knowledge Bases found.",
                     resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/kb-data-source-sync-ingest.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-31"],
@@ -4004,7 +4004,7 @@ def check_knowledge_base_data_source_sync(inventory) -> Dict[str, Any]:
                         "1. Run StartIngestionJob for each data source and investigate failures.\n"
                         "2. Confirm the source location exists and the KB role can read it."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/kb-data-source-sync-ingest.html",
                     severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-31"],
@@ -4023,7 +4023,7 @@ def check_knowledge_base_data_source_sync(inventory) -> Dict[str, Any]:
                     resolution=(
                         "Ensure the assessment role has bedrock:ListIngestionJobs permission."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/kb-data-source-sync-ingest.html",
                     severity="Low",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-31"],
@@ -4051,7 +4051,7 @@ def check_knowledge_base_data_source_sync(inventory) -> Dict[str, Any]:
                         "that cadence — see FS-61.\n"
                         "3. Set CloudWatch alarms on sync job failures."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/kb-data-source-sync-ingest.html",
                     severity="Medium",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-31"],
@@ -4072,7 +4072,7 @@ def check_knowledge_base_data_source_sync(inventory) -> Dict[str, Any]:
                         f"job within {STALE_AFTER_DAYS} days (the default review threshold)."
                     ),
                     resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/kb-data-source-sync-ingest.html",
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-31"],
@@ -4093,7 +4093,7 @@ def check_knowledge_base_data_source_sync(inventory) -> Dict[str, Any]:
                         "Attach a data source to each Knowledge Base that is expected to "
                         "serve content, then run an ingestion job."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/kb-data-source-sync-ingest.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-31"],
@@ -4424,7 +4424,7 @@ def check_guardrail_content_filters(inventory) -> Dict[str, Any]:
                     finding_name="No Guardrails — Content Filters Not Applicable",
                     finding_details="No Bedrock Guardrails configured.",
                     resolution="Configure guardrails with content filters.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-filters.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-content-filters.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-36"],
@@ -4479,7 +4479,7 @@ def check_guardrail_content_filters(inventory) -> Dict[str, Any]:
                         "typographical error detection, and 60+ language support. STANDARD tier "
                         "requires cross-region inference to be enabled on the guardrail."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-filters.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-content-filters.html",
                     severity="High",
                     status="Failed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-36"],
@@ -4512,7 +4512,7 @@ def check_guardrail_content_filters(inventory) -> Dict[str, Any]:
                         "To upgrade: update the guardrail's contentPolicy.filtersConfig.contentFiltersTierConfig "
                         "with tierName=STANDARD and configure a guardrail cross-region profile."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-filters.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-tiers.html",
                     severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-36"],
@@ -4528,7 +4528,7 @@ def check_guardrail_content_filters(inventory) -> Dict[str, Any]:
                         f"{tier_note}"
                     ),
                     resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-filters.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-content-filters.html",
                     severity="High",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-36"],
@@ -6286,17 +6286,20 @@ def check_penetration_testing_evidence() -> Dict[str, Any]:
                 "before major releases.\n"
                 "2. Include AI-specific test cases: prompt injection, jailbreak, indirect "
                 "(cross-domain) injection, system-prompt leakage, and data-extraction attempts.\n"
-                "3. Consider AWS Security Agent for on-demand, AI-driven penetration testing "
-                "(GA March 2026; available in US East N. Virginia, US West Oregon, Europe Ireland, "
-                "Europe Frankfurt, Asia Pacific Sydney, Asia Pacific Tokyo, with cross-account "
+                "3. Consider AWS Security Agent (now part of AWS Continuum) for on-demand, AI-driven "
+                "penetration testing "
+                "(GA March 2026 in US East N. Virginia, US West Oregon, Europe Ireland, "
+                "Europe Frankfurt, Asia Pacific Sydney, Asia Pacific Tokyo, since expanded to "
+                "additional Regions, with cross-account "
                 "shared-VPC testing via AWS RAM). Open-source tools such as Garak or PyRIT and "
                 "manual red-teaming are complementary options. Verify current regional availability "
-                "on the AWS Security Agent page before relying on it.\n"
+                "in the service-availability note on the Resilience page of the AWS Security "
+                "Agent documentation before relying on it.\n"
                 "4. Document findings and remediation for regulatory examination, and tag tested "
                 "resources with a last-pentest-date for audit trail.\n"
                 "5. For DORA compliance, include GenAI in TLPT (Threat-Led Penetration Testing) scope."
             ),
-            reference="https://aws.amazon.com/security/penetration-testing/",
+            reference="https://docs.aws.amazon.com/securityagent/latest/userguide/resilience.html",
             severity="Informational",
             status="N/A",
             compliance_frameworks=COMPLIANCE_MAP["FS-54"],
@@ -6730,7 +6733,7 @@ def check_knowledge_base_sync_schedule(inventory) -> Dict[str, Any]:
                     finding_name="No Knowledge Bases Found",
                     finding_details="No Bedrock Knowledge Bases found.",
                     resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
+                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/kb-data-source-sync-ingest.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-61"],
@@ -6864,7 +6867,7 @@ def check_data_currency_disclaimer_advisory() -> Dict[str, Any]:
                 "2. Expose KB last sync timestamp in application responses.\n"
                 "3. Alert users when KB data is older than defined threshold."
             ),
-            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-ingest.html",
+            reference="https://docs.aws.amazon.com/bedrock/latest/userguide/kb-data-source-sync-ingest.html",
             severity="Informational",
             status="N/A",
             compliance_frameworks=COMPLIANCE_MAP["FS-62"],
@@ -7031,7 +7034,7 @@ def check_kb_datasource_s3_event_notifications(inventory) -> Dict[str, Any]:
                     finding_name="No Knowledge Bases Found",
                     finding_details="No Bedrock Knowledge Bases found; S3 event notification check not applicable.",
                     resolution="No action required.",
-                    reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/NotificationHowTo.html",
+                    reference="https://docs.aws.amazon.com/AmazonS3/latest/userguide/EventNotifications.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-65"],
@@ -7584,7 +7587,7 @@ def check_api_gateway_request_body_size_limits(inventory) -> Dict[str, Any]:
                         "If GenAI endpoints are fronted by API Gateway or WAF in another region, "
                         "run the assessment there. Otherwise no action is required."
                     ),
-                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-size-constraint.html",
+                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-size-constraint-match.html",
                     severity="Informational",
                     status="N/A",
                     compliance_frameworks=COMPLIANCE_MAP["FS-68"],
@@ -7628,7 +7631,7 @@ def check_api_gateway_request_body_size_limits(inventory) -> Dict[str, Any]:
                         "since this check does not confirm resource association."
                     ),
                     resolution="No action required (verify WAF/API association as noted).",
-                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-size-constraint.html",
+                    reference="https://docs.aws.amazon.com/waf/latest/developerguide/waf-rule-statement-type-size-constraint-match.html",
                     severity="Medium",
                     status="Passed",
                     compliance_frameworks=COMPLIANCE_MAP["FS-68"],

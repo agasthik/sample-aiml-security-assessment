@@ -8804,7 +8804,7 @@ class TestSubnetExposureFindings:
                 }
             ],
             region="us-east-1",
-            reference="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-security.html",
+            reference="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-prerequisites.html#sagemaker-hyperpod-prerequisites-optional-vpc",
             resolution="Move it",
             severity="Medium",
         )
