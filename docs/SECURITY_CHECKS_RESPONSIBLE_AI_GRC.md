@@ -180,9 +180,9 @@ for every per-finding assignment.
 Detection and remediation guidance in this document was systematically validated against the
 AWS GRC User Guide, current AWS documentation, API references, and AWS announcements as
 of April 2026. IAM action names were verified against the AWS Service Authorization Reference
-for [Amazon Bedrock](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrock.html),
-[Amazon Bedrock AgentCore](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrockagentcore.html),
-and [Amazon OpenSearch Serverless](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonopensearchserverless.html)
+for [Amazon Bedrock](https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrock.html),
+[Amazon Bedrock AgentCore](https://docs.aws.amazon.com/service-authorization/latest/reference/list_bedrock-agentcore.html),
+and [Amazon OpenSearch Serverless](https://docs.aws.amazon.com/service-authorization/latest/reference/list_opensearchserverless.html)
 (note: the OpenSearch Serverless IAM prefix is `aoss:`, not `opensearchserverless:` — the latter
 is the boto3 client name).
 CloudWatch metric namespaces were verified against the service-specific monitoring docs (Bedrock,
@@ -220,9 +220,9 @@ Key quality gates before opening the PR:
 
 ## Relationship to SM/BR/AC checks
 
-The assessment's core catalog provides 94 security checks (29 SageMaker checks through SM-30 with
-SM-29 reserved, BR-01 to BR-40, AC-01 to AC-17, and AR-01 to AR-08) and up to 38 Agentic AI
-Security checks (AG-01 to AG-38). The 69 FS numbers in this document are **additive**: they add
+The assessment's core catalog provides 162 security checks (42 SageMaker checks through SM-43 with
+SM-29 reserved, BR-01 to BR-57, AC-01 to AC-53, and AR-01 to AR-10) and up to 39 Agentic AI
+Security checks (AG-01 to AG-39). The 69 FS numbers in this document are **additive**: they add
 governance, risk, and compliance detection and remediation guidance drawn from the AWS GRC User
 Guide. A few FS checks overlap with core checks — in those cases, the FS check adds
 financial-services depth (e.g., protected-attribute facets, regulatory cadence requirements,
@@ -270,7 +270,7 @@ guide-traceability value.
 - **Extend core check (5 FS checks merged into 5 core checks):** FS-17 → SM-07; FS-18 → SM-23; FS-19 → SM-22; FS-23 → BR-06; FS-64 → BR-04. These checks are replaced by extension notes in Parts 1 and 3 and are not implemented in `responsible_ai_grc_assessments/app.py`.
 - **Keep separate (64 FS checks):** All other FS checks ship as standalone entries. This includes FS-20, FS-22, FS-25, FS-26, FS-39, FS-41, all Guardrail-policy-level checks (FS-27, FS-28, FS-36, FS-38, FS-45, FS-47, FS-50, FS-51, FS-59), and all FS checks that have no overlap at all.
 
-After consolidation the framework contains **94 core + 38 AG + 64 FS = 196 distinct checks** before optional OWASP checks. With the 12 optional OWASP Top 10 for LLM checks enabled, the full catalog contains **208 distinct checks**. Consolidation reduces duplication without losing financial-services regulatory depth.
+After consolidation the framework contains **162 core + 39 AG + 64 FS = 265 distinct checks** before optional OWASP checks. With the 12 optional OWASP Top 10 for LLM checks enabled, the full catalog contains **277 distinct checks**. Consolidation reduces duplication without losing financial-services regulatory depth.
 
 ---
 
@@ -1185,8 +1185,8 @@ with `not_a_control: true`, because registry-based audits would otherwise miss i
 | Guide ref | [Guide §1.2.8] — "Security Testing – Test your applications regularly for prompt injection and other security vulnerabilities. Use penetration testing, static code analysis, and dynamic application security testing (DAST)." |
 | Description | Advisory: prompts a manual review that GenAI applications have been penetration tested for prompt injection and other AI-specific vulnerabilities. |
 | Detection | Advisory check — makes no AWS API calls. Always emits an `N/A` manual-review finding; penetration-testing evidence (for example, a `last-pentest-date` resource tag or a documented testing schedule) must be reviewed manually. |
-| Remediation | 1. Conduct penetration testing of your GenAI application at least annually and before major releases. 2. Include AI-specific test cases: prompt injection, jailbreak attempts, data extraction, system prompt leakage. 3. Use tools like Garak, PyRIT, manual red-teaming, or the **AWS Security Agent**. As of the March 2026 GA announcement, Security Agent runs from 6 AWS regions (N. Virginia, Oregon, Ireland, Frankfurt, Sydney, Tokyo) but can test targets across AWS, Azure, GCP, and on-premises environments. For multi-account financial-services deployments, Security Agent supports penetration testing on VPC resources **shared across AWS accounts in the same AWS Organization** via AWS Resource Access Manager (RAM) — enable this by launching Security Agent from a central security account and sharing VPC resources from sub-accounts via RAM. **Verify current region coverage on the [AWS Security Agent page](https://aws.amazon.com/security-agent/) before citing**, as AWS has been expanding regional availability and feature set rapidly. 4. Document findings and track remediation. 5. Tag resources with `last-pentest-date` for audit trail. |
-| Reference | [AWS Penetration Testing Policy](https://aws.amazon.com/security/penetration-testing/), [AWS Security Agent GA](https://aws.amazon.com/about-aws/whats-new/2026/03/aws-security-agent-ondemand-penetration/) |
+| Remediation | 1. Conduct penetration testing of your GenAI application at least annually and before major releases. 2. Include AI-specific test cases: prompt injection, jailbreak attempts, data extraction, system prompt leakage. 3. Use tools like Garak, PyRIT, manual red-teaming, or the **AWS Security Agent** (now part of AWS Continuum). Security Agent launched in March 2026 in 6 AWS regions (N. Virginia, Oregon, Ireland, Frankfurt, Sydney, Tokyo) and has since expanded to additional Regions. It can test targets across AWS, Azure, GCP, and on-premises environments. For multi-account financial-services deployments, Security Agent supports penetration testing on VPC resources **shared across AWS accounts in the same AWS Organization** via AWS Resource Access Manager (RAM) — enable this by launching Security Agent from a central security account and sharing VPC resources from sub-accounts via RAM. **Verify current region coverage in the service-availability note on the [AWS Security Agent Resilience page](https://docs.aws.amazon.com/securityagent/latest/userguide/resilience.html) before citing.** 4. Document findings and track remediation. 5. Tag resources with `last-pentest-date` for audit trail. |
+| Reference | [AWS Security Agent Regions (Resilience)](https://docs.aws.amazon.com/securityagent/latest/userguide/resilience.html), [AWS Penetration Testing Policy](https://aws.amazon.com/security/penetration-testing/), [AWS Security Agent GA](https://aws.amazon.com/about-aws/whats-new/2026/03/aws-security-agent-ondemand-penetration/) |
 
 </details>
 

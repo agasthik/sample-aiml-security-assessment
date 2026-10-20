@@ -12,7 +12,8 @@ IDs are in [docs/SECURITY_CHECKS.md](docs/SECURITY_CHECKS.md).
   canonical [local commands](docs/DEVELOPER_GUIDE.md#running-checks-locally).
 - [docs/SECURITY_CHECKS.md](docs/SECURITY_CHECKS.md) and the applicable
   `docs/SECURITY_CHECKS_*.md` catalog define each check's claim, evidence, severity, and
-  remediation.
+  remediation. [docs/SECURITY_CHECKS_AISF.md](docs/SECURITY_CHECKS_AISF.md) defines the
+  derived AISF view and its coverage semantics.
 - [docs/ASSESSMENT_HISTORY.md](docs/ASSESSMENT_HISTORY.md) covers comparison behavior,
   normalization, coverage, and sample regeneration.
 - [docs/RESPONSIBLE_AI_GRC_SCOPE.md](docs/RESPONSIBLE_AI_GRC_SCOPE.md) covers scope and the
@@ -70,14 +71,19 @@ a check, lens, standard, or report UI changes.
   consumer, and selected-artifact contracts when adding an area.
 - Finding CSVs contain the base columns
   `Check_ID, Finding, Finding_Details, Resolution, Reference, Severity, Status, Region`.
-  Responsible AI GRC also contains `Compliance_Frameworks`. Each SAM Lambda packages its own
-  `schema.py`; update the relevant copies together and keep report parsing compatible with extra
-  columns. Check ID prefixes (`BR-`, `SM-`, `AC-`, `AR-`, `AG-`, `FS-`, `OW-`) route findings into
-  report sections and history.
+- Responsible AI GRC, Bedrock, SageMaker AI, AgentCore, and Agent Registry also contain
+  `Compliance_Frameworks`; the four direct services use it for AISF traceability tags. Each SAM
+  Lambda packages its own `schema.py`; update the relevant copies together and keep report
+  parsing compatible with extra columns. Check ID prefixes (`BR-`, `SM-`, `AC-`, `AR-`, `AG-`,
+  `FS-`, `OW-`, `AISF-`) route findings into report sections and history.
 - `AG-` rows are mapped from direct findings, with native AgentCore gateway checks. OWASP maps
   BR-/SM-/AC-/FS- sources plus native checks; its mapping values are lists, and an `N/A` source
   produces an `OW-` row with `Informational` severity. Verify mapped source IDs, allocated AG
   IDs, and catalog entries whenever these mappings change.
+- `AG-24` through `AG-27` and `AG-39` are native gateway checks. AISF is a derived report view:
+  `derive_aisf_findings()` emits `AISF-` rows from existing checks in both consolidators, without
+  a Lambda, CSV, Step Functions branch, or extra S3 prefix. Keep the report registry entry
+  `"derived": True`, and exclude derived rows from the 277-check catalog total.
 - For any new CSV, trace the key from writer through each consumer. Grant `s3:PutObject` to the
   writer, and `s3:ListBucket` and `s3:GetObject` to each consumer where it lists or reads, in
   both SAM templates. Missing, unreadable, or header-only *selected* artifacts must be reported
@@ -85,6 +91,8 @@ a check, lens, standard, or report UI changes.
 - Optional policy baselines are CloudFormation parameters, not hard-coded scanner assumptions.
   Wire new or changed baselines through both SAM templates, both top-level deployment templates,
   CodeBuild environment variables, and every `sam deploy` path in `buildspec.yml`.
+  `EnableSageMakerArtifactObjectReads` controls the broad `s3:GetObject` grant used for SM-43's
+  `HeadObject` evidence and defaults to `false`.
 
 ## Check and status contracts
 
@@ -126,9 +134,10 @@ a check, lens, standard, or report UI changes.
    unexpected-error paths with SDK-shaped responses. Cover later pages, list failures,
    per-resource failures, and two-region behavior where relevant. Assert the exact fallback
    `Check_ID` and visible partial results.
-4. Check source-to-lens mappings, AG numbering, CSV schema, selection flags, Step Functions
-   success/skip/catch paths, and missing selected artifacts. Render synthetic single- and
-   multi-account reports and inspect scope, counts, navigation, and filters.
+4. Check source-to-lens mappings, AG numbering, AISF derivation and source coverage, CSV schema,
+   selection flags, Step Functions success/skip/catch paths, and missing selected artifacts.
+   Render synthetic single- and multi-account reports and inspect scope, counts, navigation,
+   and filters.
 5. Use only **synthetic** account IDs, organization IDs, ARNs, and resource identifiers in
    tests, examples, fixtures, snapshots, and sample reports. Established example account IDs are
    `123456789012`, `111122223333`, `444455556666`, and `777788889999`.

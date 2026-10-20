@@ -46,6 +46,7 @@
   - [8. Update documentation](#8-update-documentation)
   - [9. Add tests](#9-add-tests)
   - [10. Generate and verify the HTML report](#10-generate-and-verify-the-html-report)
+  - [Variant: a derived standard (AISF-style)](#variant-a-derived-standard-aisf-style)
 - [Testing Your Extensions](#testing-your-extensions)
   - [1. Local Testing](#1-local-testing)
   - [2. Integration Testing](#2-integration-testing)
@@ -76,9 +77,9 @@ implementation workflows and architecture behind those conventions.
 ## Architecture Overview
 
 The AI/ML Security Assessment Framework is a serverless, multi-account security
-assessment solution for AWS AI/ML workloads. It performs 94 core security checks
+assessment solution for AWS AI/ML workloads. It performs 162 core security checks
 across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS
-Agent Registry. It also synthesizes up to 38 Agentic AI Security checks from the
+Agent Registry. It also synthesizes up to 39 Agentic AI Security checks from the
 selected Amazon Bedrock, Amazon Bedrock AgentCore, and AWS Agent Registry
 assessments, and offers an optional 64-check Responsible AI GRC assessment and
 an optional 12-check OWASP Top 10 for LLM assessment. Results are rendered as
@@ -188,10 +189,10 @@ sample-aiml-security-assessment/
 ├── LICENSE                           # License
 ├── aiml-security-assessment/
 │   ├── functions/security/
-│   │   ├── bedrock_assessments/      # Amazon Bedrock checks (40)
-│   │   ├── sagemaker_assessments/    # Amazon SageMaker AI checks (29; SM-29 reserved)
-│   │   ├── agentcore_assessments/    # Amazon Bedrock AgentCore checks (17)
-│   │   ├── agent_registry_assessments/  # AWS Agent Registry checks (8)
+│   │   ├── bedrock_assessments/      # Amazon Bedrock checks (57)
+│   │   ├── sagemaker_assessments/    # Amazon SageMaker AI checks (42; SM-29 reserved)
+│   │   ├── agentcore_assessments/    # Amazon Bedrock AgentCore checks (53)
+│   │   ├── agent_registry_assessments/  # AWS Agent Registry checks (10)
 │   │   ├── responsible_ai_grc_assessments/  # Optional Responsible AI GRC checks (64)
 │   │   ├── responsible_ai_grc_tests/ # Responsible AI GRC test session (own conftest)
 │   │   ├── owasp_assessments/        # Optional OWASP Top 10 for LLM checks (12)
@@ -389,10 +390,12 @@ variable, and every `sam deploy` path in `buildspec.yml`.
 | `AgentCoreTokenVaultId` | `AGENTCORE_TOKEN_VAULT_ID` | AC-14 |
 | `ApprovedExternalAccountIds` | `AIML_APPROVED_EXTERNAL_ACCOUNT_IDS` | SM-30 |
 | `ApprovedOrganizationIds` | `AIML_APPROVED_ORG_IDS` | SM-30 |
+| `EnableSageMakerArtifactObjectReads` | `ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS` | SM-43 |
 
 The top-level deployment templates expose the approved-account and
 approved-organization values to CodeBuild as `APPROVED_EXTERNAL_ACCOUNT_IDS`
-and `APPROVED_ORGANIZATION_IDS`; `buildspec.yml` maps them to the SAM
+and `APPROVED_ORGANIZATION_IDS`, and passes `EnableSageMakerArtifactObjectReads`
+as `ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS`; `buildspec.yml` maps them to the SAM
 parameters above. Add or rename a baseline only when all layers and the public
 deployment documentation are updated together.
 `tests/test_optional_policy_baseline_wiring.py` checks the wiring.
@@ -549,13 +552,13 @@ AgentCore, or AWS Agent Registry) rather than creating a new package.
 
 5. **Inventory scope, pagination, and error isolation.** Use `get_paginator()` or an explicit next-token helper such as `_agentcore_list_all`, and test a non-compliant item on a later page. If a safety cap or deadline truncates the list, keep the findings collected and add an `N/A` incomplete-inventory notice. Wrap per-resource detail calls individually so one throttle or delete race does not erase other resources' findings. Run account-global inventories once, or de-duplicate them with a truthful `Region` value. Make sure the handler wraps the check (for example, `_run_check_safely()` in `agent_registry_assessments/app.py`) so an unexpected exception becomes one visible `N/A` "Incomplete" row under the same `Check_ID` while the CSV is still written. Let an artifact-write failure raise after logging so the Step Functions `Catch` fires; returning `{"statusCode": 500}` without raising hides the failure.
 
-6. **Synthesized mappings** (if applicable). If the check should also appear under the Agentic AI lens (`AG-`) or an OWASP category, update the mapping dictionary. Values in `OWASP_CHECK_MAPPINGS` are lists because one source check can emit multiple `OW-` rows. Allocate new AG numbers by hand across the Amazon Bedrock, Amazon Bedrock AgentCore, and AWS Agent Registry mapping modules and the native checks (the catalog currently ends at AG-38). Confirm every mapped source ID exists, every emitted OW ID appears in `docs/SECURITY_CHECKS_OWASP.md`, and an `N/A` source produces an `OW-` row with `Informational` severity.
+6. **Synthesized mappings** (if applicable). If the check should also appear under the Agentic AI lens (`AG-`) or an OWASP category, update the mapping dictionary. Values in `OWASP_CHECK_MAPPINGS` are lists because one source check can emit multiple `OW-` rows. Allocate new AG numbers by hand across the Amazon Bedrock, Amazon Bedrock AgentCore, and AWS Agent Registry mapping modules and the native checks (the catalog currently ends at AG-39). Confirm every mapped source ID exists, every emitted OW ID appears in `docs/SECURITY_CHECKS_OWASP.md`, and an `N/A` source produces an `OW-` row with `Informational` severity.
 
 7. **Add IAM grants.** Every new boto3 operation needs its exact IAM action on the owning Lambda's policy in both SAM templates; see [Step 5: Update AWS IAM Permissions](#step-5-update-aws-iam-permissions).
 
 8. **Add tests.** Use SDK-shaped responses for compliant/pass, non-compliant/fail (or advisory `N/A` where defined), no-resource, access-denied, region-unavailable, and unexpected-error cases, including a successful empty response where the API can return one. Empty-inventory tests alone do not exercise a check's predicate. Shared inventories need later-page, list-error, and per-resource detail-error cases; account-global inventories need a two-region case. Assert the exact `Check_ID` on fallback rows and that a failed check leaves the other checks' rows in the CSV. See `tests/test_bedrock_checks.py`, `tests/test_sagemaker_checks.py`, and `tests/test_agent_registry_checks.py`.
 
-9. **Update documentation.** Align the check's evidence, scope, status behavior, severity, and remediation with `docs/SECURITY_CHECKS.md` and the applicable `docs/SECURITY_CHECKS_*.md` catalog. Check counts appear in four places that must move together: `README.md`, this guide, and both the intro paragraph and the per-service table in `docs/SECURITY_CHECKS.md`. Section headings carry their count (for example, `## AWS Agent Registry Security Checks (8)`), so changing a count changes the anchor; re-check every `SECURITY_CHECKS.md#...` deep link and table of contents. Also review `docs/TROUBLESHOOTING.md`, `CHANGELOG.md`, and relevant scope, sample-report, and diagram documents.
+9. **Update documentation.** Align the check's evidence, scope, status behavior, severity, and remediation with `docs/SECURITY_CHECKS.md` and the applicable `docs/SECURITY_CHECKS_*.md` catalog. Check counts appear in four places that must move together: `README.md`, this guide, and both the intro paragraph and the per-service table in `docs/SECURITY_CHECKS.md`. Section headings carry their count (for example, `## AWS Agent Registry Security Checks (10)`), so changing a count changes the anchor; re-check every `SECURITY_CHECKS.md#...` deep link and table of contents. Also review `docs/TROUBLESHOOTING.md`, `CHANGELOG.md`, and relevant scope, sample-report, and diagram documents.
 
 10. **Run the gates before committing** (commands in [Running Checks Locally](#running-checks-locally)):
     - Whole-repository `ruff check` and `ruff format --check`, which include CI's changed-file scope and uncommitted work.
@@ -827,7 +830,7 @@ Follow [Local Testing](#1-local-testing) using
 
 ## Extending or Adding Lenses
 
-The Agentic AI Security lens (AG-01 through AG-38) is **synthesized at
+The Agentic AI Security lens (AG-01 through AG-39) is **synthesized at
 runtime**, not produced by a separate scanner. It reuses findings from the
 selected Amazon Bedrock, Amazon Bedrock AgentCore, and AWS Agent Registry
 assessments plus a small number of native gateway checks.
@@ -836,8 +839,8 @@ assessments plus a small number of native gateway checks.
   - `bedrock_assessments/app.py` → `AGENTIC_BEDROCK_CHECK_MAPPINGS`
   - `agentcore_assessments/app.py` → `AGENTIC_AGENTCORE_CHECK_MAPPINGS`
   - `agent_registry_assessments/app.py` → `AGENTIC_AGENT_REGISTRY_CHECK_MAPPINGS`
-- Native checks (currently AG-24 through AG-27) live in the AgentCore package because they need the `bedrock-agentcore-control` client.
-- Allocate new AG numbers by hand to avoid collisions across all three mapping dictionaries and the native checks. The current high-water mark is AG-38.
+- Native checks (currently AG-24 through AG-27 and AG-39) live in the AgentCore package because they need the `bedrock-agentcore-control` client.
+- Allocate new AG numbers by hand to avoid collisions across all three mapping dictionaries and the native checks. The current high-water mark is AG-39.
 - The HTML report routes the lens through the `AG-` prefix as its own assessment area. `COMPLIANCE_STANDARDS` is the separate registry for OWASP and future compliance standards.
 - Follow the same cross-file execution, artifact, and report checks as a new compliance standard. The Agentic AI lens needs no CloudFormation parameter of its own, but new native checks still need IAM grants in both SAM templates.
 - Update `docs/SECURITY_CHECKS.md` and run the mapping-drift, test-coverage, and gate checklist before merging.
@@ -995,6 +998,34 @@ empty-result cases. When changing the Assessment Scope markup, confirm the
 post-render insertion is present in the generated HTML.
 
 </details>
+
+### Variant: a derived standard (AISF-style)
+
+A **derived** standard publishes a framework view over checks that already
+ship, so it has no Lambda, no CSV, no Step Functions branch and no IAM change.
+`AISF-` rows are produced by `derive_aisf_findings()` in
+`generate_consolidated_report/aisf_mappings.py`, called from both consolidators
+after their source rows are collected. Steps 1 through 5 and the S3 wiring in
+step 7 do not apply; instead:
+
+- Add `"derived": True` to the registry entry. That key is read in exactly one
+  place, the `category_slugs` comprehension in `app.py`, to keep the slug out of
+  the S3 prefix list. Every other consumer keeps the slug so the section still
+  renders and routes.
+- When the scope text counts the standard's own controls, or a deselected
+  service removes some of them, give the entry a `scope_text_for` callable and
+  pass `compliance_scope` from both consolidators, so the text counts what the
+  map holds and names what was left out. `report_template.py` is loaded by
+  path and cannot import the mapping module, so the figures travel through the
+  callers. AISF uses `aisf_mappings.aisf_scope()` and `_aisf_scope_text()`.
+- Register the standard and its first rows in the same change. A registered
+  standard with zero rows renders nothing at all (`if _total <= 0: continue`),
+  which looks exactly like a wiring bug.
+- Exclude the derived rows from the check-count total, and say so where the
+  count is published. They restate verdicts that are already counted.
+- Map only a control its named incumbents assert in full, and pin the map in
+  `tests/test_aisf_derived_standard.py`. See
+  [SECURITY_CHECKS_AISF.md](SECURITY_CHECKS_AISF.md).
 
 ## Testing Your Extensions
 
@@ -1322,7 +1353,7 @@ Guide.
 ### Documentation
 
 - [AWS Well-Architected Framework](https://aws.amazon.com/architecture/well-architected/)
-- [AWS Security Best Practices](https://aws.amazon.com/security/security-resources/)
+- [AWS Security Best Practices](https://aws.amazon.com/security/security-learning/)
 - [AWS SAM Developer Guide](https://docs.aws.amazon.com/serverless-application-model/)
 
 ---

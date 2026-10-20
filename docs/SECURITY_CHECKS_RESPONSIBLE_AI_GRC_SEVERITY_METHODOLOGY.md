@@ -65,7 +65,7 @@ and this document must be corrected.
 | **AWS Security Hub ASFF Severity** ([API_Severity](https://docs.aws.amazon.com/securityhub/1.0/APIReference/API_Severity.html)) | The AWS-native label set (`INFORMATIONAL/LOW/MEDIUM/HIGH/CRITICAL`) with precise semantics and normalized 0–100 ranges. | **Adopted as the target label vocabulary** so findings align with Security Hub, the service customers use to aggregate posture findings. |
 | **AWS exposure-finding severity factors** ([doc](https://docs.aws.amazon.com/securityhub/latest/userguide/exposure-findings-severity.html)) | AWS's own model: *Awareness, Ease of discovery, Ease of exploit, Likelihood of exploit, Impact* — i.e. **Likelihood × Impact**. | **Adopted the Likelihood × Impact shape**; AWS itself uses it, so it is the most defensible AWS-aligned model. |
 | **NIST SP 800-30 r1** ([CSRC](https://csrc.nist.gov/pubs/sp/800/30/final)) | Risk = Likelihood × Impact, a 5×5 qualitative matrix with a published lookup table. | **Adopted the matrix-lookup approach** (foundational US-government risk standard; financial-services regulators expect NIST-lineage rigor). Simplified to 3×3 for explainability. |
-| **OWASP Risk Rating Methodology** ([OWASP](https://owasp.org/www-community/OWASP_Risk_Rating_Methodology)) | Likelihood (threat-agent + vulnerability) × Impact (technical + business), averaged and banded LOW/MEDIUM/HIGH. | **Adopted the factor-decomposition idea** (score sub-factors, then combine) and the business-impact dimension. |
+| **OWASP Risk Rating Methodology** ([OWASP](https://community.owasp.org/OWASP_Risk_Rating_Methodology)) | Likelihood (threat-agent + vulnerability) × Impact (technical + business), averaged and banded LOW/MEDIUM/HIGH. | **Adopted the factor-decomposition idea** (score sub-factors, then combine) and the business-impact dimension. |
 | **CVSS v3.1** ([FIRST](https://www.first.org/cvss/)) qualitative bands (0 None / 0.1–3.9 Low / 4.0–6.9 Medium / 7.0–8.9 High / 9.0–10.0 Critical) | Standard numeric→qualitative banding. | **Referenced** for band shape; **not adopted wholesale** — CVSS scores *software vulnerabilities (CVEs)*, not *missing-control posture findings*. Using CVSS metrics (Attack Vector, etc.) on a "no WAF configured" finding is a category error. |
 | **CISA SSVC** (Stakeholder-Specific Vulnerability Categorization) | Decision-tree (Exploitation/Automatable/Technical Impact/Mission) → Track/Attend/Act. | **Referenced**, not adopted — also CVE/vulnerability-centric and produces action labels, not the severity labels the report and Security Hub expect. |
 
@@ -228,8 +228,9 @@ The per-finding assignments are in the [Severity Register](#severity-register).
 
 ## 6. Why `Critical` is not used
 
-The matrix has a Critical-eligible cell (I = High, L = High). It is capped at **High**, so the
-label set stays `{High, Medium, Low, Informational}`:
+The matrix has a Critical-eligible cell (I = High, L = High). The decision is to keep four levels
+until a tool-wide severity change is made, so that cell is capped at **High** and the label set
+stays `{High, Medium, Low, Informational}`:
 
 - It stays consistent with the Bedrock, SageMaker AI, AgentCore, and AWS Agent Registry checks,
   which have no `Critical`.
