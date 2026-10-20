@@ -113,7 +113,7 @@ Full source detail:
 | [Well-Architected Generative AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html) | — | Security basis for the core Bedrock, SageMaker, and AgentCore checks (`gensec*` best practices). |
 | [Well-Architected Agentic AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html) | — | Basis for the Agentic AI Security checks. |
 | [Well-Architected Security Pillar](https://docs.aws.amazon.com/wellarchitected/latest/security-pillar/welcome.html) | — | Core-framework pillar, **distinct** from the GenAI Lens `gensec*` best practices. |
-| [Well-Architected Financial Services Industry Lens](https://docs.aws.amazon.com/wellarchitected/latest/financial-services-industry-lens/fsisec14.html) | — | Cited by one control (`FSISEC14`). Retained as a control-level citation only. |
+| [Well-Architected Financial Services Industry Lens](https://docs.aws.amazon.com/wellarchitected/latest/financial-services-industry-lens/fsisec14.html) | — | Supporting citation for `FS-55` (output validation). `FSISEC14` is the lens question ID, not a framework check. |
 | [Well-Architected Responsible AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/responsible-ai-lens/responsible-ai-lens.html) | Nov 2025 | **Not a source for any check.** See the disambiguation above. |
 
 Two conflations to avoid:
