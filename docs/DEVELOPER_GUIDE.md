@@ -282,9 +282,11 @@ still sees `OriginalInput`, `Region`, and `RegionIndex`.
 
 ### Service Selection
 
-User-facing behavior (the **Not selected** labeling, score denominators,
-historical CSVs, and Responsible AI GRC independence) is documented in
+User-facing behavior (the **Not selected** labeling, score denominators, and
+Responsible AI GRC independence) is documented in
 [Selecting Service Assessments](../README.md#selecting-service-assessments).
+Historical CSV selection is documented in
+[Assessment History](ASSESSMENT_HISTORY.md#which-run-is-the-previous-run).
 This section covers the implementation wiring.
 
 - **Parameters.** `EnableBedrockAssessment`, `EnableSageMakerAssessment`,

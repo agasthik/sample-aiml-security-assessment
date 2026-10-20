@@ -105,9 +105,11 @@ roles in member accounts.
 - Review the state machine executions in each account (see
   [Monitor AWS Step Functions Executions](#monitor-aws-step-functions-executions)).
 - Check the Lambda function logs for errors.
-- Verify the Lambda timeouts. Most assessment functions allow 10 minutes.
-  Responsible AI GRC allows 15 minutes in the single-account SAM template
-  (`template.yaml`) and 10 minutes in `template-multi-account.yaml`.
+- Verify the Lambda timeouts. Bedrock, SageMaker AI, and AgentCore assessments
+  allow 15 minutes in both SAM templates. Agent Registry, OWASP, IAM caching,
+  and report generation allow 10 minutes in both. Responsible AI GRC allows
+  15 minutes in the single-account template (`template.yaml`) and 10 minutes
+  in `template-multi-account.yaml`.
 - Verify that the Lambda execution roles allow access to the required services.
 - In multi-region scans, review each region's iteration of the `Scan Regions`
   Map state. One service branch can be marked incomplete while the state
