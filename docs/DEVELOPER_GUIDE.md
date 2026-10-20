@@ -375,22 +375,24 @@ input, see
 
 Scanner behavior for each baseline is documented in
 [Optional Security Policy Baselines](../README.md#optional-security-policy-baselines).
-Organization-specific baselines are CloudFormation parameters rather than
+Active organization-specific baselines are CloudFormation parameters rather than
 hard-coded scanner assumptions. **Wire every layer**: both SAM templates, both
 top-level deployment templates, the corresponding CodeBuild environment
 variable, and every `sam deploy` path in `buildspec.yml`.
 
 | CloudFormation parameter | Lambda environment variable | Check |
 | --- | --- | --- |
-| `RequireBedrockZeroDataRetention` | `REQUIRE_BEDROCK_ZERO_DATA_RETENTION` | BR-37 |
+| `RequireBedrockZeroDataRetention` | `REQUIRE_BEDROCK_ZERO_DATA_RETENTION` | BR-37 (deprecated; not read by the scanner) |
 | `RequireMarketplaceEndpointCMK` | `REQUIRE_MARKETPLACE_ENDPOINT_CMK` | BR-40 |
 | `RequireAgentCoreOnlineEvaluation` | `REQUIRE_AGENTCORE_ONLINE_EVALUATION` | AC-17 |
-| `RequireAgentRegistryManualApproval` | `REQUIRE_AGENT_REGISTRY_MANUAL_APPROVAL` | AR-03 |
 | `RequireAgentRegistryCMK` | `REQUIRE_AGENT_REGISTRY_CMK` | AR-05 |
 | `AgentCoreTokenVaultId` | `AGENTCORE_TOKEN_VAULT_ID` | AC-14 |
 | `ApprovedExternalAccountIds` | `AIML_APPROVED_EXTERNAL_ACCOUNT_IDS` | SM-30 |
 | `ApprovedOrganizationIds` | `AIML_APPROVED_ORG_IDS` | SM-30 |
 | `EnableSageMakerArtifactObjectReads` | `ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS` | SM-43 |
+
+`RequireBedrockZeroDataRetention` remains wired for stack compatibility, but
+BR-37 does not read it.
 
 The top-level deployment templates expose the approved-account and
 approved-organization values to CodeBuild as `APPROVED_EXTERNAL_ACCOUNT_IDS`
