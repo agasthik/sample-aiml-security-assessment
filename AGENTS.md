@@ -74,8 +74,13 @@ a check, lens, standard, or report UI changes.
 - Responsible AI GRC, Bedrock, SageMaker AI, AgentCore, and Agent Registry also contain
   `Compliance_Frameworks`; the four direct services use it for AISF traceability tags. Each SAM
   Lambda packages its own `schema.py`; update the relevant copies together and keep report
-  parsing compatible with extra columns. Check ID prefixes (`BR-`, `SM-`, `AC-`, `AR-`, `AG-`,
+  parsing compatible with extra columns. Keep `Compliance_Frameworks` off the OWASP,
+  IAM-caching, and report-generation copies of `schema.py`; those three do not produce
+  AISF-tagged findings CSVs. Check ID prefixes (`BR-`, `SM-`, `AC-`, `AR-`, `AG-`,
   `FS-`, `OW-`, `AISF-`) route findings into report sections and history.
+- The multi-account consolidator guesses the service from finding text when it does not
+  recognize a `Check_ID` prefix, then defaults to `service = "bedrock"` if no name
+  matches. Register a new prefix before emitting it so its rows are not silently misfiled.
 - `AG-` rows are mapped from direct findings, with native AgentCore gateway checks. OWASP maps
   BR-/SM-/AC-/FS- sources plus native checks; its mapping values are lists, and an `N/A` source
   produces an `OW-` row with `Informational` severity. Verify mapped source IDs, allocated AG
@@ -92,7 +97,9 @@ a check, lens, standard, or report UI changes.
   Wire new or changed baselines through both SAM templates, both top-level deployment templates,
   CodeBuild environment variables, and every `sam deploy` path in `buildspec.yml`.
   `EnableSageMakerArtifactObjectReads` controls the broad `s3:GetObject` grant used for SM-43's
-  `HeadObject` evidence and defaults to `false`.
+  `HeadObject` evidence and defaults to `false`. `EnableAgentCoreArtifactObjectReads`
+  controls `s3:GetObject`, `s3:GetObjectVersion`, `ecr:BatchGetImage`, and
+  `ecr:GetDownloadUrlForLayer` for AC-34 and AC-35 content reads and also defaults to `false`.
 
 ## Check and status contracts
 

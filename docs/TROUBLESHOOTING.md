@@ -247,11 +247,13 @@ clone or source errors.
 **Symptoms:** The CodeBuild job times out or runs slowly when scanning many
 accounts.
 
-**Cause:** CodeBuild assesses accounts one at a time, so total run time grows
-with the number of accounts. The `ConcurrentAccountScans` parameter selects the
-CodeBuild compute type. Despite its name, it does not currently change how many
-accounts are scanned at once: the template passes a `PARALLEL_ACCOUNTS` value to
-CodeBuild, but `buildspec.yml` does not use it.
+**Cause:** CodeBuild deploys account stacks sequentially and starts each
+account's Step Functions execution without waiting for the previous one.
+Executions can overlap, but deployment and `post_build` result collection still
+take longer as the account count grows. The `ConcurrentAccountScans` parameter
+selects the CodeBuild compute type; it does not control execution concurrency.
+The template passes `PARALLEL_ACCOUNTS` to CodeBuild, but `buildspec.yml` does
+not use it.
 
 | ConcurrentAccountScans | CodeBuild compute type | Approximate cost per build minute |
 | --- | --- | --- |
@@ -442,6 +444,16 @@ adding to the failure count. They come from:
   `AG-24`
 - Unexpected AWS Agent Registry check errors, for example `AR-03`
 
+An AgentCore row that names `LambdaTimeoutApproaching`, or says the Lambda
+timeout was approaching, identifies evidence left unread near the 900-second
+limit. This includes another Region that an AC-18, AC-26, AC-46, AC-47,
+AC-48, or AC-51 cross-Region read did not reach. Rows for resources already
+read remain in the report. About 30 seconds before the hard timeout, the
+watchdog attempts to write those rows with an `Incomplete` row for each
+unfinished leg, including the leg still running and account-wide `Global`
+checks. Rerun the assessment, or assess fewer Regions per run with
+`TargetRegions`.
+
 Find the matching Lambda invocation in the Step Functions execution and review
 its CloudWatch logs. Fix the missing SAM Lambda permission, unavailable API,
 throttling, malformed input, or code error shown there, and run the assessment
@@ -461,6 +473,16 @@ check the caching Lambda logs for a successful write of that execution's
 object. The report Lambda deletes the cache when report generation finishes,
 so its absence after a completed run is expected. Fix the IAM or S3 error and
 run the complete assessment again; do not reuse a cache from another execution.
+
+A cache can load while individual principal reads remain incomplete. It records
+each affected role or user in `principal_errors`, with the failed stage and
+error. A failed group policy read appears under each member with stage
+`group_policy` and names the group and policy. A role or user deleted during
+the run (`NoSuchEntity`) is omitted from the cache. Controls that judge all
+principals name those left unread and withhold a `Passed` row. Check the IAM
+Permission Caching Lambda logs for the underlying denial or throttling. Caches
+written before `cache_schema_version` 2 have no `principal_errors`; their
+findings say that per-principal read errors were not recorded.
 
 ### Monitor AWS Step Functions Executions
 

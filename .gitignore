@@ -43,10 +43,9 @@ tmp/
 
 # Test output
 **/test_reports/
-test-resources/
-design-plans/
-semantic-review/
-.protoshield/
+**/test-resources/
 
 .ruff_cache/
 .ash/
+.coverage
+design-plans/

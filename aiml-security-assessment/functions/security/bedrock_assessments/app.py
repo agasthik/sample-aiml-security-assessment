@@ -9891,7 +9891,7 @@ def check_bedrock_prompt_management(
                     ),
                     resolution="Verify your AWS credentials and permissions to access Bedrock Prompt Management, then retry the assessment.",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-management.html",
-                    severity="Low",
+                    severity="Informational",
                     status="N/A",
                     region=region,
                 )
@@ -10093,7 +10093,7 @@ def check_bedrock_knowledge_base_encryption(region: str = "") -> Dict[str, Any]:
                         ),
                         resolution="Amazon Bedrock Knowledge Bases are not available in this region. No action required.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -11303,7 +11303,7 @@ def check_bedrock_custom_model_encryption(region: str = "") -> Dict[str, Any]:
                     finding_details=describe_api_error(e, "Custom model API", region),
                     resolution="Verify permissions to access Bedrock custom models",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-iam-role.html",
-                    severity="Low",
+                    severity="Informational",
                     status="N/A",
                     region=region,
                 )
@@ -12332,7 +12332,7 @@ def check_bedrock_flows_guardrails(region: str = "") -> Dict[str, Any]:
                     finding_details=describe_api_error(e, "Bedrock Flows API", region),
                     resolution="Verify permissions to access Bedrock Flows",
                     reference="https://docs.aws.amazon.com/bedrock/latest/userguide/flows-guardrails.html",
-                    severity="Low",
+                    severity="Informational",
                     status="N/A",
                     region=region,
                 )
@@ -14951,7 +14951,7 @@ def check_bedrock_model_evaluations(region: str = "") -> Dict[str, Any]:
                         ),
                         resolution="Model evaluation may not be available in all regions. Check AWS documentation for regional availability.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -14969,7 +14969,7 @@ def check_bedrock_model_evaluations(region: str = "") -> Dict[str, Any]:
                         ),
                         resolution="Amazon Bedrock model evaluation is not enabled or available for this account in this region. No IAM change is required; enable the feature to assess model evaluation practices.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -15178,7 +15178,7 @@ def check_bedrock_prompt_flow_validation(region: str = "") -> Dict[str, Any]:
                         ),
                         resolution="Bedrock prompt flows may not be available in all regions",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/flows.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -19102,7 +19102,7 @@ def check_bedrock_knowledge_base_kms_encryption(
                         ),
                         resolution="Amazon Bedrock Knowledge Bases are not available in this region. No action required.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/encryption-kb.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -19391,7 +19391,7 @@ def check_bedrock_agent_action_group_iam(
                         ),
                         resolution="Amazon Bedrock Agents are not available in this region. No action required.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -19644,7 +19644,7 @@ def check_bedrock_service_quotas_throttling(region: str = "") -> Dict[str, Any]:
                         finding_details="Bedrock service quotas not found in Service Quotas API for this region",
                         resolution="Bedrock may not be available in this region or quotas may not be published to Service Quotas API",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -21102,7 +21102,7 @@ def check_bedrock_automated_reasoning_policy(region: str = "") -> Dict[str, Any]
                         ),
                         resolution="Automated Reasoning may not be available in all regions. Check AWS documentation for regional availability.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/deploy-automated-reasoning-policy.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -21188,7 +21188,7 @@ def check_bedrock_rag_evaluation_jobs(region: str = "") -> Dict[str, Any]:
                         finding_details="No Bedrock knowledge bases found in this region",
                         resolution="When implementing RAG applications, configure evaluation jobs to assess context relevance, response correctness, and prevent hallucinations",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation-kb.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -21311,7 +21311,7 @@ def check_bedrock_rag_evaluation_jobs(region: str = "") -> Dict[str, Any]:
                         ),
                         resolution="Amazon Bedrock Knowledge Bases or RAG evaluation are not available in this region. No action required.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/evaluation-kb.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -24720,7 +24720,7 @@ def check_bedrock_agent_guardrail_association(region: str = "") -> Dict[str, Any
                         ),
                         resolution="Bedrock Agents may not be available in all regions",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-use.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -24807,7 +24807,7 @@ def check_bedrock_agent_idle_session_ttl(region: str = "") -> Dict[str, Any]:
                         finding_details="No Bedrock agents configured in this region",
                         resolution="When creating agents, set a conservative idleSessionTTLInSeconds to limit how long an idle session remains resumable",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-create.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -24896,7 +24896,7 @@ def check_bedrock_agent_idle_session_ttl(region: str = "") -> Dict[str, Any]:
                         ),
                         resolution="Bedrock Agents may not be available in all regions",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/agents-create.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -25103,7 +25103,7 @@ def check_bedrock_imported_model_kms_encryption(region: str = "") -> Dict[str, A
                         ),
                         resolution="Model import may not be available in all regions",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-import-model.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -25121,7 +25121,7 @@ def check_bedrock_imported_model_kms_encryption(region: str = "") -> Dict[str, A
                         ),
                         resolution="Amazon Bedrock Custom Model Import is not enabled or available for this account in this region. No IAM change is required; the check applies only once model import is in use.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/model-customization-import-model.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -25277,7 +25277,7 @@ def check_bedrock_batch_inference_output_encryption(
                         ),
                         resolution="Batch inference may not be available in all regions",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )
@@ -25295,7 +25295,7 @@ def check_bedrock_batch_inference_output_encryption(
                         ),
                         resolution="Amazon Bedrock batch inference is not enabled or available for this account in this region. No IAM change is required; the check applies only once batch inference is in use.",
                         reference="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference.html",
-                        severity="Low",
+                        severity="Informational",
                         status="N/A",
                         region=region,
                     )

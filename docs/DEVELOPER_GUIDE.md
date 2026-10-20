@@ -389,6 +389,7 @@ variable, and every `sam deploy` path in `buildspec.yml`.
 | `RequireAgentCoreOnlineEvaluation` | `REQUIRE_AGENTCORE_ONLINE_EVALUATION` | AC-17 |
 | `RequireAgentRegistryCMK` | `REQUIRE_AGENT_REGISTRY_CMK` | AR-05 |
 | `AgentCoreTokenVaultId` | `AGENTCORE_TOKEN_VAULT_ID` | AC-14 |
+| `EnableAgentCoreArtifactObjectReads` | `ENABLE_AGENTCORE_ARTIFACT_OBJECT_READS` | AC-34, AC-35 |
 | `ApprovedExternalAccountIds` | `AIML_APPROVED_EXTERNAL_ACCOUNT_IDS` | SM-30 |
 | `ApprovedOrganizationIds` | `AIML_APPROVED_ORG_IDS` | SM-30 |
 | `EnableSageMakerArtifactObjectReads` | `ENABLE_SAGEMAKER_ARTIFACT_OBJECT_READS` | SM-43 |
@@ -562,7 +563,7 @@ AgentCore, or AWS Agent Registry) rather than creating a new package.
 
 8. **Add tests.** Use SDK-shaped responses for compliant/pass, non-compliant/fail (or advisory `N/A` where defined), no-resource, access-denied, region-unavailable, and unexpected-error cases, including a successful empty response where the API can return one. Empty-inventory tests alone do not exercise a check's predicate. Shared inventories need later-page, list-error, and per-resource detail-error cases; account-global inventories need a two-region case. Assert the exact `Check_ID` on fallback rows and that a failed check leaves the other checks' rows in the CSV. See `tests/test_bedrock_checks.py`, `tests/test_sagemaker_checks.py`, and `tests/test_agent_registry_checks.py`.
 
-9. **Update documentation.** Align the check's evidence, scope, status behavior, severity, and remediation with `docs/SECURITY_CHECKS.md` and the applicable `docs/SECURITY_CHECKS_*.md` catalog. Check counts appear in four places that must move together: `README.md`, this guide, and both the intro paragraph and the per-service table in `docs/SECURITY_CHECKS.md`. Section headings carry their count (for example, `## AWS Agent Registry Security Checks (10)`), so changing a count changes the anchor; re-check every `SECURITY_CHECKS.md#...` deep link and table of contents. Also review `docs/TROUBLESHOOTING.md`, `CHANGELOG.md`, and relevant scope, sample-report, and diagram documents.
+9. **Update documentation.** Align the check's evidence, scope, status behavior, severity, and remediation with `docs/SECURITY_CHECKS.md` and the applicable `docs/SECURITY_CHECKS_*.md` catalog. Update published counts and ranges in `README.md`, this guide, `docs/SECURITY_CHECKS.md` (intro, per-service table, and headings), `docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md` (relationship and consolidation summaries), and `docs/SECURITY_CHECKS_AISF.md` (derived-row accounting). Section headings carry their count (for example, `## AWS Agent Registry Security Checks (10)`), so changing a count changes the anchor; re-check every `SECURITY_CHECKS.md#...` deep link and table of contents. Also review `docs/TROUBLESHOOTING.md`, `CHANGELOG.md`, and relevant scope, sample-report, and diagram documents.
 
 10. **Run the gates before committing** (commands in [Running Checks Locally](#running-checks-locally)):
     - Whole-repository `ruff check` and `ruff format --check`, which include CI's changed-file scope and uncommitted work.
@@ -582,9 +583,10 @@ AgentCore, or AWS Agent Registry) rather than creating a new package.
 | `SM-` | Amazon SageMaker AI |
 | `AC-` | Amazon Bedrock AgentCore |
 | `AR-` | AWS Agent Registry |
-| `AG-` | Agentic AI Security (synthesized lens plus native AG-24..27) |
+| `AG-` | Agentic AI Security (synthesized lens plus native AG-24..27 and AG-39) |
 | `FS-` | Responsible AI GRC (legacy identifier retained for compatibility) |
 | `OW-` | OWASP Top 10 for LLM |
+| `AISF-` | AWS AI Security Framework (derived report view; not an additional check) |
 
 **Status values:**
 
@@ -959,6 +961,12 @@ fragment that differs from the slug, and verify CodeBuild stages the CSV for
 the consolidator. A selected standard with a missing, unreadable, or
 header-only CSV must be reported as incomplete, not shown with zero findings.
 Also update `COMPLIANCE_PREFIX_TO_AREA` in `assessment_history/models.py`.
+
+The report Lambda turns each non-derived registry slug into an S3 list prefix.
+Add a new standard's CSV prefix to the `s3:prefix` condition on its
+`s3:ListBucket` grant, and add its objects to the `s3:GetObject` grant, in
+both SAM templates. Without the list prefix, S3 returns `AccessDenied`; the
+report Lambda re-raises it, so report generation fails for every category.
 
 </details>
 

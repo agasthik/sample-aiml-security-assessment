@@ -404,6 +404,11 @@ back `Passed` names what it could not read.
   control as satisfied.
 - Pinned `boto3` and `botocore` 1.43.108 in every function's
   `requirements.txt` and in `tests/requirements.txt`.
+- Reorganized the documentation: moved the legacy Responsible AI GRC alias
+  migration guide into `docs/RESPONSIBLE_AI_GRC_SCOPE.md`, merged the severity
+  register into its methodology guide, and removed the superseded Stage 2b
+  design. Added `docs/FAQ.md` and `docs/UPGRADING.md` for product questions and
+  deployment guidance.
 
 ### Deprecated
 
@@ -478,6 +483,14 @@ back `Passed` names what it could not read.
   later `AC-51` legs, is named as `N/A` instead of disappearing. `AG-39` is
   backfilled with `AG-24` to `AG-27`, and a transport error listing gateways
   makes each of them incomplete instead of ending the gateway check.
+- Bedrock `N/A` rows for an unavailable feature, a failed API call or an empty
+  inventory are now `Informational` instead of `Low`, so they no longer count
+  toward Low totals. This affects `BR-07`, `BR-09`, `BR-11`, `BR-13`, `BR-18`
+  to `BR-22`, `BR-24`, `BR-25` and `BR-28` to `BR-31`.
+- `FS-07` no longer reports `Passed` when an agent has no execution role ARN,
+  and one unparsable policy document no longer turns the check into an error
+  row. Both cases now name the agent as not read and produce
+  `Agent Action Boundary Check Incomplete` unless a broad grant is confirmed.
 
 ### Removed
 
@@ -548,6 +561,10 @@ back `Passed` names what it could not read.
   assessment Lambdas, because the Bedrock, SageMaker AI, AgentCore, and
   Responsible AI GRC assessment code changed. No template or IAM changes, so no
   infrastructure update and no member-role StackSet update are required.
+- **Bedrock N/A severity and FS-07 fixes:** A CodeBuild run is required to
+  redeploy the Bedrock and Responsible AI GRC assessment Lambdas. No template
+  or IAM changes, so no infrastructure update and no member-role StackSet
+  update are required.
 
 These instructions assume the 2.0.0 prerequisites below are already applied.
 When upgrading from an earlier release, complete the 2.0.0 member-role and
@@ -682,6 +699,10 @@ deploys the SageMaker AI role without `s3:GetObject`, because
 account) or `deployment/2-aiml-security-codebuild.yaml` (multi-account central
 infrastructure) with the parameter set to `true`, then run CodeBuild. Both
 AWS SAM templates changed. No member-role StackSet update is required.
+
+**Documentation reorganization (this PR).** Deployment impact: none. The
+documentation changes alone require no stack update or CodeBuild run; the
+runtime and template changes above retain their stated deployment steps.
 
 ## 2.0.0 - 2026-09-18
 

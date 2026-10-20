@@ -27,6 +27,7 @@ underlying BR/SM/AC/FS checks it is derived from.
 - [Disclaimer](#disclaimer)
 - [Design](#design)
   - [Mapping scope for catalog expansions](#mapping-scope-for-catalog-expansions)
+  - [Source rows filtered by finding name](#source-rows-filtered-by-finding-name)
 - [Extensibility](#extensibility)
 - [Check catalog](#check-catalog)
   - [LLM01 Prompt Injection — OW-01](#llm01-prompt-injection--ow-01)

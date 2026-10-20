@@ -259,7 +259,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"grant only the minimum permissions required\"; \"Define and enforce explicit action boundaries in the agent configuration\".",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Calls `ListAgents` and `GetAgent` (via the `bedrock-agent` boto3 client; IAM actions are `bedrock:ListAgents` and `bedrock:GetAgent`) to retrieve each agent's `agentResourceRoleArn`. Resolves the role name and inspects attached and inline policy documents from the permissions cache for Allow statements whose `Action` is exactly `*`, `iam:*`, `s3:*`, `ec2:*`, or `lambda:*`. An agent whose `GetAgent` call fails is skipped. No agents is reported N/A. A missing, unreadable, or malformed cache produces an informational `N/A` incomplete-assessment row.",
+      "inspected_aws_evidence": "Uses `bedrock-agent` `ListAgents`/`GetAgent` (`bedrock:ListAgents`/`bedrock:GetAgent`) to locate each agent's execution role. Inspects attached and inline Allow policies in the permissions cache for exact `*`, `iam:*`, `s3:*`, `ec2:*`, or `lambda:*` actions. A boundary that removes an action suppresses it. A failed `GetAgent`, an agent with no execution role ARN, an unparsable policy document, and unread roles or boundaries count as unread: they yield `Agent Action Boundary Check Incomplete` informational `N/A` if no broad grant is confirmed, or appear in a confirmed `Failed` row. No agents is",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [
@@ -690,7 +690,7 @@
       "derivation_type": "direct-derived",
       "source_excerpt_summary": "\"Apply the principle of least privilege to control access to your vector and embedding database. Only grant users and services the minimum permissions they need to perform their tasks.\"",
       "derivation_rationale": null,
-      "inspected_aws_evidence": "Inspects the permissions cache for all IAM roles. Flags wildcard or partial-wildcard Bedrock Allow statements, plus exact Bedrock actions that support resource-level authorization but are granted on `Resource: \"*\"`. Account-level inventory APIs that AWS requires to use a wildcard resource, such as `ListKnowledgeBases`, are not treated as overbroad. A missing, unreadable, or malformed cache produces an informational `N/A` incomplete-assessment row. Note: Bedrock agent and KB operations use the single IAM service prefix `bedrock:` (not `bedrock-agent:`) — the `bedrock-agent` token refers to the ",
+      "inspected_aws_evidence": "Reads IAM roles from the permissions cache. Flags `NotAction` Allow, wildcard or partial-wildcard Bedrock Allow actions, and resource-scopable Bedrock actions granted on `Resource: \"*\"`. A permission boundary that removes an action suppresses that action's issue; an unread boundary leaves the role unassessed. `NotAction` is evaluated separately. `ListKnowledgeBases` and other account-level inventory APIs that require `Resource: \"*\"` are exempt. A missing or unreadable cache yields incomplete `N/A`. Bedrock agent and KB IAM actions use `bedrock:`, even when the boto3 client is `bedrock-agent`.",
       "unsupported_assertions": [],
       "manual_review_requirements": [],
       "implementing_functions": [

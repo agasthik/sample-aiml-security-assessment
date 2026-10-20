@@ -54,8 +54,11 @@ assessments:
 - **Multi-account, about 10 accounts:** 15-20 minutes
 - **Multi-account, 50 or more accounts:** 30-45 minutes
 
-In multi-account mode, CodeBuild deploys and assesses accounts one at a time.
-Within each account, regions are scanned in parallel (up to five at a time).
+In multi-account mode, CodeBuild deploys account stacks sequentially and starts
+each account's Step Functions execution without waiting for the previous one.
+Those executions can overlap; CodeBuild polls and collects their results later
+in `post_build`. Within each account, regions are scanned in parallel (up to
+five at a time).
 
 ### How often should I run security assessments?
 
@@ -214,18 +217,21 @@ Run time depends on:
 - **Number of resources:** accounts with many Amazon SageMaker AI notebooks or
   Amazon Bedrock resources take longer
 - **API throttling:** AWS API rate limits can slow large environments
-- **Number of accounts:** multi-account runs assess accounts one after another,
-  so run time grows with the number of accounts
+- **Number of accounts:** CodeBuild deploys account stacks sequentially, while
+  their Step Functions executions can overlap; deployment and result collection
+  still take longer as the account count grows
 - **Region scope:** each region in `TargetRegions` adds another set of service
   scans
 - **Optional assessments:** `EnableResponsibleAIGRCAssessment` adds the `FS-`
   checks; `EnableOWASPAssessment` adds the `OW-` checks and also runs the
   `FS-` assessment as a source
 
-If builds time out, increase `CodeBuildTimeout`, reduce `TargetRegions`, split
-accounts into batches with `MultiAccountListOverride`, or lower concurrency if
-throttling is the bottleneck. Lambda timeouts are set in the SAM templates. See
-also [Troubleshooting §9](TROUBLESHOOTING.md#9-codebuild-timeout-or-out-of-memory-with-many-accounts).
+If builds time out, increase `CodeBuildTimeout`, reduce `TargetRegions`, or split
+accounts into batches with `MultiAccountListOverride`. The provided CodeBuild
+deployment does not expose a concurrency setting: `MaxRegionConcurrency` is a
+SAM template parameter that `buildspec.yml` does not pass. Lambda timeouts are
+set in the SAM templates. See also
+[Troubleshooting §9](TROUBLESHOOTING.md#9-codebuild-timeout-or-out-of-memory-with-many-accounts).
 
 ---
 
