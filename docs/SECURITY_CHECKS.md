@@ -662,7 +662,9 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 ### SM-01: Internet Access
 
 - **Severity:** High
-- **AWS Security Hub Control:** SageMaker.2
+- **Related AWS Security Hub control:** SageMaker.1 applies to the notebook
+  direct-internet-access row. This check also assesses Studio domains and
+  notebook VPC placement, which are outside that control.
 - **Description:** Checks for direct internet access on notebooks and domains.
 - **Rows emitted:**
   - `Direct Internet Access Enabled` and `SageMaker Internet Access Check`: a notebook instance with `DirectInternetAccess` `Enabled`, or a Studio domain whose `AppNetworkAccessType` is not `VpcOnly`.
@@ -696,7 +698,6 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 ### SM-03: Data Protection
 
 - **Severity:** High
-- **AWS Security Hub Control:** SageMaker.1
 - **Description:** Verifies encryption at rest and in transit for notebooks, domains and training jobs, and the protection of the buckets training jobs read from and write to (AIR-SGM-TRN-02).
 - **Rows emitted:**
   - `Missing Encryption Configuration`, `AWS Managed Key Usage`, `Missing VPC Encryption`, `SageMaker Data Protection Check` and `Data Protection Check`: KMS keys on notebooks, domains and training job output, and inter-container traffic encryption on multi-instance training jobs.
@@ -760,7 +761,9 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 ### SM-11: Model Network Isolation
 
 - **Severity:** High
-- **AWS Security Hub Control:** SageMaker.4
+- **Related AWS Security Hub control:** SageMaker.5 applies to the model
+  `EnableNetworkIsolation` rows. This check also assesses VPC attachment,
+  endpoint paths, and other network boundaries.
 - **Description:** Checks inference containers have network isolation.
 - **Rows emitted:**
   - `SageMaker Model Network Isolation Disabled`, `SageMaker Model Network Isolation Summary` and `SageMaker Model Network Isolation Check`: each model's `EnableNetworkIsolation`. Only these rows feed OWASP OW-03 and OW-10 (see `SECURITY_CHECKS_OWASP.md`).
@@ -774,8 +777,11 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 ### SM-12: Endpoint Instance Count
 
 - **Severity:** Medium
-- **AWS Security Hub Control:** SageMaker.5
-- **Description:** Verifies endpoints have 2+ instances for high availability.
+- **Related AWS Security Hub control:** SageMaker.4 checks the initial
+  production-variant instance count in an endpoint configuration. This check
+  reads `CurrentInstanceCount` for production variants of `InService` endpoints,
+  so its result can differ after scaling.
+- **Description:** Flags current production-variant counts of one or fewer.
 
 ### SM-13: Monitoring Network Isolation
 
