@@ -483,10 +483,12 @@ back `Passed` names what it could not read.
   later `AC-51` legs, is named as `N/A` instead of disappearing. `AG-39` is
   backfilled with `AG-24` to `AG-27`, and a transport error listing gateways
   makes each of them incomplete instead of ending the gateway check.
-- Bedrock `N/A` rows for an unavailable feature, a failed API call or an empty
-  inventory are now `Informational` instead of `Low`, so they no longer count
-  toward Low totals. This affects `BR-07`, `BR-09`, `BR-11`, `BR-13`, `BR-18`
-  to `BR-22`, `BR-24`, `BR-25` and `BR-28` to `BR-31`.
+- Every Bedrock `N/A` row, for an unavailable feature, a failed or partial
+  read, or an empty inventory, is now `Informational`. Rows that carried `Low`,
+  `Medium` or `High` no longer count toward those totals. This affects
+  `BR-01`, `BR-02`, `BR-07`, `BR-09` to `BR-11`, `BR-13`, `BR-15` to `BR-31`,
+  `BR-33`, `BR-45` and `BR-46`. A `Passed` or `Failed` row from the same
+  check keeps its severity.
 - `FS-07` no longer reports `Passed` when an agent has no execution role ARN,
   and one unparsable policy document no longer turns the check into an error
   row. Both cases now name the agent as not read and produce
