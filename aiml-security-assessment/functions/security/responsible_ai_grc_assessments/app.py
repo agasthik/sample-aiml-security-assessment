@@ -614,8 +614,8 @@ COMPLIANCE_MAP: Dict[str, str] = {
 
 # ---------------------------------------------------------------------------
 # SEVERITY METHODOLOGY (see
-# docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md
-# + docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md)
+# docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md, including its
+# #severity-register section)
 #
 # Severity = property of the CONTROL (the risk it mitigates), assigned once via a
 # Likelihood (L) x Impact (I) matrix mapped to the AWS Security Hub ASFF label set,
@@ -663,10 +663,10 @@ _DISPOSITION_SEVERITY = {
 
 
 # Authoritative per-finding severity register (keyed by finding-name).
-# Source of truth derived from
-# docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_REGISTER.md. The test suite
-# (test_severity_register.py) asserts every emitted severity matches this map.
-# Entries: finding_name -> (severity, disposition). I/L rationale lives in the doc.
+# This dict is the enforced source of truth; the Severity Register section of
+# docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md mirrors it. The
+# test suite (test_severity_register.py) asserts emitted severities match this map.
+# Entries: finding_name -> severity. Disposition and I/L rationale live in the doc.
 SEVERITY_REGISTER: Dict[str, str] = {
     # --- FS-00 (not a control: the regional not-applicable row. Registered so
     #     severity drift on it is caught, since FS-00 is absent from the check
@@ -1669,17 +1669,23 @@ def check_bedrock_agent_action_boundaries(permission_cache) -> Dict[str, Any]:
                 continue
             role_arn = detail.get("agent", {}).get("agentResourceRoleArn", "")
             if not role_arn:
+                unread.append(
+                    f"agent '{agent_name}' (GetAgent returned no execution role ARN)"
+                )
                 continue
             role_name = role_arn.split("/")[-1]
+            agent_unread = False
             if read_errors is not None and role_name in read_errors:
                 unread.append(
                     f"agent '{agent_name}' role '{role_name}' (cache read failed at "
                     f"{', '.join(read_errors[role_name])})"
                 )
+                agent_unread = True
             elif role_name not in role_permissions:
                 unread.append(
                     f"agent '{agent_name}' role '{role_name}' (not in the permissions cache)"
                 )
+                agent_unread = True
             role_perms = role_permissions.get(role_name) or {}
             boundary = role_perms.get("permissions_boundary")
             if boundary is None and "permissions_boundary" in (
@@ -1691,9 +1697,21 @@ def check_bedrock_agent_action_boundaries(permission_cache) -> Dict[str, Any]:
             ):
                 doc = policy.get("document", {})
                 if isinstance(doc, str):
-                    doc = json.loads(doc)
+                    try:
+                        doc = json.loads(doc)
+                    except (ValueError, TypeError):
+                        doc = None
+                if not isinstance(doc, dict):
+                    if not agent_unread:
+                        unread.append(
+                            f"agent '{agent_name}' role '{role_name}' (policy "
+                            f"'{policy.get('name', 'unnamed')}' is not a readable "
+                            "policy document)"
+                        )
+                        agent_unread = True
+                    continue
                 for stmt in _as_list(doc.get("Statement")):
-                    if stmt.get("Effect") != "Allow":
+                    if not isinstance(stmt, dict) or stmt.get("Effect") != "Allow":
                         continue
                     actions = stmt.get("Action", [])
                     if isinstance(actions, str):

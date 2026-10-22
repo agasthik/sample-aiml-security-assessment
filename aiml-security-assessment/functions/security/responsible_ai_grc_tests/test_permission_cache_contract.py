@@ -317,3 +317,59 @@ class TestUnreadBoundary:
         row = _only_row(app.check_bedrock_agent_action_boundaries(cache))
         assert row["Status"] == "N/A"
         assert row["Finding"] == "Agent Action Boundary Check Incomplete"
+
+
+class TestFS07UnassessableAgents:
+    """An agent with no execution role ARN, or a role whose policy document
+    cannot be parsed, is not assessed, so it blocks a Passed and is counted
+    once among the agents not read."""
+
+    @patch("finserv_app.boto3.client")
+    def test_an_agent_without_a_role_arn_blocks_a_passed(self, mock_client):
+        client = _agents_client({"a1": "RoleA", "a2": "RoleA", "a3": "RoleA"})
+        client.get_agent.side_effect = lambda agentId: {
+            "agent": {
+                "agentResourceRoleArn": ""
+                if agentId == "a3"
+                else "arn:aws:iam::123456789012:role/RoleA"
+            }
+        }
+        mock_client.return_value = client
+        row = _only_row(
+            app.check_bedrock_agent_action_boundaries(_cache({"RoleA": _role(SAFE)}))
+        )
+        assert row["Status"] == "N/A"
+        assert row["Finding"] == "Agent Action Boundary Check Incomplete"
+        assert row["Finding_Details"].startswith("Reviewed 2 of 3 agent(s)")
+        assert (
+            "agent 'a3' (GetAgent returned no execution role ARN)"
+            in row["Finding_Details"]
+        )
+
+    @patch("finserv_app.boto3.client")
+    def test_a_malformed_document_marks_only_that_role_unread(self, mock_client):
+        mock_client.return_value = _agents_client({"a1": "Open", "a2": "Broken"})
+        broken = _role()
+        broken["attached_policies"] = [
+            {"name": "Trunc", "document": '{"Statement": ['},
+            {"name": "Trunc2", "document": "not json"},
+        ]
+        cache = _cache({"Open": _role(_allow("iam:*")), "Broken": broken})
+        row = _only_row(app.check_bedrock_agent_action_boundaries(cache))
+        assert row["Status"] == "Failed"
+        assert "Agent 'a1' role 'Open' allows 'iam:*'" in row["Finding_Details"]
+        assert (
+            "Not read (1): agent 'a2' role 'Broken' (policy 'Trunc'"
+            in (row["Finding_Details"])
+        )
+
+    @patch("finserv_app.boto3.client")
+    def test_a_malformed_document_alone_is_incomplete(self, mock_client):
+        mock_client.return_value = _agents_client({"a1": "Broken"})
+        broken = _role()
+        broken["inline_policies"] = [{"name": "Bad", "document": "{"}]
+        row = _only_row(
+            app.check_bedrock_agent_action_boundaries(_cache({"Broken": broken}))
+        )
+        assert row["Status"] == "N/A"
+        assert row["Finding_Details"].startswith("Reviewed 0 of 1 agent(s)")
