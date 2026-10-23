@@ -55108,3 +55108,100 @@ class TestInvocationDeadline:
             f"table 'db.t' has partitions from page 1 on, whose read stopped "
             f"{bedrock_app.DEADLINE_STOP}, which were not all read"
         ]
+
+
+# ===================================================================
+# N/A rows carry Informational severity
+# ===================================================================
+def _na_branch_severities(source):
+    """Yield (line, check_id, severity) for each create_finding call whose
+    status is, or may be, N/A, taking the severity on the N/A branch."""
+    import ast
+
+    def const(node):
+        return node.value if isinstance(node, ast.Constant) else None
+
+    for node in ast.walk(ast.parse(source)):
+        if not (
+            isinstance(node, ast.Call) and ast.unparse(node.func) == "create_finding"
+        ):
+            continue
+        keywords = {k.arg: k.value for k in node.keywords if k.arg}
+        status, severity = keywords.get("status"), keywords.get("severity")
+        if status is None or severity is None:
+            continue
+        check_id = const(keywords.get("check_id")) or ast.unparse(keywords["check_id"])
+        statuses, severities = [status], [severity]
+        while isinstance(statuses[-1], ast.IfExp) and isinstance(
+            severities[-1], ast.IfExp
+        ):
+            statuses[-1:] = [statuses[-1].body, statuses[-1].orelse]
+            severities[-1:] = [severities[-1].body, severities[-1].orelse]
+        if isinstance(statuses[-1], ast.IfExp):
+            # A conditional status with one constant severity.
+            if "N/A" in (const(statuses[-1].body), const(statuses[-1].orelse)):
+                yield node.lineno, check_id, const(severities[-1])
+            continue
+        for leg_status, leg_severity in zip(statuses, severities):
+            if const(leg_status) == "N/A":
+                yield node.lineno, check_id, const(leg_severity)
+
+
+class TestBedrockNASeverity:
+    """An N/A row is not a finding, so it never counts toward Low, Medium or
+    High totals."""
+
+    @pytest.mark.parametrize(
+        "check_name, check_id",
+        [
+            ("check_bedrock_custom_model_kms_encryption", "BR-17"),
+            ("check_bedrock_knowledge_base_kms_encryption", "BR-20"),
+            ("check_bedrock_agent_guardrail_association", "BR-28"),
+            ("check_bedrock_imported_model_kms_encryption", "BR-30"),
+        ],
+    )
+    @patch("bedrock_app.boto3.client")
+    def test_empty_inventory_na_is_informational(
+        self, mock_client, check_name, check_id
+    ):
+        client = MagicMock()
+        client.get_paginator.return_value.paginate.return_value = [
+            {"modelSummaries": [], "agentSummaries": []}
+        ]
+        client.list_knowledge_bases.return_value = {"knowledgeBaseSummaries": []}
+        mock_client.return_value = client
+
+        findings = extract_csv_data(
+            getattr(bedrock_app, check_name)(region="us-east-1")
+        )
+
+        assert [(f["Check_ID"], f["Status"], f["Severity"]) for f in findings] == [
+            (check_id, "N/A", "Informational")
+        ]
+
+    def test_every_na_row_in_the_source_is_informational(self):
+        with open(os.path.join(_bedrock_dir, "app.py")) as handle:
+            rows = list(_na_branch_severities(handle.read()))
+
+        assert len(rows) > 100
+        assert [row for row in rows if row[2] != "Informational"] == []
+
+    @pytest.mark.parametrize(
+        "source, expected",
+        [
+            ('create_finding(check_id="BR-99", severity="High", status="N/A")', "High"),
+            (
+                'create_finding(check_id="BR-99", severity="Medium", '
+                'status="N/A" if unread else "Passed")',
+                "Medium",
+            ),
+            (
+                'create_finding(check_id="BR-99", '
+                'severity="Medium" if ok else "High" if unknown else "Low", '
+                'status="Passed" if ok else "N/A" if unknown else "Failed")',
+                "High",
+            ),
+        ],
+    )
+    def test_the_source_scan_finds_a_non_informational_na_row(self, source, expected):
+        assert [row[2] for row in _na_branch_severities(source)] == [expected]

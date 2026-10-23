@@ -1,10 +1,10 @@
 # Security Checks Reference
 
-This document provides a comprehensive reference for all 277 security checks performed by the AI/ML Security Assessment framework (162 core checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, 39 Agentic AI Security checks, 64 Responsible AI GRC checks, and 12 OWASP Top 10 for LLM checks).
+This document provides a comprehensive reference for all 277 security checks performed by the AI/ML Security Assessment framework (162 core checks across Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and AWS Agent Registry, up to 39 Agentic AI Security checks, 64 Responsible AI GRC checks, and 12 OWASP Top 10 for LLM checks).
 
-Sources differ by bucket and are not interchangeable: the core Bedrock, SageMaker, AgentCore, and AWS Agent Registry checks derive from the AWS Well-Architected **Generative AI Lens** security best practices (`gensec*`) and service security documentation; the Agentic AI Security checks from the AWS Well-Architected **Agentic AI Lens**; the `FS-*` **Responsible AI GRC** checks from the AWS GRC User Guide; and the `OW-*` checks from the OWASP Top 10 for LLM. The AWS Well-Architected **Responsible AI Lens** is not a source for any of them — see [Responsible AI GRC — scope, sources, and compatibility](RESPONSIBLE_AI_GRC_SCOPE.md).
+Sources differ by assessment area and are not interchangeable: the core Bedrock, SageMaker, AgentCore, and AWS Agent Registry checks derive from the AWS Well-Architected **Generative AI Lens** security best practices (`gensec*`) and service security documentation; the Agentic AI Security checks from the AWS Well-Architected **Agentic AI Lens**; the `FS-*` **Responsible AI GRC** checks from the AWS GRC User Guide; and the `OW-*` checks from the OWASP Top 10 for LLM. The AWS Well-Architected **Responsible AI Lens** is not a source for any of them — see [Responsible AI GRC — scope, sources, and compatibility](RESPONSIBLE_AI_GRC_SCOPE.md).
 
-The 64 Responsible AI GRC checks occupy 69 `FS-*` numbers: 64 ship as standalone checks and 5 are merged into upstream Bedrock/SageMaker checks. The framework also emits `BR-00`, `SM-00`, `AC-00`, `AR-00`, `FS-00`, `OW-00`, and `AISF-00` operational marker rows at runtime; these are not controls and are excluded from the 277-check total. `AISF-05`, `AISF-07` and `AISF-08` are the 3 derived AWS AI Security Framework view rows: each one restates the verdict of a check already counted above under an AISF control id, so they are excluded from the 277-check total for the same reason ([AWS AI Security Framework (AISF) Checks](SECURITY_CHECKS_AISF.md)). `AISF-01`, `AISF-02`, `AISF-03`, `AISF-04` and `AISF-06` are retired: the 5 checks they restated each assert only part of their control, so no row is derived for them and the ids are not reused. Per-control provenance, including which controls are project extensions rather than guide-derived, is recorded in [`provenance.json`](../aiml-security-assessment/functions/security/responsible_ai_grc_assessments/provenance.json).
+The 64 Responsible AI GRC checks occupy 69 `FS-*` numbers: 64 ship as standalone checks and 5 are merged into upstream Bedrock/SageMaker checks. The framework also emits `BR-00`, `SM-00`, `AC-00`, `AR-00`, `FS-00`, `OW-00`, and `AISF-00` operational marker rows at runtime; these are not controls and are excluded from the 277-check total. `AISF-05`, `AISF-07`, and `AISF-08` are derived rows that restate verdicts of checks already counted, so they also do not increase the total. `AISF-01`, `AISF-02`, `AISF-03`, `AISF-04`, and `AISF-06` are retired and do not emit rows. See the [AWS AI Security Framework view](SECURITY_CHECKS_AISF.md) for their sources and coverage behavior. Per-control provenance, including which controls are project extensions rather than guide-derived, is recorded in [`provenance.json`](../aiml-security-assessment/functions/security/responsible_ai_grc_assessments/provenance.json).
 
 The counts above describe the full catalog. Core service assessments are enabled
 by default and can be selected independently with the four
@@ -12,37 +12,236 @@ by default and can be selected independently with the four
 Deselected services produce no findings and appear as **Not selected** in the
 report; this is not an N/A finding or a compliant result. Agentic AI and OWASP
 mapping coverage decreases when their direct-service sources are deselected.
+The [AWS AI Security Framework view](SECURITY_CHECKS_AISF.md) derives `AISF-*`
+rows from already counted checks, so its rows do not increase the 277-check total.
 
 ## Table of Contents
 
+- [Check Index](#check-index)
 - [Overview](#overview)
 - [Check ID Convention](#check-id-convention)
 - [Report Scoring](#report-scoring)
 - [Severity Levels](#severity-levels)
 - [Status Values](#status-values)
-- [Amazon SageMaker AI Security Checks (42)](#amazon-sagemaker-ai-security-checks-42)
 - [Amazon Bedrock Security Checks (57)](#amazon-bedrock-security-checks-57)
+- [Amazon SageMaker AI Security Checks (42)](#amazon-sagemaker-ai-security-checks-42)
 - [Amazon Bedrock AgentCore Security Checks (53)](#amazon-bedrock-agentcore-security-checks-53)
 - [AWS Agent Registry Security Checks (10)](#aws-agent-registry-security-checks-10)
 - [Agentic AI Security Checks (39)](#agentic-ai-security-checks-39)
-- [Responsible AI GRC Checks (64)](#responsible-ai-grc-checks-64-additional-5-upstream-extensions)
+- [Responsible AI GRC Checks (64 additional, 5 upstream extensions)](#responsible-ai-grc-checks-64-additional-5-upstream-extensions)
 - [OWASP Top 10 for LLM Checks (12)](#owasp-top-10-for-llm-checks-12)
+- [Additional Resources](#additional-resources)
 
+---
+
+## Check Index
+
+Expand a service to list its checks; each ID links to the full entry. Agentic AI checks are listed in the [Agentic AI table](#mapped-agentic-ai-checks), Responsible AI GRC checks in [`SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md`](./SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md), and OWASP checks in [`SECURITY_CHECKS_OWASP.md`](./SECURITY_CHECKS_OWASP.md).
+
+<details><summary>Amazon Bedrock (57 checks: BR-01 to BR-57)</summary>
+
+| ID | Title | Severity |
+| -- | ----- | -------- |
+| [BR-01](#br-01-aws-iam-least-privilege) | AWS IAM Least Privilege | High |
+| [BR-02](#br-02-amazon-vpc-endpoint-configuration) | Amazon VPC Endpoint Configuration | Medium |
+| [BR-03](#br-03-marketplace-subscription-access) | Marketplace Subscription Access | High |
+| [BR-04](#br-04-model-invocation-logging) | Model Invocation Logging | Medium |
+| [BR-05](#br-05-guardrail-configuration) | Guardrail Configuration | Medium |
+| [BR-06](#br-06-aws-cloudtrail-logging) | AWS CloudTrail Logging | High for missing management-event logging; Medium for other failed rows |
+| [BR-07](#br-07-prompt-management) | Prompt Management | Low |
+| [BR-08](#br-08-agent-aws-iam-configuration) | Agent AWS IAM Configuration | High |
+| [BR-09](#br-09-knowledge-base-encryption) | Knowledge Base Encryption | Informational (manual review) |
+| [BR-10](#br-10-guardrail-aws-iam-enforcement) | Guardrail AWS IAM Enforcement | High |
+| [BR-11](#br-11-custom-model-encryption) | Custom Model Encryption | Medium for model keys; High for customization data buckets |
+| [BR-12](#br-12-invocation-log-encryption) | Invocation Log Encryption | Medium |
+| [BR-13](#br-13-flows-guardrails) | Flows Guardrails | High |
+| [BR-14](#br-14-stale-bedrock-access) | Stale Bedrock Access | Medium (not currently emitted) |
+| [BR-15](#br-15-cross-account-guardrails-enforcement) | Cross-Account Guardrails Enforcement | High |
+| [BR-16](#br-16-guardrail-tier-validation) | Guardrail Tier Validation | Medium |
+| [BR-17](#br-17-custom-model-customer-managed-kms-encryption) | Custom Model Customer-Managed KMS Encryption | High |
+| [BR-18](#br-18-model-evaluation-implementation) | Model Evaluation Implementation | Medium |
+| [BR-19](#br-19-prompt-flow-validation) | Prompt Flow Validation | Medium |
+| [BR-20](#br-20-knowledge-base-encryption-enhancement) | Knowledge Base Encryption Enhancement | High |
+| [BR-21](#br-21-agent-action-group-iam-least-privilege) | Agent Action Group IAM Least Privilege | High |
+| [BR-22](#br-22-model-invocation-throttling-limits) | Model Invocation Throttling Limits | Medium |
+| [BR-23](#br-23-guardrail-content-filter-coverage) | Guardrail Content Filter Coverage | High |
+| [BR-24](#br-24-automated-reasoning-policy-implementation) | Automated Reasoning Policy Implementation | Medium |
+| [BR-25](#br-25-rag-evaluation-jobs) | RAG Evaluation Jobs | Low |
+| [BR-26](#br-26-guardrail-sensitive-information-filter) | Guardrail Sensitive Information Filter | High |
+| [BR-27](#br-27-guardrail-contextual-grounding-check) | Guardrail Contextual Grounding Check | Medium |
+| [BR-28](#br-28-agent-guardrail-association) | Agent Guardrail Association | High |
+| [BR-29](#br-29-agent-idle-session-ttl) | Agent Idle Session TTL | Low |
+| [BR-30](#br-30-imported-model-customer-managed-kms-encryption) | Imported Model Customer-Managed KMS Encryption | High |
+| [BR-31](#br-31-batch-inference-output-encryption) | Batch Inference Output Encryption | Medium |
+| [BR-32](#br-32-cloudwatch-alarms-on-bedrock-metrics) | CloudWatch Alarms on Bedrock Metrics | Medium |
+| [BR-33](#br-33-amazon-inspector-lambda-code-scanning) | Amazon Inspector Lambda Code Scanning | Medium |
+| [BR-34](#br-34-guardrail-prompt-attack-filter) | Guardrail Prompt Attack Filter | High |
+| [BR-35](#br-35-guardrail-image-content-filter-coverage) | Guardrail Image Content Filter Coverage | Informational |
+| [BR-36](#br-36-application-inference-profile-governance) | Application Inference Profile Governance | Low |
+| [BR-37](#br-37-bedrock-account-data-retention) | Bedrock Account Data Retention | High for the regional mode, Medium for the service control policy |
+| [BR-38](#br-38-automated-reasoning-policy-cmk-encryption) | Automated Reasoning Policy CMK Encryption | Medium |
+| [BR-39](#br-39-marketplace-model-endpoint-vpc-configuration) | Marketplace Model Endpoint VPC Configuration | High |
+| [BR-40](#br-40-marketplace-model-endpoint-cmk-encryption) | Marketplace Model Endpoint CMK Encryption | Medium by default |
+| [BR-41](#br-41-central-guardrail-enforcement) | Central Guardrail Enforcement | High |
+| [BR-42](#br-42-foundation-model-invocation-allow-list) | Foundation Model Invocation Allow-List | High |
+| [BR-43](#br-43-region-invocation-control) | Region Invocation Control | Medium |
+| [BR-44](#br-44-marketplace-model-subscription-control) | Marketplace Model Subscription Control | High |
+| [BR-45](#br-45-api-key-governance) | API Key Governance | High |
+| [BR-46](#br-46-knowledge-base-source-data-classification) | Knowledge Base Source Data Classification | High |
+| [BR-47](#br-47-bedrock-data-path-bucket-tls-enforcement) | Bedrock Data Path Bucket TLS Enforcement | High |
+| [BR-48](#br-48-ai-services-opt-out-policy-enforcement) | AI Services Opt-Out Policy Enforcement | High |
+| [BR-49](#br-49-guardrail-invocation-deny-enforcement) | Guardrail Invocation Deny Enforcement | High |
+| [BR-50](#br-50-ai-user-long-term-access-key) | AI User Long-Term Access Key | High |
+| [BR-51](#br-51-ai-user-console-mfa) | AI User Console MFA | High |
+| [BR-52](#br-52-bedrock-data-path-bucket-object-lock) | Bedrock Data Path Bucket Object Lock | Medium |
+| [BR-53](#br-53-bedrock-resource-owner-tag) | Bedrock Resource Owner Tag | Low |
+| [BR-54](#br-54-lambda-function-public-invoke-configuration) | Lambda Function Public Invoke Configuration | High |
+| [BR-55](#br-55-kms-key-enclave-attestation-binding) | KMS Key Enclave Attestation Binding | High |
+| [BR-56](#br-56-bedrock-llm-jacking-activity) | Bedrock LLM Jacking Activity | High |
+| [BR-57](#br-57-agent-handoff-source-identity) | Agent Handoff Source Identity | High |
+
+</details>
+
+<details><summary>Amazon SageMaker AI (42 checks: SM-01 to SM-43)</summary>
+
+| ID | Title | Severity |
+| -- | ----- | -------- |
+| [SM-01](#sm-01-internet-access) | Internet Access | High |
+| [SM-02](#sm-02-aws-iam-permissions) | AWS IAM Permissions | High for full access; Medium for stale users and domain authentication |
+| [SM-03](#sm-03-data-protection) | Data Protection | High for missing KMS keys; Medium for network encryption; Low for AWS managed keys |
+| [SM-04](#sm-04-amazon-guardduty-integration) | Amazon GuardDuty Integration | High |
+| [SM-05](#sm-05-mlops-features) | MLOps Features | Low; Medium for feature groups not in `Created` state |
+| [SM-06](#sm-06-clarify-usage) | Clarify Usage | High |
+| [SM-07](#sm-07-model-monitor) | Model Monitor | Medium |
+| [SM-08](#sm-08-model-registry) | Model Registry | Low for missing approvals; Medium or High for check errors |
+| [SM-09](#sm-09-notebook-root-access) | Notebook Root Access | High |
+| [SM-10](#sm-10-notebook-amazon-vpc-deployment) | Notebook Amazon VPC Deployment | High |
+| [SM-11](#sm-11-model-network-isolation) | Model Network Isolation | High |
+| [SM-12](#sm-12-endpoint-instance-count) | Endpoint Instance Count | Medium |
+| [SM-13](#sm-13-monitoring-network-isolation) | Monitoring Network Isolation | Medium |
+| [SM-14](#sm-14-model-container-repository) | Model Container Repository | Medium |
+| [SM-15](#sm-15-feature-store-encryption) | Feature Store Encryption | Medium |
+| [SM-16](#sm-16-data-quality-encryption) | Data Quality Encryption | Medium |
+| [SM-17](#sm-17-processing-job-encryption) | Processing Job Encryption | Medium |
+| [SM-18](#sm-18-transform-job-encryption) | Transform Job Encryption | Medium |
+| [SM-19](#sm-19-hyperparameter-tuning-encryption) | Hyperparameter Tuning Encryption | Medium |
+| [SM-20](#sm-20-compilation-job-encryption) | Compilation Job Encryption | Medium |
+| [SM-21](#sm-21-automl-network-isolation) | AutoML Network Isolation | Medium |
+| [SM-22](#sm-22-model-approval-workflow) | Model Approval Workflow | Medium; Low for pending-approval backlog |
+| [SM-23](#sm-23-model-drift-detection) | Model Drift Detection | Medium; Low for incomplete monitoring |
+| [SM-24](#sm-24-ab-testing-and-shadow-deployment) | A/B Testing and Shadow Deployment | Informational (advisory) |
+| [SM-25](#sm-25-ml-lineage-tracking) | ML Lineage Tracking | Low |
+| [SM-26](#sm-26-guardduty-ai-protection) | GuardDuty AI Protection | High |
+| [SM-27](#sm-27-hyperpod-ebs-cmk-encryption) | HyperPod EBS CMK Encryption | Medium |
+| [SM-28](#sm-28-hyperpod-vpc-configuration) | HyperPod VPC Configuration | Medium |
+| [SM-30](#sm-30-model-package-group-resource-policy-exposure) | Model Package Group Resource Policy Exposure | High for public or configured-boundary violations; Informational for unclassified external sharing |
+| [SM-31](#sm-31-endpoint-inference-data-capture) | Endpoint Inference Data Capture | Medium |
+| [SM-32](#sm-32-sagemaker-configuration-compliance-evaluation) | SageMaker Configuration Compliance Evaluation | Medium |
+| [SM-33](#sm-33-training-job-network-boundary) | Training Job Network Boundary | Medium |
+| [SM-34](#sm-34-sagemaker-creation-guardrails) | SageMaker Creation Guardrails | Medium |
+| [SM-35](#sm-35-security-service-delegated-administrator) | Security Service Delegated Administrator | High |
+| [SM-36](#sm-36-security-hub-ai-security-standard) | Security Hub AI Security Standard | High |
+| [SM-37](#sm-37-guardduty-lambda-protection) | GuardDuty Lambda Protection | Medium |
+| [SM-38](#sm-38-guardduty-runtime-monitoring) | GuardDuty Runtime Monitoring | High |
+| [SM-39](#sm-39-eks-vpc-cni-network-policy) | EKS VPC CNI Network Policy | Medium |
+| [SM-40](#sm-40-secrets-manager-rotation) | Secrets Manager Rotation | Medium |
+| [SM-41](#sm-41-aws-iot-device-scoped-policy) | AWS IoT Device-Scoped Policy | High |
+| [SM-42](#sm-42-batch-transform-creation-guardrail) | Batch Transform Creation Guardrail | Medium |
+| [SM-43](#sm-43-model-artifact-integrity) | Model Artifact Integrity | Medium |
+
+</details>
+
+<details><summary>Amazon Bedrock AgentCore (53 checks: AC-01 to AC-53)</summary>
+
+| ID | Title | Severity |
+| -- | ----- | -------- |
+| [AC-01](#ac-01-runtime-amazon-vpc-configuration) | Runtime Amazon VPC Configuration | High or Medium, depending on the network gap |
+| [AC-02](#ac-02-aws-iam-full-access) | AWS IAM Full Access | High |
+| [AC-03](#ac-03-stale-access) | Stale Access | Medium for stale access |
+| [AC-04](#ac-04-observability) | Observability | Medium |
+| [AC-05](#ac-05-amazon-ecr-repository-encryption) | Amazon ECR Repository Encryption | High for an unencrypted repository; Low for `AES256` (AWS-managed keys) |
+| [AC-06](#ac-06-browser-tool-recording) | Browser Tool Recording | Medium |
+| [AC-07](#ac-07-memory-encryption) | Memory Encryption | Medium |
+| [AC-08](#ac-08-amazon-vpc-endpoints) | Amazon VPC Endpoints | High or Medium, depending on the endpoint gap |
+| [AC-09](#ac-09-service-linked-role) | Service-Linked Role | Medium |
+| [AC-10](#ac-10-resource-based-policies) | Resource-Based Policies | High |
+| [AC-11](#ac-11-policy-engine-encryption) | Policy Engine Encryption | High |
+| [AC-12](#ac-12-gateway-encryption) | Gateway Encryption | Low for no CMK; High for unusable key; Medium for unscoped key policy |
+| [AC-13](#ac-13-gateway-configuration) | Gateway Configuration | Medium |
+| [AC-14](#ac-14-identity-token-vault-cmk-encryption) | Identity Token Vault CMK Encryption | High |
+| [AC-15](#ac-15-code-interpreter-network-isolation) | Code Interpreter Network Isolation | High |
+| [AC-16](#ac-16-custom-browser-network-isolation) | Custom Browser Network Isolation | High |
+| [AC-17](#ac-17-online-evaluation-coverage) | Online Evaluation Coverage | Medium |
+| [AC-18](#ac-18-cloudtrail-data-event-coverage) | CloudTrail Data Event Coverage | Medium |
+| [AC-19](#ac-19-log-delivery-configuration) | Log Delivery Configuration | Medium |
+| [AC-20](#ac-20-log-data-protection) | Log Data Protection | Medium |
+| [AC-21](#ac-21-log-unmask-restriction) | Log Unmask Restriction | Medium |
+| [AC-22](#ac-22-telemetry-sink-scope) | Telemetry Sink Scope | Medium |
+| [AC-23](#ac-23-memory-record-access-scope) | Memory Record Access Scope | High |
+| [AC-24](#ac-24-gateway-rate-limiting) | Gateway Rate Limiting | Medium |
+| [AC-25](#ac-25-gateway-target-authorization) | Gateway Target Authorization | High |
+| [AC-26](#ac-26-log-retention-and-key-scope) | Log Retention and Key Scope | Medium |
+| [AC-27](#ac-27-gateway-policy-conditions) | Gateway Policy Conditions | High for the confused-deputy legs; Medium for the network-path leg |
+| [AC-28](#ac-28-gateway-authorizer-guardrail) | Gateway Authorizer Guardrail | High |
+| [AC-29](#ac-29-runtime-authorizer-guardrail) | Runtime Authorizer Guardrail | High |
+| [AC-30](#ac-30-runtime-inbound-authorization) | Runtime Inbound Authorization | High |
+| [AC-31](#ac-31-gateway-inbound-allow-lists) | Gateway Inbound Allow Lists | High |
+| [AC-32](#ac-32-inbound-jwt-issuer-conditions) | Inbound JWT Issuer Conditions | High for a grant with no issuer pin; Medium for a missing application or network pin and for the gateway SCP guardrail |
+| [AC-33](#ac-33-token-issuance-scope) | Token Issuance Scope | High for a wildcard resource; Medium for a grant naming only a workload-identity directory |
+| [AC-34](#ac-34-runtime-inline-credentials) | Runtime Inline Credentials | High |
+| [AC-35](#ac-35-policy-tool-scope) | Policy Tool Scope | High for an unconditional permit; Medium for a permit that names no action under a condition |
+| [AC-36](#ac-36-policy-engine-key-scope) | Policy Engine Key Scope | High |
+| [AC-37](#ac-37-policy-guardrail-wiring) | Policy Guardrail Wiring | High |
+| [AC-38](#ac-38-policy-session-binding) | Policy Session Binding | High when a temporal policy runs on a gateway that authenticates no caller; Medium when no enforcing policy is session-aware |
+| [AC-39](#ac-39-online-evaluation-operation) | Online Evaluation Operation | Medium |
+| [AC-40](#ac-40-evaluation-safety-coverage) | Evaluation Safety Coverage | Medium |
+| [AC-41](#ac-41-evaluation-result-protection) | Evaluation Result Protection | Medium |
+| [AC-42](#ac-42-evaluation-pass-role-scope) | Evaluation Pass Role Scope | High |
+| [AC-43](#ac-43-evaluation-role-trust) | Evaluation Role Trust | High |
+| [AC-44](#ac-44-evaluation-judge-model-scope) | Evaluation Judge Model Scope | Medium |
+| [AC-45](#ac-45-tool-execution-role-scope) | Tool Execution Role Scope | High |
+| [AC-46](#ac-46-runtime-session-limits) | Runtime Session Limits | Medium |
+| [AC-47](#ac-47-runtime-invocation-path) | Runtime Invocation Path | High for the caller leg; Medium for the network-path leg |
+| [AC-48](#ac-48-execution-role-trust-and-sharing) | Execution Role Trust and Sharing | High for the trust leg; Medium for the source ARN and sharing legs |
+| [AC-49](#ac-49-dns-egress-control) | DNS Egress Control | Medium |
+| [AC-50](#ac-50-ecr-enhanced-scanning) | ECR Enhanced Scanning | Medium |
+| [AC-51](#ac-51-web-acl-anti-ddos) | Web ACL Anti-DDoS | Medium for WAF and Shield gaps; Low for Firewall Manager enrollment |
+| [AC-52](#ac-52-cognito-user-pool-authentication) | Cognito User Pool Authentication | Medium |
+| [AC-53](#ac-53-inter-agent-anomaly-alarms) | Inter-Agent Anomaly Alarms | Medium for anomaly alarms; Low for scheduled log queries |
+
+</details>
+
+<details><summary>AWS Agent Registry (10 checks: AR-01 to AR-10)</summary>
+
+| ID | Title | Severity |
+| -- | ----- | -------- |
+| [AR-01](#ar-01-aws-iam-full-access) | AWS IAM Full Access | High |
+| [AR-02](#ar-02-stale-access) | Stale Access | Medium for 60+ day inactivity; Low when all principals are active; Informational when never used or incomplete |
+| [AR-03](#ar-03-registry-publication-approval-governance) | Registry Publication Approval Governance | Medium |
+| [AR-04](#ar-04-registry-discovery-authorization) | Registry Discovery Authorization | Informational for configured authorizers; High for an unconstrained custom JWT authorizer |
+| [AR-05](#ar-05-registry-customer-managed-kms-encryption) | Registry Customer-Managed KMS Encryption | Informational by default; Medium when required |
+| [AR-06](#ar-06-registry-organization-auto-detection) | Registry Organization Auto-Detection | Medium when active; otherwise Informational |
+| [AR-07](#ar-07-registry-record-lifecycle-governance) | Registry Record Lifecycle Governance | Informational |
+| [AR-08](#ar-08-registry-record-provenance) | Registry Record Provenance | Medium |
+| [AR-09](#ar-09-registry-approval-authority-separation) | Registry Approval Authority Separation | High |
+| [AR-10](#ar-10-registry-lifecycle-event-routing) | Registry Lifecycle Event Routing | Medium |
+
+</details>
 ---
 
 ## Overview
 
-The framework evaluates your AI/ML workloads against AWS security best practices across four services:
+The framework evaluates your AI/ML workloads against AWS security best practices across seven assessment areas: four direct service assessments, the synthesized Agentic AI Security lens, and two optional compliance areas. Each direct service assessment can be turned on or off individually; see [Selecting Service Assessments](../README.md#selecting-service-assessments).
 
-| Service | Number of Checks | Focus Areas |
-| --------- | ------------------ | ------------- |
-| Amazon SageMaker AI | 42 | Security Hub controls, encryption, network isolation, GuardDuty AI Protection, HyperPod, IAM, MLOps, Model Registry policy exposure, inference data capture, Config compliance evaluation, training VPC boundary, creation guardrails, security service delegated administration, the Security Hub AI standard, GuardDuty Lambda Protection and Runtime Monitoring, EKS network policy, secret rotation, IoT device-scoped policies |
-| Amazon Bedrock | 57 | Guardrails, prompt-attack/image filters, retention, inference profiles, automated reasoning and Marketplace endpoint governance, encryption, networking, IAM, logging, monitoring, evaluation, central guardrail enforcement, model allow-lists, Region and Marketplace subscription control, API key governance, knowledge base source classification, LLM jacking activity in CloudTrail event history, agent handoff source identity |
-| Amazon Bedrock AgentCore | 53 | Runtime/tool VPC isolation, encryption, browser recording, observability, resource policies, Identity token vaults, online evaluation, and the Cognito user pools that issue tokens to gateways and runtimes |
-| AWS Agent Registry | 10 | IAM access, approval governance, discovery authorization, encryption, organization auto-detection, record lifecycle, and provenance |
-| Agentic AI Security | 39 | Bounded autonomy, agent identity, tool authorization, Registry governance and provenance, guardrail enforcement, prompt/input protection, memory privacy, auditability, continuous assurance, abuse protection |
-| Responsible AI GRC | 64 | Unbounded consumption, excessive agency, supply chain, training data poisoning, vector weaknesses, non-compliant output, misinformation, harmful output, biased output, PII disclosure, hallucination, prompt injection, improper output handling, off-topic output, out-of-date training data |
-| OWASP Top 10 for LLM | 12 | LLM01 Prompt Injection, LLM02 Sensitive Info Disclosure, LLM03 Supply Chain, LLM04 Data/Model Poisoning, LLM05 Improper Output Handling, LLM06 Excessive Agency, LLM07 System Prompt Leakage, LLM08 Vector/Embedding Weaknesses, LLM09 Misinformation, LLM10 Unbounded Consumption |
+| Assessment area | Checks | Controlled by (default) | Focus areas |
+| --------------- | ------ | ----------------------- | ----------- |
+| [Amazon Bedrock](#amazon-bedrock-security-checks-57) | 57 | `EnableBedrockAssessment` (`true`) | Guardrails, IAM, encryption, networking, logging, evaluation, and Marketplace endpoints |
+| [Amazon SageMaker AI](#amazon-sagemaker-ai-security-checks-42) | 42 | `EnableSageMakerAssessment` (`true`) | Security Hub controls, encryption, network isolation, GuardDuty, HyperPod, and MLOps |
+| [Amazon Bedrock AgentCore](#amazon-bedrock-agentcore-security-checks-53) | 53 | `EnableAgentCoreAssessment` (`true`) | Runtime and tool isolation, IAM, encryption, observability, and online evaluation |
+| [AWS Agent Registry](#aws-agent-registry-security-checks-10) | 10 | `EnableAgentRegistryAssessment` (`true`) | IAM access, approval and discovery governance, encryption, and record provenance |
+| [Agentic AI Security](#agentic-ai-security-checks-39) | Up to 39 | Derived from the selected Bedrock, AgentCore, and Agent Registry assessments | Agentic AI Lens view of Bedrock, AgentCore, and Registry evidence, plus AgentCore gateway checks |
+| [Responsible AI GRC](#responsible-ai-grc-checks-64-additional-5-upstream-extensions) | 64 | `EnableResponsibleAIGRCAssessment` (`false`) | AI governance, risk, and compliance controls across 15 risk categories |
+| [OWASP Top 10 for LLM](#owasp-top-10-for-llm-checks-12) | 12 | `EnableOWASPAssessment` (`false`) | LLM01 through LLM10, mapped from existing findings plus two native LLM07 checks |
 
 ---
 
@@ -52,7 +251,7 @@ Each security check has a unique identifier with a service prefix:
 
 | Prefix | Service | Example |
 | -------- | --------- | --------- |
-| **SM-XX** | Amazon SageMaker | SM-01, SM-43 (`SM-29` reserved) |
+| **SM-XX** | Amazon SageMaker AI | SM-01, SM-43 (`SM-29` reserved) |
 | **BR-XX** | Amazon Bedrock | BR-01, BR-57 |
 | **AC-XX** | Amazon Bedrock AgentCore | AC-01, AC-53 |
 | **AR-XX** | AWS Agent Registry | AR-01, AR-10 |
@@ -72,9 +271,10 @@ evidence that a control passed or failed.
 | `BR-00` | Amazon Bedrock is unavailable or not enabled in the target region, so regional Bedrock checks were not run. | `N/A` / Informational |
 | `SM-00` | Amazon SageMaker AI is unavailable or not enabled in the target region, so regional SageMaker checks were not run. | `N/A` / Informational |
 | `AC-00` | Amazon Bedrock AgentCore is unavailable in the target region, or the Runtime availability probe rejected the assessment credentials before regional checks could run. Unexpected errors inside individual checks use their affected `AC-*` or `AG-*` control IDs instead. | `N/A` / Informational |
-| `AR-00` | AWS Agent Registry is unavailable in the target region, so regional `AR-03` through `AR-08` and `AR-10` checks were not run. | `N/A` / Informational |
+| `AR-00` | AWS Agent Registry is unavailable in the target region. regional `AR-03` through `AR-08` and `AR-10` are not assessed. | `N/A` / Informational |
 | `FS-00` | No regional Bedrock, AgentCore, or SageMaker resource footprint was found, so Responsible AI GRC was not applicable to that region. | `N/A` / Informational |
 | `OW-00` | A required upstream assessment CSV was missing, so one or more mapping-derived OWASP rows could not be generated. | `N/A` / Informational |
+| `AISF-00` | One or more derived AISF controls had no source check row for an assessed account and Region. | `N/A` / Informational |
 
 When a Bedrock API is access-denied or an AgentCore check raises an unexpected
 execution error, the affected control ID is reported as informational `N/A`
@@ -95,9 +295,10 @@ Pass rates are calculated from unique direct-service `Check_ID` values, not
 from report-row counts. Findings for resources, Regions, or accounts are
 aggregated into one result per control: any assessable `Failed` row makes the
 control fail, and a control passes only when all assessable rows pass.
-Informational and `N/A` rows are excluded from the score. Agentic AI and
-compliance-mapping rows are contextual views of source evidence and are also
-excluded to prevent double counting. Resource-level rows remain visible for
+Informational and `N/A` rows are excluded from the score. Responsible AI GRC
+rows are also excluded, as are Agentic AI and compliance-mapping rows, which
+are contextual views of source evidence and would otherwise be double counted.
+A failed control is counted at the highest severity among its failed rows. Resource-level rows remain visible for
 investigation and remediation.
 
 ---
@@ -121,352 +322,14 @@ investigation and remediation.
 | **Passed** | Checked resources met the assessed best practice at time of scan |
 | **N/A** | The check was not applicable, advisory-only, unavailable in the region, or could not be assessed (for example, because no resources exist or access was denied). |
 
----
-
-## Amazon SageMaker AI Security Checks (42)
-
-A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker Check Incomplete` row for its check ID, naming the check function, and the other checks still run. The SageMaker Lambda stops starting checks 120 seconds before its 900-second timeout; each check ID it did not reach gets one `N/A` `SageMaker Check Not Assessed (Timeout)` row that begins "Timeout, not assessed" and names the skipped functions, and every row collected before the deadline is still written. No check has its own time cap. The checks with the longest single reads, the SM-03 and SM-33 training and processing job describes and the SM-40 CloudTrail `LookupEvents` paging (2 requests per second), stop at the same deadline: the items not read are named in an `N/A` incomplete row that withholds `Passed`, and the rows already collected are kept.
-
-### SM-01: Internet Access
-
-- **Severity:** High
-- **AWS Security Hub Control:** SageMaker.2
-- **Description:** Checks for direct internet access on notebooks and domains.
-- **Rows emitted:**
-  - `Direct Internet Access Enabled` and `SageMaker Internet Access Check`: a notebook instance with `DirectInternetAccess` `Enabled`, or a Studio domain whose `AppNetworkAccessType` is not `VpcOnly`.
-  - `Notebook Instance Outside VPC`: fails a notebook instance with no `SubnetId`, because it runs outside a customer VPC.
-
-### SM-02: AWS IAM Permissions
-
-- **Severity:** High
-- **Description:** Identifies overly permissive policies and stale access from
-  the shared IAM permissions cache. A missing, unreadable, or malformed cache
-  produces an informational `N/A` incomplete-assessment row rather than a
-  compliant result.
-  A separate `SageMaker Service-Wide Grant in Customer Policy` finding reads
-  customer-managed and inline policies on roles and users and fails any Allow
-  statement that grants every SageMaker action, through `sagemaker:*`, a bare
-  `"*"` or a pattern that covers it, or through a `NotAction` list that does
-  not exclude SageMaker, on an identity whose permissions boundary allows a
-  SageMaker action. It also reads group policies. AWS managed policies are left
-  to the full-access finding above and to the next finding. A policy that
-  cannot be parsed produces `N/A` naming it.
-  A `SageMaker Read and Write Merged in One Grant` finding covers
-  AIR-FND-IAM-09 over the `sagemaker` namespace. It reads every attached (AWS managed included), inline and group policy of every cached role and user, and fails a wildcard `Action` pattern (a bare `"*"`, `*:*` and a partial pattern among them) or a `NotAction` Allow that grants both a read and a write action on one resource type, as the [service authorization reference](https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html) classifies them (the table is `iam_access_levels.json`, generated by `generate_iam_access_levels.py`). An explicit action list is never reported, because it separates read from write. An action counts only when no unconditioned `Resource: "*"` Deny removes it and the permissions boundary also allows it. A condition applies to the read and the write alike and is not read; the `Resource` entries are read only to drop resource types none of them can name, with a policy variable read as any value. Service control policies are not evaluated per principal, which can only make a row a false `Failed`, and each failing row says so. A policy that cannot be parsed produces `N/A` naming the principal. While the cache's `principal_errors` names a principal, each `Passed` row becomes `N/A` naming the unread principals; a cache without `principal_errors` (schema v1) keeps its verdict and says the errors were not recorded. A principal whose permissions boundary the cache could not read (a `permissions_boundary` stage in `principal_errors`) is not reported `Failed` by the service-wide or merged rows, because a boundary could remove the grant; the `N/A` row names it.
-- **Rows emitted:**
-  - `SageMaker Full Access Policy Used`, `Stale SageMaker Access` and `SageMaker IAM Permissions Check` (with `SageMaker IAM Permissions Check Incomplete` when the cache is missing): the IAM cache legs above. They run once, on the primary Region, tagged `Global`.
-  - `SageMaker Service-Wide Grant in Customer Policy` (and its `Incomplete` form) and `SageMaker Read and Write Merged in One Grant`: described above, also `Global`.
-  - `Endpoint Invocation Policy Scoping` (AIR-SGM-EP-02): fails an identity whose Allow reaches `sagemaker:InvokeEndpoint`, `InvokeEndpointAsync` or `InvokeEndpointWithResponseStream` on every endpoint, because a SageMaker endpoint accepts no resource-based policy and the identity policy is the only place the call can be scoped. `Global`.
-  - `SSO Not Properly Configured` and `SageMaker SSO Configuration Check`: per Region, each SageMaker domain's IAM Identity Center configuration.
-  - `SageMaker Runtime VPC Endpoint Policy Scoping` (AIR-SGM-EP-02): per Region, fails a `sagemaker.runtime` interface VPC endpoint whose policy has an Allow reaching `sagemaker:InvokeEndpoint` on every endpoint, which the default full-access policy does. Deny statements are not evaluated. A Region with no runtime VPC endpoint emits no row here; SM-11 reports the missing private path.
-  - `AI API Method Authorization` (AIR-FND-IAM-09 request layer): per Region, every API Gateway REST and HTTP API method whose integration reaches a Bedrock, AgentCore or SageMaker runtime, a Lambda function an agent action group or AgentCore gateway target names, or a Lambda function whose role is granted an AI invoke action. A method with no authorizer fails, and so do read and write methods on one resource that a token authorizer gives the same scopes or an IAM authorizer leaves under one `execute-api:Invoke` grant. `AI API Method Authorization Not Judged` (`N/A`) names the methods behind a Lambda authorizer, whose code is not read, and IAM grants the cache could not resolve.
-
-### SM-03: Data Protection
-
-- **Severity:** High
-- **AWS Security Hub Control:** SageMaker.1
-- **Description:** Verifies encryption at rest and in transit for notebooks, domains and training jobs, and the protection of the buckets training jobs read from and write to (AIR-SGM-TRN-02).
-- **Rows emitted:**
-  - `Missing Encryption Configuration`, `AWS Managed Key Usage`, `Missing VPC Encryption`, `SageMaker Data Protection Check` and `Data Protection Check`: KMS keys on notebooks, domains and training job output, and inter-container traffic encryption on multi-instance training jobs.
-  - `Customer Managed Key Not Enabled`: fails a resource whose customer managed key has a `kms:DescribeKey` `KeyState` other than `Enabled`.
-  - `Training Job Volume Encryption`: fails each training job with no `ResourceConfig.VolumeKmsKeyId`, because the ML storage volume that holds the downloaded training data then uses the EBS default key. More than 20 such jobs are summarized in one extra row. A training channel on Amazon EFS or FSx for Lustre is read for the file system's encryption at rest, and one that cannot be read is named as not read.
-  - `Training Job Data Bucket Protection`: every S3 bucket a training job's input channels or `S3OutputPath` name must default to SSE-KMS with a customer managed key (a named `KMSMasterKeyID` whose `kms:DescribeKey` reports `KeyManager` `CUSTOMER` and `KeyState` `Enabled`) and have a bucket policy that denies requests when `aws:SecureTransport` is `false`. A bucket read error withholds `Passed` and is named.
-  - Training jobs are described one at a time. When the run deadline (120 seconds before the Lambda timeout) is reached during that loop, the jobs not described are named in an `N/A` incomplete row and the rows already collected are kept.
-
-### SM-04: Amazon GuardDuty Integration
-
-- **Severity:** High
-- **Description:** Verifies Amazon GuardDuty runtime threat detection is enabled. `GuardDuty Findings Routed to Security Hub` passes when Security Hub in the Region imports GuardDuty findings (product subscription `aws/guardduty`). Security Hub not enabled in the Region (`InvalidAccessException`, "not subscribed to AWS Security Hub") fails, with a resolution to enable Security Hub and then its GuardDuty integration; Security Hub not offered in the Region is `N/A`. Any other read error, access denied among them, is `N/A` as `GuardDuty Findings Routed to Security Hub Incomplete`. `GuardDuty Findings Reviewed in Security Hub` is then `N/A` naming the routing row, and is `Incomplete` only when the routing row is. Security Hub also answers `InvalidAccessException` to a caller it does not permit, so that code without the "not subscribed" message is read as a failed read, not as Security Hub disabled.
-- **Rows emitted:**
-  - `GuardDuty Enabled`, `GuardDuty Detector Disabled`, `GuardDuty Not Enabled` and `GuardDuty Check Error`: the detector leg.
-  - `GuardDuty Findings Routed to Security Hub` and `GuardDuty Findings Reviewed in Security Hub`: the Security Hub legs above.
-  - `GuardDuty Findings Routed to Alerting`: passes when an `ENABLED` rule on the default event bus names source `aws.guardduty`, with no `detail-type` or with `GuardDuty Finding` among them, and has at least one target. No such rule fails. An `events:ListRules` error is `N/A` as `GuardDuty Findings Routed to Alerting Incomplete`, and a target read error is named.
-
-### SM-05: MLOps Features
-
-- **Severity:** Low
-- **Description:** Checks MLOps pipelines, experiment tracking, and model registry usage.
-
-### SM-06: Clarify Usage
-
-- **Severity:** Low
-- **Description:** Validates SageMaker Clarify for bias detection and explainability.
-
-### SM-07: Model Monitor
-
-- **Severity:** Medium
-- **Description:** Checks Model Monitor configuration for drift detection.
-
-### SM-08: Model Registry
-
-- **Severity:** Medium
-- **Description:** Validates model registry usage and permissions.
-
-### SM-09: Notebook Root Access
-
-- **Severity:** High
-- **AWS Security Hub Control:** SageMaker.3
-- **Description:** Validates root access is disabled on notebooks, and that notebook and Studio development environments run with a scoped role, are logged, are evaluated by AWS Config and are guarded at creation (AIR-SGM-TRN-05).
-- **Rows emitted:**
-  - `SageMaker Notebook Root Access Enabled` and `SageMaker Notebook Root Access Check`: each notebook instance's `RootAccess`.
-  - `SageMaker Development Environment Execution Role`: the role of each notebook instance, Studio domain default and default space, and Studio user profile is read from the IAM permissions cache. A role that holds `AmazonSageMakerFullAccess`, `AdministratorAccess`, `PowerUserAccess` or a grant of every SageMaker action fails, unless its permissions boundary does not allow every SageMaker action. A role missing from the cache, or no cache, is `N/A` and withholds `Passed`.
-  - `SageMaker Development Environment API Logging`: passes when one trail that is logging and covers the Region records SageMaker management events, read and write, and delivers them to CloudWatch Logs with no delivery error. A trail read error is `N/A`.
-  - `SageMaker Notebook Config Rules`: passes when the AWS managed Config rules `sagemaker-notebook-no-direct-internet-access` and `sagemaker-notebook-instance-kms-key-configured` are both active and not scoped to named resources or tags, and the KMS rule sets `kmsKeyArns`. A missing or narrowed rule fails.
-  - `SageMaker Notebook Access Guardrail`: for notebook instance, domain and user profile create and update actions on `sagemaker:RootAccess`, `sagemaker:DirectInternetAccess`, `sagemaker:VpcSubnets`, `sagemaker:VpcSecurityGroupIds`, `sagemaker:VolumeKmsKeyArn` and `sagemaker:AppNetworkAccessType`, and for `CreatePresignedNotebookInstanceUrl` and `CreatePresignedDomainUrl` on `aws:SourceIp` or `aws:SourceVpce`, requires a service control policy Deny attached on this account's path to the root. A condition in every identity policy that grants the action still fails, because the account root user is bound by no identity policy. Runs once, on the primary Region, tagged `Global`.
-
-### SM-10: Notebook Amazon VPC Deployment
-
-- **Severity:** High
-- **AWS Security Hub Control:** SageMaker.2
-- **Description:** Ensures notebooks are deployed within an Amazon VPC, and fails a notebook whose subnet's route table routes to an internet gateway. A notebook list or describe error is `N/A` and withholds the all-in-VPC `Passed`. The same check reads every SageMaker Studio domain (AIR-FND-NET-01): `DescribeDomain` reporting `AppNetworkAccessType` `PublicInternetOnly`, or omitting it (the default is `PublicInternetOnly`), fails `SageMaker Studio Domain Network Boundary`, because that mode sends non-EFS traffic through a SageMaker-managed VPC that allows direct internet access. A `VpcOnly` domain's `SubnetIds` go through the same route-table read under `SageMaker Studio Domain Subnet Internet Exposure`. A domain list or describe error, or a `VpcOnly` domain with no `SubnetIds`, is `N/A`.
-- **Rows emitted:**
-  - `SageMaker Notebook Not in VPC` and `SageMaker Notebook VPC Deployment Check`: each notebook instance's `SubnetId`.
-  - `SageMaker Notebook Direct Internet Access in VPC`: a notebook in a VPC whose `DirectInternetAccess` is not `Disabled`, because SageMaker then gives it internet access outside the VPC's routing and security groups.
-  - `SageMaker Notebook Subnet Internet Exposure`: a notebook whose subnet's route table routes to an internet gateway.
-  - `SageMaker Studio Domain Network Boundary` and `SageMaker Studio Domain Subnet Internet Exposure`: the domain legs above.
-
-### SM-11: Model Network Isolation
-
-- **Severity:** High
-- **AWS Security Hub Control:** SageMaker.4
-- **Description:** Checks inference containers have network isolation.
-- **Rows emitted:**
-  - `SageMaker Model Network Isolation Disabled`, `SageMaker Model Network Isolation Summary` and `SageMaker Model Network Isolation Check`: each model's `EnableNetworkIsolation`. Only these rows feed OWASP OW-03 and OW-10 (see `SECURITY_CHECKS_OWASP.md`).
-  - `SageMaker Model VPC Attachment` and `SageMaker Model Subnet Internet Exposure` (AIR-SGM-EP-01): each model's `VpcConfig`, judged apart from isolation because a model can be isolated with no VPC attachment, and its subnets' routes to an internet gateway.
-  - `SageMaker Endpoint Model Network Path` and `SageMaker Endpoint Config Subnet Internet Exposure` (AIR-SGM-EP-01, EP-03): isolation and `VpcConfig` of the models each endpoint serves, inference components included. A model the endpoint names that could not be described leaves that endpoint `N/A`.
-  - `SageMaker Endpoint Config Storage Encryption` (AIR-SGM-EP-03): the endpoint config `KmsKeyId`. No endpoint API field turns on inter-container traffic encryption, and the row says so.
-  - `SageMaker Runtime Private Invoke Path` (AIR-SGM-EP-01): where the Region hosts an endpoint, an available `sagemaker.runtime` interface endpoint with private DNS, in a VPC with `enableDnsSupport` and `enableDnsHostnames` true.
-  - `SageMaker Endpoint Invocation Source Network` (AIR-SGM-EP-01): each principal that can invoke an endpoint must be held to `aws:SourceVpce` or `aws:SourceVpc`. An attached service control policy Deny on every invoke action passes on its own; without one the account root user fails the leg. On the primary Region the service control policies are read once and shared with SM-34, SM-39, SM-09 and SM-42. Each other Region runs in its own Lambda invocation, so this leg reads them once more in each other Region that hosts a SageMaker endpoint; a Region with no endpoint does not read them.
-  - `AI Lambda Function Network Boundary` (AIR-FND-NET-01): every Lambda function an agent action group or AgentCore gateway target invokes, and every Lambda function and ECS awsvpc workload whose role is granted an AI invoke action, must run in VPC subnets with no route to an internet gateway. Bedrock Agents or AgentCore not offered in the Region adds a note and is not a failed read.
-
-### SM-12: Endpoint Instance Count
-
-- **Severity:** Medium
-- **AWS Security Hub Control:** SageMaker.5
-- **Description:** Verifies endpoints have 2+ instances for high availability.
-
-### SM-13: Monitoring Network Isolation
-
-- **Severity:** Medium
-- **Description:** Checks monitoring job network isolation.
-
-### SM-14: Model Container Repository
-
-- **Severity:** Medium
-- **Description:** Validates model container repository access.
-
-### SM-15: Feature Store Encryption
-
-- **Severity:** High
-- **Description:** Checks feature group encryption settings.
-
-### SM-16: Data Quality Encryption
-
-- **Severity:** Medium
-- **Description:** Validates data quality job encryption.
-
-### SM-17: Processing Job Encryption
-
-- **Severity:** Medium
-- **Description:** Verifies processing job encryption.
-
-### SM-18: Transform Job Encryption
-
-- **Severity:** Medium
-- **Description:** Checks transform job volume encryption, and the output key, model network boundary and buckets of each batch transform job (AIR-SGM-EP-08).
-- **Rows emitted:**
-  - `SageMaker Transform Job Volume Encryption Missing` and `SageMaker Transform Job Encryption Check`: each job's `TransformResources.VolumeKmsKeyId`.
-  - `SageMaker Transform Job Output Key and Model Boundary`: each job must set `TransformOutput.KmsKeyId` and `TransformResources.VolumeKmsKeyId` to customer managed keys, and the model it names (`ModelName`, read with `DescribeModel`) must have a `VpcConfig` with subnets and security groups and `EnableNetworkIsolation` true, because a transform job takes its network posture from its model. An AWS managed key fails; a key or model that cannot be read is named and withholds `Passed`.
-  - `SageMaker Transform Job Model Subnet Exposure`: the subnets of each such model whose route table routes to an internet gateway.
-  - `SageMaker Transform Job S3 VPC Endpoint`: each VPC those models run in needs an available S3 gateway endpoint, or an S3 interface endpoint with private DNS, whose policy does not grant object reads and writes on every bucket to any principal.
-  - `SageMaker Transform Job Bucket Protection`: the input and output buckets of each job are judged like `Training Job Data Bucket Protection` in SM-03.
-
-### SM-19: Hyperparameter Tuning Encryption
-
-- **Severity:** Medium
-- **Description:** Validates hyperparameter tuning job encryption.
-
-### SM-20: Compilation Job Encryption
-
-- **Severity:** Medium
-- **Description:** Checks compilation job encryption.
-
-### SM-21: AutoML Network Isolation
-
-- **Severity:** Medium
-- **Description:** Validates AutoML job network isolation.
-
-### SM-22: Model Approval Workflow
-
-- **Severity:** Medium
-- **Description:** Checks model approval and governance workflow (AIR-SGM-GOV-01).
-- **Rows emitted:**
-  - `Model Approval Workflow Check`, `Model Approval Workflow - Auto-Approval Suspected` and `Model Approval Workflow - Stale Pending Models`: the `ModelApprovalStatus` of each model package version.
-  - `Model Approval Workflow - Approver Attribution`: fails an approved version whose `LastModifiedBy` names no user profile, source identity or IAM ARN, because approval is applied with `UpdateModelPackage` and SageMaker records the caller there. `CreatedBy` names the registrant and is not read as the approver; `ApprovalDescription` is free text and is not an identity.
-  - `Model Registry Lifecycle Stage`: fails an approved version with no `ModelLifeCycle` `Stage` and `StageStatus`.
-  - `Model Registry Cross-Account Visibility`: passes when a model package group is shared from this account or with it through AWS RAM (`sagemaker:ModelPackageGroup`), and fails (Low) when none is, because the registry is then visible only inside this account. A RAM read error is `N/A`.
-  - `Deployed Model Registration`: every model serving on an endpoint or run by a batch transform job must have been created from an `Approved` version in a model package group: each container needs a `ModelPackageName` whose package belongs to a group and is `Approved`. A model or package that cannot be read is named and withholds `Passed`.
-  - A failed model package read leaves the version rows `N/A` naming the number not read.
-
-### SM-23: Model Drift Detection
-
-- **Severity:** Medium
-- **Description:** Validates model drift monitoring configuration, and for each monitoring schedule on an `InService` endpoint, its baseline, its recent reports and its alarm (AIR-SGM-EP-06).
-- **Rows emitted:**
-  - `Model Drift Detection Not Configured`, `Model Drift Detection - Missing Data Quality Monitoring`, `Model Drift Detection - Missing Model Quality Monitoring` and `Model Drift Detection Check`: whether endpoints have data quality and model quality monitoring schedules.
-  - `Model Monitor Baseline Constraints`: fails a schedule whose job definition names no baseline constraints file. A job definition that cannot be described is `N/A`.
-  - `Model Monitor Recent Report`: fails a schedule that has never run, whose latest finished execution is not `Completed` or `CompletedWithViolations`, or whose latest report was scheduled more than twice its cadence ago.
-  - `Model Monitor Violation Alarm`: fails a schedule with no CloudWatch alarm whose `ALARM` state reaches an enabled action, its own or an OR composite alarm's, on a metric in that schedule's monitoring-type namespace with both its endpoint and schedule dimensions. A data quality alarm must read a `feature_baseline_drift_` metric with a rising threshold below 1. A `cloudwatch:DescribeAlarms` error is `N/A`.
-
-### SM-24: A/B Testing and Shadow Deployment
-
-- **Severity:** Low
-- **Description:** Checks for safe deployment patterns.
-
-### SM-25: ML Lineage Tracking
-
-- **Severity:** Low
-- **Description:** Validates experiment tracking and lineage.
-
-### SM-26: GuardDuty AI Protection
-
-- **Severity:** High
-- **Description:** Reuses the regional GuardDuty detector inventory and verifies the detector `Status` and its `AI_PROTECTION` feature are both `ENABLED`. A detector with status `DISABLED` fails whatever its feature status, and a Region with no detector fails, because neither produces AI Protection findings. For an `ENABLED` detector, a second row, `GuardDuty AI Protection Organization Auto-Enable`, reads `DescribeOrganizationConfiguration` (every page) and passes only when `AutoEnableOrganizationMembers` is `ALL` and the `AI_PROTECTION` feature's `AutoEnable` is `ALL`. `NEW`, `NONE` or a missing entry fails. A failed read is `N/A`, because only the GuardDuty delegated administrator can call the API. Each member account's own detector is not read.
-
-### SM-27: HyperPod EBS CMK Encryption
-
-- **Severity:** Medium
-- **Description:** Verifies every HyperPod instance group configures a customer-managed KMS key for its root EBS volume and all configured secondary EBS volumes. AWS documents that HyperPod root volumes use an AWS-owned key by default and that a customer-managed key is supplied through `InstanceStorageConfigs`; therefore, an absent root-volume storage configuration fails this CMK baseline rather than producing `N/A`.
-
-### SM-28: HyperPod VPC Configuration
-
-- **Severity:** Medium
-- **Description:** Verifies each HyperPod instance group's effective VPC configuration has subnets and security groups, honoring `OverrideVpcConfig` before the cluster-level `VpcConfig`.
-- **Rows emitted:**
-  - `HyperPod VPC Configuration`: the leg above.
-  - `HyperPod Subnet Internet Exposure`: an instance group whose subnet's route table routes to an internet gateway.
-
-`SM-29` is reserved for SageMaker Unified Studio private networking. It is not currently emitted because the available domain APIs do not expose a sufficient domain-level networking configuration.
-
-### SM-30: Model Package Group Resource Policy Exposure
-
-- **Severity:** High for public or configured-boundary violations; Informational for unclassified external sharing
-- **Description:** Parses model package group resource policies to identify public wildcard principals and external accounts or organizations outside optional `AIML_APPROVED_EXTERNAL_ACCOUNT_IDS` / `AIML_APPROVED_ORG_IDS` boundaries. Configure those boundaries through the `ApprovedExternalAccountIds` and `ApprovedOrganizationIds` deployment parameters, respectively; both default to empty. Wildcard principals constrained by exact `aws:PrincipalAccount` or `aws:PrincipalOrgID` values, fixed-account `aws:PrincipalArn` patterns, or fixed-organization `aws:PrincipalOrgPaths` patterns are treated as bounded. Wildcard account/organization identifiers remain public; `ForAllValues` organization-path conditions count as boundaries only when a matching `Null: false` condition requires the key to be present. Because AWS supports `NotPrincipal` only with `Deny`, an `Allow` statement containing `NotPrincipal` is reported as unsupported and `N/A` rather than silently passing or being treated as public. Valid `Deny` statements do not create exposure and are ignored. If `sts:GetCallerIdentity` is unavailable, public wildcard statements are still reported, but account principals that cannot be distinguished as same-account or external produce `N/A` instead of an external-access finding. This is a conservative heuristic, not a complete IAM authorization simulator.
-
-### SM-31: Endpoint Inference Data Capture
-
-- **Severity:** Medium
-- **Description:** Requires each SageMaker endpoint to capture inference requests and responses. `DescribeEndpoint` reports the live capture state as `DataCaptureConfig.EnableCapture` plus `CaptureStatus`, so an endpoint whose configuration enables capture but whose `CaptureStatus` is `Stopped` is reported as a failure and not as compliant.
-- **Rows emitted:**
-  - `Endpoint Inference Data Capture`: the capture leg above.
-  - `Data Capture Disk Utilization Alarm`: each instance-backed variant of a capturing endpoint needs an enabled CloudWatch alarm whose `ALARM` state reaches an action, on `DiskUtilization` with its `EndpointName` and `VariantName` dimensions, at 75% or lower. Serverless variants are left out. `Data Capture Disk Utilization Alarm Not Judged` (`N/A`) names variants whose only such alarm evaluates a metric math expression or another account's metric.
-
-### SM-32: SageMaker Configuration Compliance Evaluation
-
-- **Severity:** Medium
-- **Description:** Two independent legs, each with its own finding. `SageMaker Configuration Recording` requires an AWS Config recorder whose recording group covers SageMaker resource types. `SageMaker Config Rule Compliance` requires at least one active Config rule evaluating SageMaker and reports that rule's current compliance result. Neither verdict implies the other: a recorder with no rules evaluates nothing, and a rule with no recorder cannot see configuration changes. Service-linked rules, which carry `CreatedBy` (for example `securityhub.amazonaws.com`), are reported `N/A` naming the owning service, because AWS Config returns their compliance results to no caller.
-- **Rows emitted:**
-  - `SageMaker Configuration Recording` and `SageMaker Config Rule Compliance`: the two legs above.
-  - `SageMaker Required Config Rules`: passes when the AWS managed rules `sagemaker-endpoint-configuration-kms-key-configured` (with `kmsKeyArns` set), `sagemaker-notebook-instance-kms-key-configured` and `sagemaker-notebook-no-direct-internet-access` are all active and not scoped to named resources or tags. A missing or narrowed rule fails.
-  - `SageMaker Config Conformance Pack`: passes only when a conformance pack created by `config-multiaccountsetup.amazonaws.com` (an organization conformance pack) carries all three of those rules. A pack read error is named and withholds `Passed`.
-
-### SM-33: Training Job Network Boundary
-
-- **Severity:** Medium
-- **Description:** Requires training jobs to run inside a customer VPC. Network isolation and `VpcConfig` are reported separately, because a job can set `EnableNetworkIsolation` with no VPC attachment, and an isolated job without a VPC attachment still has no private path to Amazon S3 or Amazon ECR. SM-21 asserts the same VPC boundary for AutoML jobs only. Every training job is listed and described, with no item cap. The same check lists and describes every processing job (AIR-FND-NET-01): a job whose `NetworkConfig` names no `VpcConfig` fails `Processing Job Network Boundary`, and the subnets of the others go through the route-table read under `SageMaker Processing Job Subnet Internet Exposure`. A list or describe error is `N/A`, and `No SageMaker training or processing jobs found` appears only when both lists read empty. In an estate with many jobs this check makes one describe call per job, and when the run deadline is reached during either describe loop, the jobs not described are named in an `N/A` row that withholds `Passed` for that job type.
-- **Rows emitted:**
-  - `Training Job Network Boundary` and `Training Job Network Isolation`: each training job's `VpcConfig` and `EnableNetworkIsolation`, reported apart.
-  - `SageMaker Training Job Subnet Internet Exposure`: a training job's subnets whose route table routes to an internet gateway.
-  - `Training Job VPC Endpoint Coverage` (AIR-SGM-TRN-01): each VPC a training job ran in needs an available endpoint for S3 (gateway, or interface with private DNS), CloudWatch Logs, the SageMaker API, `ecr.api` and `ecr.dkr`. An interface endpoint counts only with private DNS on, and a VPC that relies on one fails when `enableDnsSupport` or `enableDnsHostnames` is false.
-  - `Processing Job Network Boundary` and `SageMaker Processing Job Subnet Internet Exposure`: the processing job legs above.
-
-### SM-34: SageMaker Creation Guardrails
-
-- **Severity:** Medium
-- **Description:** Requires a service control policy that denies creation of unencrypted, internet-exposed, or non-VPC SageMaker resources, with one verdict per guardrail category: `encryption` (`sagemaker:VolumeKmsKey`, `sagemaker:OutputKmsKey`, `sagemaker:InterContainerTrafficEncryption`), `approved network` (`sagemaker:VpcSubnets`, `sagemaker:VpcSecurityGroupIds`, `sagemaker:NetworkIsolation`), and `no direct internet access` (`sagemaker:DirectInternetAccess`). Categories are reported separately because an organization commonly guards encryption at creation and leaves the network parameters unguarded. A Deny that fires when the parameter is absent or holds a non-approved value counts as enforced; a Deny naming one specific value is reported as ambiguous, because whether that value is the non-compliant one depends on the value and this check does not interpret it. An unreadable organization view produces `N/A`.
-
-### SM-35: Security Service Delegated Administrator
-
-- **Severity:** High
-- **Description:** Emits one row per security service principal from a fixed list (Amazon GuardDuty, AWS Security Hub, Amazon Inspector, Amazon Macie, AWS Config through `config.amazonaws.com`, AWS Config multi-account setup through `config-multiaccountsetup.amazonaws.com`, IAM Access Analyzer, AWS CloudTrail, Amazon Detective, Amazon Security Lake, AWS Firewall Manager, AWS Audit Manager), each row naming the list. A service passes when an `ACTIVE` delegated administrator other than the organization management account is registered and the service principal is among the organization's trusted-access principals (`ListAWSServiceAccessForOrganization`). It fails when none is registered, when the only active one is the management account, or when trusted access for the principal is not enabled. That failure for `macie.amazonaws.com`, `detective.amazonaws.com`, `fms.amazonaws.com` or `auditmanager.amazonaws.com` says the principal name is not confirmed by a live read. When the trusted-access list cannot be read, every service with such an administrator is `N/A`. `ListDelegatedAdministrators` is readable only from the management account or a delegated administrator account, so an access denial for one service is `N/A` for that service alone. An account outside AWS Organizations produces one `N/A` row. Runs once, on the primary region, tagged `Global`. A second row, `Security Service Regional Delegated Administrator`, runs per Region and passes when GuardDuty, Security Hub, Amazon Inspector, Amazon Macie and Amazon Detective are all administered there from one account other than the organization management account. A service not enabled in the Region (no GuardDuty detector, Security Hub `InvalidAccessException` with the "not subscribed to AWS Security Hub" message, Macie "not enabled") fails. A service not offered in the Region is left out with a note on the row, and access denied is `N/A` naming the service. The regional row is judged only in the management account and in an account that is an `ACTIVE` delegated administrator for one of those five services, because a delegated administrator is an organization-level setting made in the management account. In any other account the regional rows are not emitted; one `N/A` `Informational` `Security Service Regional Delegated Administrator` row tagged `Global` says the account is a member account, and names an access-denied `ListDelegatedAdministrators` when that is how it was established. A failed read of the account's own role leaves each regional row `N/A`.
-- **Rows emitted:**
-  - `Security Service Delegated Administrator`: one row per service principal, as above.
-  - `Security Service Delegated Administrator Consolidation`: passes when every security service checked is administered from the one account other than the management account. Services administered from different accounts fail, because administrator-member relationships do not carry across services; a service with no non-management administrator fails, and a service whose administrators could not be listed is `N/A` as `Security Service Delegated Administrator Consolidation Incomplete`.
-  - `Security Service Regional Delegated Administrator`: the regional row, or the member-account row, above.
-
-### SM-36: Security Hub AI Security Standard
-
-- **Severity:** High
-- **Description:** Requires the AWS Security Hub AI Security Best Practices v1.0.0 standard (`standards/ai-security-best-practices/v/1.0.0`) to be enabled in the region. `READY` passes; `INCOMPLETE` passes with a note to review the standard's `StatusReason`; any other subscription status fails. Security Hub not enabled in the region (`InvalidAccessException` with the "not subscribed to AWS Security Hub" message) fails, because no standard is evaluating anything; the same code with any other message is `N/A`, because Security Hub also answers it to a caller it does not permit.
-- **Rows emitted:**
-  - `Security Hub AI Security Best Practices Standard`: the standard leg above.
-  - `Security Hub Central Configuration`: passes when Security Hub's organization configuration is `CENTRAL` and `ENABLED` and this account is associated with a configuration policy that enables Security Hub and lists the AI Security Best Practices and AWS Foundational Security Best Practices standards. A self-managed association, an association in `AssociationStatus` `FAILED`, or a policy without those standards fails. `DescribeOrganizationConfiguration`, `GetConfigurationPolicyAssociation` and `GetConfigurationPolicy` answer only for the Security Hub delegated administrator, so a denied read is `N/A` as `Security Hub Central Configuration Incomplete`.
-
-### SM-37: GuardDuty Lambda Protection
-
-- **Severity:** Medium
-- **Description:** Requires the GuardDuty `LAMBDA_NETWORK_LOGS` feature to be `ENABLED` on an enabled detector, so network activity from AI workload Lambda functions is monitored. A disabled or absent feature fails and names its state. No detector produces `N/A`; SM-04 reports the missing detector.
-- **Rows emitted:**
-  - `GuardDuty Lambda Protection`: the feature leg above.
-  - `SageMaker Endpoint Network Anomaly Alerting`: every SageMaker endpoint and AgentCore runtime passes only when each subnet it runs in is covered by an `ACTIVE` VPC or subnet flow log that captures accepted traffic into CloudWatch Logs, and that log group has a metric filter that can match a flow-log record whose metric an alarm with an action evaluates, with a threshold the published values can cross. AgentCore not offered in the Region adds a note and is not a failed read.
-  - `VPC DNS Resolver Visible to GuardDuty`: fails a VPC whose DHCP option set names a domain name server other than `AmazonProvidedDNS`, because GuardDuty analyzes only DNS queries that reach the AWS-provided resolver. `VPC DNS Resolver Visible to GuardDuty Not Judged` (`N/A`) names VPCs whose option set names no server.
-
-### SM-38: GuardDuty Runtime Monitoring
-
-- **Severity:** High
-- **Description:** Requires the GuardDuty `RUNTIME_MONITORING` feature to be `ENABLED` and reports the automated agent management state for EKS, ECS Fargate and EC2. The legacy `EKS_RUNTIME_MONITORING` feature covers EKS only, so a detector with only that feature enabled fails. No detector produces `N/A`.
-- **Rows emitted** (all per Region, because each reads that Region's detector, functions and trails):
-  - `GuardDuty Runtime Monitoring`: the feature leg above.
-  - `GuardDuty Runtime Monitoring Coverage`: per-resource coverage against the EKS and ECS cluster population. A detector with every agent-management option off and no manual agent fails here.
-  - `GuardDuty EKS Audit Log Monitoring`: where EKS clusters exist, the `EKS_AUDIT_LOGS` feature.
-  - `Lambda Runtime Detection Tier`: Lambda has no runtime agent, so the tier is GuardDuty Lambda Protection, Amazon Inspector Lambda standard and code scanning read per function, and, where functions exist, CloudTrail data events on `AWS::Lambda::Function`.
-  - `ECS Managed Instances Runtime Detection Tier`: Runtime Monitoring does not support ECS Managed Instances, so each running task needs `awsvpc` mode with an `ACTIVE` flow log recording `ALL` traffic on its ENI, subnet or VPC, every container's logs sent to CloudWatch Logs through `awslogs`, and a trail or event data store recording the Region's ECS management events.
-  - `Lambda MicroVM Runtime Detection Tier`: VPC Flow Logs on every egress connector subnet, the image version's application logging to CloudWatch Logs, and CloudTrail data events on `AWS::Lambda::MicrovmImage`. A MicroVM with no egress connector fails.
-
-### SM-39: EKS VPC CNI Network Policy
-
-- **Severity:** Medium
-- **Description:** For each EKS cluster, reads the managed `vpc-cni` add-on's `configurationValues` and requires `enableNetworkPolicy` to be true (EKS returns the value as the string `"true"` inside a JSON or YAML document). A pass means network-policy enforcement is enabled on the add-on; whether NetworkPolicy objects restrict pod traffic is a Kubernetes-API fact this scan cannot read. An EKS Auto Mode cluster (`computeConfig.enabled`) is reported `N/A`, because Auto Mode sets network policy on the NodeClass, a Kubernetes object no AWS API returns. Any other cluster without the managed add-on is reported `N/A`, because enforcement by a self-managed CNI is not readable through the EKS API. One cluster's read error is reported for that cluster alone.
-- **Rows emitted:**
-  - `EKS VPC CNI Network Policy Enforcement`: the add-on leg above.
-  - `EKS Network Policy Default-Deny Mode`: a cluster with network policy enabled fails unless `env.NETWORK_POLICY_ENFORCING_MODE` is `strict`, the only default-deny an AWS API returns. Each row says whether security groups for pods are enabled.
-  - `Agent Workload Security Group Segmentation` (AIR-SLF-RT-05): the security groups of each ECS service and standalone task, Lambda function, Lambda MicroVM egress connector and EC2 instance (one per Auto Scaling group). A rule to a /16 (IPv6 /48) or wider fails. `Agent Workload Security Group Segmentation CIDR Width Not Judged` (`N/A`) names rules narrower than that and wider than a /24 (IPv6 /64).
-  - `Lambda MicroVM Ingress` (AIR-SLF-RT-05): a `SHELL_INGRESS` connector fails; a connector type the check does not recognize is `N/A`. Auth token port scope is not returned by `GetMicrovm` and is stated, not judged.
-  - `Agent Workload DNS Egress Control` and `Agent Workload Network Firewall Egress` (AIR-SLF-RT-02): one row each per VPC that an ECS awsvpc service, VPC-attached Lambda function, EKS cluster, EC2 instance, SageMaker endpoint, running training, processing or transform job, HyperPod cluster, notebook instance or Studio domain, or active Bedrock customization or batch inference job runs in. DNS passes only when the first DNS Firewall rule in force over `*` is a `BLOCK` with no query type and `FirewallFailOpen` is `DISABLED`. Network Firewall follows each hosting subnet's internet routes one hop, through a NAT gateway or a transit gateway attachment, to a firewall endpoint; a route to an internet gateway bypasses inspection and fails. An agent Lambda function outside a VPC fails both rows.
-  - `Agent Workload Egress Allow-List Sync`: where a DNS Firewall applies, compares the names it answers ahead of its `BLOCK` over `*` with each reached firewall's `ALLOWLIST` targets.
-  - `Agent Workload Security Group Egress` (AIR-FND-NET-03): fails a SageMaker, EKS or Bedrock workload whose groups' all-protocol egress reaches any destination.
-  - `Lambda VPC Creation Guardrail` and `Lambda Network Connector Creation Guardrail`: the SM-34 legs over the Lambda VPC and network connector condition keys. They run once, on the primary Region, tagged `Global`.
-  - Lambda MicroVMs, Bedrock Agents or AgentCore not offered in the Region make an empty population with a note on each row, and are not failed reads. Access denied stays `N/A` naming the call.
-
-### SM-40: Secrets Manager Rotation
-
-- **Severity:** Medium
-- **Description:** For each customer-managed secret, requires automatic rotation to be turned on and the last rotation to fall within the rotation schedule plus one day. A secret with rotation turned on that has never rotated fails, as does one whose schedule allows a gap longer than 90 days, the default `maxDaysSinceRotation` of Security Hub control `SecretsManager.4`. Schedules are read from `rate()` (hours or days), `cron()` (the longest gap between two scheduled dates), or `AutomaticallyAfterDays`; a `cron()` form this check does not interpret, such as `W`, is reported `N/A`. Secrets with `OwningService` set rotate under that service's control and are skipped and counted. Secret values are never read.
-- **Rows emitted:**
-  - `Secrets Manager Automatic Rotation`: the schedule leg above.
-  - `Secrets Manager Rotation History`: for each rotating secret, reads 90 days of CloudTrail event history. A `RotationFailed` or `RotationAbandoned` event after the last rotation fails, as does a `RotationStarted` event more than 24 hours old with no rotation since. A rotation started within 24 hours is `N/A` with no outcome yet.
-  - `Rotated Secret Propagation`: an ECS task that injects a rotating secret fails when no `ENABLED` EventBridge rule on Secrets Manager rotation events has a target, because ECS resolves the value at task start. An injection from Parameter Store fails, as does an `ACTIVE` Lambda MicroVM image version whose `resume` hook is not `ENABLED`. With a rule that has a target the row is `N/A`, because what the target runs is not read. Lambda functions are not graded.
-  - `Credential Held Outside Secrets Manager`: fails a credential-named environment variable (matched on the name; the value is not logged) set in plaintext on an ECS container, a Lambda function, a SageMaker model or a Lambda MicroVM image version.
-
-### SM-41: AWS IoT Device-Scoped Policy
-
-- **Severity:** High
-- **Description:** For each AWS IoT policy attached to a certificate or other principal, fails an Allow statement that reaches `Publish`, `Subscribe`, `Receive` or `Connect` on `*`, on all topics, topic filters or client IDs, or through `NotResource`, unless the resource embeds `${iot:Connection.Thing.ThingName}` as a whole path segment, with no wildcard or other text before or after it in that segment. `NotAction` Allow statements are expanded to the device actions they reach. A statement allowing `Connect` also needs a `Bool` condition requiring `iot:Connection.Thing.IsAttached` to be `true`. Unattached policies are skipped. No attached policy produces `N/A`. For a policy attached to a thing group, the unique-certificate row lists the group's things with child groups included (`iot:ListThingsInThingGroup` with `recursive`) and each thing's certificate principals (`iot:ListThingPrincipals`), and judges each such certificate like one attached directly; an unread group or thing is `N/A` and named. An `AWS IoT Role Alias Device Scope` row lists every credentials-provider role alias (`ListRoleAliases`), describes each (`DescribeRoleAlias`) and judges its `roleArn` from the IAM permissions cache: the role fails when no Allow statement in its attached or inline policies names a `credentials-iot:` policy variable in `Resource` or `Condition`, because every device that assumes the alias then gets the same AWS access. Whether every statement of the role is device-scoped is not judged. A describe error, a missing `roleArn`, a role absent from the cache, a cache read error or no cache is `N/A`. A Region with no role alias gets no row.
-- **Rows emitted:**
-  - `AWS IoT Device-Scoped Policy`: the policy leg above.
-  - `AWS IoT Unique Device Certificate`: fails a certificate a device policy reaches that `ListPrincipalThings` attaches to more than one thing.
-  - `AWS IoT Role Alias Device Scope`: the role alias leg above.
-  - `AWS IoT Device Defender Audit`: passes when `DEVICE_CERTIFICATE_SHARED_CHECK` is enabled in the account audit configuration, a scheduled audit runs it, a run of that audit completed the check in the last 31 days, and the latest such run holds no unsuppressed finding. A read error is named and withholds `Passed`.
-
-### SM-42: Batch Transform Creation Guardrail
-
-- **Severity:** Medium
-- **Description:** Applies the `SM-34` creation guardrail to the batch transform path only: `CreateTransformJob` on `sagemaker:VolumeKmsKeyArn` and `sagemaker:OutputKmsKeyArn`, and `CreateModel` on `sagemaker:VpcSubnets` or `sagemaker:VpcSecurityGroupIds` and on `sagemaker:NetworkIsolation`. A transform job takes its network posture from its model, so `CreateModel` carries the network keys. Each requirement is met by a service control policy Deny on this account's path to the root or by a condition in every identity policy that grants the action. A training, endpoint configuration or notebook gap does not fail this check. Service control policies are organization-wide, so it runs once, on the primary Region, and its rows are tagged `Global`.
-
-### SM-43: Model Artifact Integrity
-
-- **Severity:** Medium
-- **Description:** Judges every container each InService endpoint serves, including the containers of a model package the model names and of each inference component. The image passes when it is pinned by digest (`@sha256:`) or by a tag that its Amazon ECR repository holds immutable: `IMMUTABLE`, `IMMUTABLE_WITH_EXCLUSION` for a tag no exclusion filter matches, or `MUTABLE_WITH_EXCLUSION` for a tag an exclusion filter matches. An untagged image is read as `latest`. When a managed signing rule of the registry covers the repository (a rule with no filters covers every repository), the image also needs a `COMPLETE` status from `DescribeImageSigningStatus`, read by the digest `DescribeEndpoint` reports the image resolved to; no status, or a `FAILED` one, fails. S3 model data passes when `ModelDataSource.S3DataSource` records an `ETag` or `ManifestEtag`, when a model package container records `ModelDataETag`, or when the source names SageMaker hub content (`HubAccessConfig.HubContentArn`). A bare `ModelDataUrl` fails, as does each `AdditionalModelDataSources` entry with no ETag, and a container whose environment sets `HF_MODEL_ID` with no model data. Only environment keys are read, never values. Each artifact bucket must default to SSE-KMS with a named `KMSMasterKeyID` that `kms:DescribeKey` reports as `KeyManager` `CUSTOMER`; an `alias/aws/` alias or an AWS managed key fails. A repository in another account, an image outside ECR with a tag, or any denied read leaves the endpoint `N/A` naming the permission. A recorded value means an expected value is recorded: whether it was compared at load time is not returned by any API this check reads, and weights fetched by startup code, and models loaded on ECS, EKS or EC2, are not read. Inference components are listed per variant with `ListInferenceComponents`; only `InService` components hosted on the endpoint are judged, every entry of a multi-specification component is judged, and a component that returns no model name, image or artifact URL reads `N/A`. The per-object leg (`HeadObject` on each artifact named as one S3 object, to compare its current `ETag` and its own server-side encryption) runs only when the `EnableSageMakerArtifactObjectReads` deployment parameter is `true`, because `HeadObject` is authorized by `s3:GetObject`, which also allows downloading any object. It defaults to `false`, and an `N/A` row then names the parameter and the number of objects not read; image pinning, recorded expected values, bucket default encryption and role read scope are still judged. An endpoint that meets every other leg but has an artifact object that was not read is named in that row and is `N/A`, not `Passed`, because the object's current `ETag` and encryption were not compared; an endpoint with no S3 object to read can still pass.
+In the core Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, and
+AWS Agent Registry assessments, a check that could not be assessed is reported
+as `N/A` with `Informational` severity. Responsible AI GRC is the exception: its
+could-not-assess findings (finding names prefixed `COULD NOT ASSESS:`) are `N/A`
+with `Low` severity, so an unknown control state stays visible until access is
+fixed and the assessment is re-run. Not-applicable and advisory GRC findings
+remain `Informational`. See the
+[Responsible AI GRC severity rubric](SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md#severity-rubric).
 
 ---
 
@@ -479,12 +342,12 @@ A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker 
 
 ### BR-02: Amazon VPC Endpoint Configuration
 
-- **Severity:** High
+- **Severity:** Medium
 - **Description:** Lists interface endpoints for the five Bedrock surfaces (`bedrock`, `bedrock-runtime`, `bedrock-agent`, `bedrock-agent-runtime` and `bedrock-mantle`) across every VPC page, then reads each Lambda function, ECS service and standalone ECS task, SageMaker notebook instance and endpoint model, EKS pod identity association, EC2 instance and VPC-mode AgentCore runtime version in the Region, resolves its execution, task, notebook, model, pod identity, instance-profile or runtime role, and computes from the IAM cache which surfaces that role is granted (attached, inline and group policies, with a permissions boundary that denies an action removing it). The three AgentCore surfaces (`bedrock-agentcore`, `bedrock-agentcore-control` and `bedrock-agentcore.gateway`) count as surfaces for this leg only: a `bedrock-agentcore` action is placed on the data plane or control plane by its botocore model, and `bedrock-agentcore:InvokeGateway` on the Gateway endpoint. The `Bedrock Workload Private Connectivity` finding fails a workload outside a VPC, and a workload whose VPC has no private-DNS endpoint for a surface its role is granted. Only an endpoint in State `available` counts; a `pendingAcceptance`, `rejected` or `failed` endpoint carries no traffic. A workload granted a Bedrock, AgentCore or SageMaker runtime (`sagemaker.runtime`) surface is in scope, and also needs a private-DNS endpoint for each SageMaker API or runtime surface its role is granted, and a gateway or private-DNS endpoint for S3 and DynamoDB. A gateway endpoint covers a workload only when its `RouteTableIds` hold the route table of every subnet the workload runs in: the subnet's explicit association from `ec2:DescribeRouteTables` (read for each VPC that holds a gateway endpoint), else the VPC's main table. A subnet whose table the endpoint does not name fails. A workload whose subnets were not read, which includes every EKS pod identity association because the cluster's subnets are not the pods' subnets, a VPC whose route tables were not read, or a subnet with no association and no main table, withholds `Passed`. Endpoint presence alone is reported as `N/A` and no longer passes. An endpoint listing that fails is reported as not read. ECS services are listed on every page of every cluster (`ecs:ListClusters`, `ecs:ListServices`; a denied cluster list falls back to the default cluster and is named, and then lists no standalone task, because `ecs:ListTasks` is granted only for a named cluster), described 10 at a time (`ecs:DescribeServices`), and placed in the VPC of each `awsvpc` subnet with the task role of their task definition (`ecs:DescribeTaskDefinition`). The service's own `roleArn` is not read as the task role. A service with no `awsvpc` subnets, or one that `ecs:DescribeServices` returns in its `failures` list, is reported as not read. The tasks in each cluster are listed (`ecs:ListTasks`) and described 100 at a time (`ecs:DescribeTasks`); a task whose `group` starts with `service:` belongs to a service and is skipped. A standalone task is placed in the VPC of its ENI attachment's `subnetId` with its `overrides.taskRoleArn`, or else the task role of its task definition, and one with no ENI subnet is reported as not read. Each notebook instance is described (`sagemaker:DescribeNotebookInstance`), and one with no `SubnetId` runs outside a VPC and fails. Each AgentCore runtime is listed (`bedrock-agentcore:ListAgentRuntimes`), its latest version and every version an endpoint serves (`bedrock-agentcore:ListAgentRuntimeEndpoints` `liveVersion` and `targetVersion`) are read with `bedrock-agentcore:GetAgentRuntime`, and a `VPC`-mode version is placed in the VPC of its `networkModeConfig.subnets` with its `roleArn`. A `PUBLIC`-mode version is left to AC-01. A version with no `networkMode`, a `VPC`-mode version with no subnets, or a subnet `ec2:DescribeSubnets` does not return is reported as not read. Each SageMaker endpoint (`sagemaker:ListEndpoints`, `sagemaker:DescribeEndpoint`) has its configuration read (`sagemaker:DescribeEndpointConfig`); every model a production or shadow variant names, and every model an inference component names (`sagemaker:ListInferenceComponents`, `sagemaker:DescribeInferenceComponent`), is read with `sagemaker:DescribeModel` and placed in the VPC of its `VpcConfig` subnets with its `ExecutionRoleArn`. A model behind an inference component with no `VpcConfig` of its own takes the endpoint configuration's `VpcConfig`, and an endpoint configuration with its own `ExecutionRoleArn` is judged as a workload too. A model with no VPC fails. Each EKS cluster (`eks:ListClusters`) is read for its `vpcId` (`eks:DescribeCluster`), and each pod identity association (`eks:ListPodIdentityAssociations`, `eks:DescribePodIdentityAssociation`) is judged in that VPC with its `roleArn`. An association with a `targetRoleArn` in another account is reported as not read, since the IAM cache holds this account's roles only. A pod that takes its role through IAM roles for service accounts is not read, because that binding is a service account annotation held by the Kubernetes API. Private hosted zones shared from another VPC are not read. The finding text names each of these. A workload whose role the cache does not hold, a collector error, or cache `principal_errors` downgrade the `Passed` row to `N/A`. Service control policies are not evaluated per principal. An endpoint policy counts as scoped only through a `Deny` on `bedrock:InvokeModel` with `Resource` `*`, no `NotResource`, and exactly one condition: a negated test on exact values of a principal or network scope key. A `Null` test, a second condition key, or a wildcard value is not credited. An `Allow` is scoped by a key only under a positive, non-`IfExists` test on exact values, and a principal with `*` or `?` in it is unbounded.
 
 ### BR-03: Marketplace Subscription Access
 
-- **Severity:** Medium
+- **Severity:** High
 - **Description:** Checks for overly permissive marketplace subscription access.
 
 BR-01, BR-02, BR-03, BR-08, BR-10, and BR-21 depend on the shared IAM
@@ -499,12 +362,12 @@ inventory is never treated as evidence of compliance.
 
 ### BR-05: Guardrail Configuration
 
-- **Severity:** High
+- **Severity:** Medium
 - **Description:** Verifies guardrails are configured and enforced.
 
 ### BR-06: AWS CloudTrail Logging
 
-- **Severity:** Medium
+- **Severity:** High for missing management-event logging; Medium for other failed rows
 - **Description:** Validates AWS CloudTrail logging for Bedrock API calls on logging multi-Region trails and on logging single-Region trails whose `HomeRegion` is the assessed Region, judging every selector field. The management row credits a basic selector with `IncludeManagementEvents` and `ReadWriteType` `All` that excludes neither `bedrock.amazonaws.com` nor `bedrock-mantle.amazonaws.com`, or an advanced `eventCategory` `Management` selector with no field that drops Bedrock (`readOnly`, or an `eventSource` that leaves either source out). Calls to the `bedrock-mantle` endpoint carry the `bedrock-mantle.amazonaws.com` event source, so a selector that keeps only `bedrock.amazonaws.com` records none of its management events. `WriteOnly` is not credited because `InvokeModel` is a read-only management event. A `NetworkActivity` selector is not management coverage. The data-event rows credit a resource type only from a selector whose sole other field is `eventCategory` `Data`; a type named only beside `eventName`, `readOnly`, `resources.ARN` or any other field is reported as narrowed. The knowledge base row needs `AWS::Bedrock::KnowledgeBase` and enabled model invocation logging with `textDataDeliveryEnabled` `true`; a flag the API does not return is reported as unread. It also lists every knowledge base's data sources (`ListDataSources`, `GetDataSource`) and reads `s3:GetBucketVersioning` on each S3 source bucket: a bucket whose `Status` is `Suspended` or absent (never versioned) fails the row, because a document overwritten after ingestion keeps no earlier version for a retrieved chunk to be traced back to. An unread data source or bucket makes the row `N/A`. Sources outside S3 keep versions with their provider and are named, not judged. The inference row needs `AWS::Bedrock::Model`, `AWS::Bedrock::AsyncInvoke`, `AWS::Bedrock::AgentAlias` and `AWS::Bedrock::InlineAgent`. `Bedrock Mantle Data Event Logging` needs all six `bedrock-mantle` resource types (`AWS::BedrockMantle::Project`, `Reservation`, `CustomizedModel`, `Environment`, `Runtime` and `Skill`), because the endpoint logs `CreateInference` and its file calls as data events; AWS's example selector names only the first three, and a selector copied from it fails naming the other three. `Bedrock Inference Forensic Record` needs invocation logging with `textDataDeliveryEnabled` and every destination under an enabled customer managed KMS key. A trail that cannot be read makes a row without coverage `N/A`. The Region's CloudTrail Lake event data stores are listed (`ListEventDataStores`, every page) and each is read with `cloudtrail:GetEventDataStore`. A store counts only with `Status` `ENABLED`, and its `AdvancedEventSelectors` are judged by the same rules as a trail's, so a store can credit the management row and each data-event row, and a narrowed store selector is named and not credited. A store that could not be read, and an unlisted store list, turn a gap on those rows into `N/A` naming the action. A gap that no read store closes fails. The stores homed in every other assessed Region (`TARGET_REGIONS`) and every other Region enabled for the account (`account:ListRegions`) are listed too, and one of them counts only when `GetEventDataStore` reports `MultiRegionEnabled` `true`; an unlisted Region, or a Region list that could not be read, turns a gap into `N/A`. The check is scoped by use as BR-04 is. Not read: RetrieveAndGenerate citations.
 - **End-to-end trace row:** `Bedrock Inference End-to-End Trace` reads event history (`LookupEvents`) for `InvokeModel`, `InvokeModelWithResponseStream`, `Converse` and `ConverseStream` between 24 hours and 15 minutes ago, keeps the 10 newest successful calls that carry a `requestID`, and looks for their invocation log records by `requestId` (`FilterLogEvents` on the log group, or the S3 records as BR-34 reads them). A joined call is the `Passed` trace example: it names the caller ARN, source IP, model ID and inference Region from CloudTrail, and the identity, model, timestamp and whether input and output bodies were logged from the record, plus the request IDs that did not join. No joined call fails, invocation logging without text delivery fails, and a failed or capped read is `N/A`.
 - **Centralization row:** `Bedrock Inference Trace Centralization` needs both halves of a trace queryable centrally. The CloudTrail half is met by a CloudTrail Lake event data store (as read above) that records Bedrock management events, or by an AWS Glue Data Catalog table in this or any enabled Region (`GetDatabases`, `GetTables`, every page) whose location is under `s3://<S3BucketName>/<S3KeyPrefix>/AWSLogs/` of a logging trail (`ListTrails`, `GetTrail`, `GetTrailStatus`, `GetEventSelectors`) that records this Region and every Bedrock management event, read and write. A table under another root, under a trail that records fewer events, or whose `CloudTrail/<region>/` segment names another Region is named as not credited, and so is an Amazon Security Lake `CLOUD_TRAIL_MGMT` source, because whether it collects this Region is not read. The invocation log half is met by a Glue table whose location contains `BedrockModelInvocationLogs/` and is a prefix of `s3://<bucket>/<keyPrefix>/AWSLogs/<account>/BedrockModelInvocationLogs/<region>/`. For invocation logs that go only to CloudWatch Logs, each subscription filter on the group (`logs:DescribeSubscriptionFilters`, every page) is followed when it has no filter pattern, no field selection criteria and does not apply to transformed logs, and its destination is a Firehose stream of this account: the stream (`firehose:DescribeDeliveryStream`) must be `ACTIVE` with an S3 destination and no Lambda record processor, and a Glue table whose location is at or above the destination prefix, cut at its first `!{...}` expression, meets the half. With no such table, an Athena data catalog in any of those Regions (`athena:ListDataCatalogs`) of type `LAMBDA`, or `FEDERATED` with no `ConnectionType`, could be a CloudWatch Logs connector, so it holds the row at `N/A`, as does a subscription to another destination type or account, a Lambda processor or a failed read; otherwise the half is unmet. Either half unmet fails the row; an unread part is `N/A`. Whether each table's schema parses the records is not judged.
@@ -516,22 +379,22 @@ inventory is never treated as evidence of compliance.
 
 ### BR-08: Agent AWS IAM Configuration
 
-- **Severity:** Medium
+- **Severity:** High
 - **Description:** Checks agent execution role permissions.
 
 ### BR-09: Knowledge Base Encryption
 
-- **Severity:** High
+- **Severity:** Informational (manual review)
 - **Description:** Checks knowledge base encryption settings.
 
 ### BR-10: Guardrail AWS IAM Enforcement
 
-- **Severity:** Medium
+- **Severity:** High
 - **Description:** Verifies guardrails are enforced through AWS IAM conditions. Each role or user that may invoke a model must name an approved guardrail on every invoke grant, or be covered by a central mechanism in the Region: an account-enforced guardrail configuration scoped to all models with comprehensive guarding, a configuration for the Region in the effective Organizations Bedrock policy at a non-`DRAFT` version, or, in a member account, an attached service control policy denying both invoke actions without an approved `bedrock:GuardrailIdentifier` on a `Resource` that covers every invoke resource type in the service authorization reference. A central source that cannot be read is named and keeps the identity failed. Each guardrail version that may be named, directly or centrally, must apply, to the input and to the output, at least one `HATE`, `INSULTS`, `MISCONDUCT`, `SEXUAL` or `VIOLENCE` content filter with strength `LOW`, `MEDIUM` or `HIGH` and action `BLOCK`; the `Passed` row names the categories found on each side and says filter strength above `LOW` is not judged. The `PROMPT_ATTACK` filter, which detects and blocks malicious intents in user inputs and filters no harmful content, and denied topics, word filters, sensitive information filters, contextual grounding and automated reasoning checks do not count toward either direction. Service control policies are not evaluated per principal.
 
 ### BR-11: Custom Model Encryption
 
-- **Severity:** High
+- **Severity:** Medium for model keys; High for customization data buckets
 - **Description:** Judges every custom model's key and every bucket its customization data sits in. The key is `GetCustomModel.modelKmsKeyArn`, or the customization job's `outputModelKmsKeyArn` when the model record names none, and it passes only when `kms:DescribeKey` reports `KeyManager` `CUSTOMER` and `KeyState` `Enabled`. A model with no key anywhere, an AWS managed key, or a key in any state other than Enabled fails (Medium). A model record or a customization job that cannot be read, or a key that cannot be described, is `N/A` naming the model and the failed call, so a model nobody read never sits under the Passed summary, which counts models as "N of M". A second finding, `Bedrock Customization Data Bucket Encryption`, reads the default encryption of each bucket named by the model's `trainingDataConfig.s3Uri`, `trainingDataConfig.invocationLogsConfig.invocationLogSource.s3Uri`, `validationDataConfig.validators[].s3Uri` and `outputDataConfig.s3Uri`, once per bucket. The same four locations are read from every model customization job (`ListModelCustomizationJobs`, every page, then `GetModelCustomizationJob`), because a failed or stopped job leaves its data in its buckets and creates no custom model; a model whose job cannot be read still has its own buckets judged. When the job list or a job cannot be read, the bucket `Passed` row is `N/A` naming the failed reads. SSE-S3, `aws:kms` with no key id (served with `aws/s3`), no default encryption configuration, and a key that fails the same DescribeKey test all fail (High); a bucket or key that cannot be read is `N/A`.
 
 ### BR-12: Invocation Log Encryption
@@ -541,7 +404,7 @@ inventory is never treated as evidence of compliance.
 
 ### BR-13: Flows Guardrails
 
-- **Severity:** Medium
+- **Severity:** High
 - **Description:** Validates Bedrock Flows have guardrails attached.
 
 ### BR-14: Stale Bedrock Access
@@ -792,11 +655,364 @@ inventory is never treated as evidence of compliance.
 
 ---
 
+## Amazon SageMaker AI Security Checks (42)
+
+A SageMaker check that stops on an unexpected error writes one `N/A` `SageMaker Check Incomplete` row for its check ID, naming the check function, and the other checks still run. The SageMaker Lambda stops starting checks 120 seconds before its 900-second timeout; each check ID it did not reach gets one `N/A` `SageMaker Check Not Assessed (Timeout)` row that begins "Timeout, not assessed" and names the skipped functions, and every row collected before the deadline is still written. No check has its own time cap. The checks with the longest single reads, the SM-03 and SM-33 training and processing job describes and the SM-40 CloudTrail `LookupEvents` paging (2 requests per second), stop at the same deadline: the items not read are named in an `N/A` incomplete row that withholds `Passed`, and the rows already collected are kept.
+
+### SM-01: Internet Access
+
+- **Severity:** High
+- **Related AWS Security Hub control:** SageMaker.1 applies to the notebook
+  direct-internet-access row. This check also assesses Studio domains and
+  notebook VPC placement, which are outside that control.
+- **Description:** Checks for direct internet access on notebooks and domains.
+- **Rows emitted:**
+  - `Direct Internet Access Enabled` and `SageMaker Internet Access Check`: a notebook instance with `DirectInternetAccess` `Enabled`, or a Studio domain whose `AppNetworkAccessType` is not `VpcOnly`.
+  - `Notebook Instance Outside VPC`: fails a notebook instance with no `SubnetId`, because it runs outside a customer VPC.
+
+### SM-02: AWS IAM Permissions
+
+- **Severity:** High for full access; Medium for stale users and domain authentication
+- **Description:** Identifies overly permissive policies and stale access from
+  the shared IAM permissions cache. A missing, unreadable, or malformed cache
+  produces an informational `N/A` incomplete-assessment row rather than a
+  compliant result.
+  A separate `SageMaker Service-Wide Grant in Customer Policy` finding reads
+  customer-managed and inline policies on roles and users and fails any Allow
+  statement that grants every SageMaker action, through `sagemaker:*`, a bare
+  `"*"` or a pattern that covers it, or through a `NotAction` list that does
+  not exclude SageMaker, on an identity whose permissions boundary allows a
+  SageMaker action. It also reads group policies. AWS managed policies are left
+  to the full-access finding above and to the next finding. A policy that
+  cannot be parsed produces `N/A` naming it.
+  A `SageMaker Read and Write Merged in One Grant` finding covers
+  AIR-FND-IAM-09 over the `sagemaker` namespace. It reads every attached (AWS managed included), inline and group policy of every cached role and user, and fails a wildcard `Action` pattern (a bare `"*"`, `*:*` and a partial pattern among them) or a `NotAction` Allow that grants both a read and a write action on one resource type, as the [service authorization reference](https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html) classifies them (the table is `iam_access_levels.json`, generated by `generate_iam_access_levels.py`). An explicit action list is never reported, because it separates read from write. An action counts only when no unconditioned `Resource: "*"` Deny removes it and the permissions boundary also allows it. A condition applies to the read and the write alike and is not read; the `Resource` entries are read only to drop resource types none of them can name, with a policy variable read as any value. Service control policies are not evaluated per principal, which can only make a row a false `Failed`, and each failing row says so. A policy that cannot be parsed produces `N/A` naming the principal. While the cache's `principal_errors` names a principal, each `Passed` row becomes `N/A` naming the unread principals; a cache without `principal_errors` (schema v1) keeps its verdict and says the errors were not recorded. A principal whose permissions boundary the cache could not read (a `permissions_boundary` stage in `principal_errors`) is not reported `Failed` by the service-wide or merged rows, because a boundary could remove the grant; the `N/A` row names it.
+- **Rows emitted:**
+  - `SageMaker Full Access Policy Used`, `Stale SageMaker Access` and `SageMaker IAM Permissions Check` (with `SageMaker IAM Permissions Check Incomplete` when the cache is missing): the IAM cache legs above. They run once, on the primary Region, tagged `Global`.
+  - `SageMaker Service-Wide Grant in Customer Policy` (and its `Incomplete` form) and `SageMaker Read and Write Merged in One Grant`: described above, also `Global`.
+  - `Endpoint Invocation Policy Scoping` (AIR-SGM-EP-02): fails an identity whose Allow reaches `sagemaker:InvokeEndpoint`, `InvokeEndpointAsync` or `InvokeEndpointWithResponseStream` on every endpoint, because a SageMaker endpoint accepts no resource-based policy and the identity policy is the only place the call can be scoped. `Global`.
+  - `SSO Not Properly Configured` and `SageMaker SSO Configuration Check`: per Region, each SageMaker domain's IAM Identity Center configuration.
+  - `SageMaker Runtime VPC Endpoint Policy Scoping` (AIR-SGM-EP-02): per Region, fails a `sagemaker.runtime` interface VPC endpoint whose policy has an Allow reaching `sagemaker:InvokeEndpoint` on every endpoint, which the default full-access policy does. Deny statements are not evaluated. A Region with no runtime VPC endpoint emits no row here; SM-11 reports the missing private path.
+  - `AI API Method Authorization` (AIR-FND-IAM-09 request layer): per Region, every API Gateway REST and HTTP API method whose integration reaches a Bedrock, AgentCore or SageMaker runtime, a Lambda function an agent action group or AgentCore gateway target names, or a Lambda function whose role is granted an AI invoke action. A method with no authorizer fails, and so do read and write methods on one resource that a token authorizer gives the same scopes or an IAM authorizer leaves under one `execute-api:Invoke` grant. `AI API Method Authorization Not Judged` (`N/A`) names the methods behind a Lambda authorizer, whose code is not read, and IAM grants the cache could not resolve.
+
+### SM-03: Data Protection
+
+- **Severity:** High for missing KMS keys; Medium for network encryption; Low for AWS managed keys
+- **Description:** Verifies encryption at rest and in transit for notebooks, domains and training jobs, and the protection of the buckets training jobs read from and write to (AIR-SGM-TRN-02).
+- **Rows emitted:**
+  - `Missing Encryption Configuration`, `AWS Managed Key Usage`, `Missing VPC Encryption`, `SageMaker Data Protection Check` and `Data Protection Check`: KMS keys on notebooks, domains and training job output, and inter-container traffic encryption on multi-instance training jobs.
+  - `Customer Managed Key Not Enabled`: fails a resource whose customer managed key has a `kms:DescribeKey` `KeyState` other than `Enabled`.
+  - `Training Job Volume Encryption`: fails each training job with no `ResourceConfig.VolumeKmsKeyId`, because the ML storage volume that holds the downloaded training data then uses the EBS default key. More than 20 such jobs are summarized in one extra row. A training channel on Amazon EFS or FSx for Lustre is read for the file system's encryption at rest, and one that cannot be read is named as not read.
+  - `Training Job Data Bucket Protection`: every S3 bucket a training job's input channels or `S3OutputPath` name must default to SSE-KMS with a customer managed key (a named `KMSMasterKeyID` whose `kms:DescribeKey` reports `KeyManager` `CUSTOMER` and `KeyState` `Enabled`) and have a bucket policy that denies requests when `aws:SecureTransport` is `false`. A bucket read error withholds `Passed` and is named.
+  - Training jobs are described one at a time. When the run deadline (120 seconds before the Lambda timeout) is reached during that loop, the jobs not described are named in an `N/A` incomplete row and the rows already collected are kept.
+
+### SM-04: Amazon GuardDuty Integration
+
+- **Severity:** High
+- **Description:** Verifies Amazon GuardDuty runtime threat detection is enabled. `GuardDuty Findings Routed to Security Hub` passes when Security Hub in the Region imports GuardDuty findings (product subscription `aws/guardduty`). Security Hub not enabled in the Region (`InvalidAccessException`, "not subscribed to AWS Security Hub") fails, with a resolution to enable Security Hub and then its GuardDuty integration; Security Hub not offered in the Region is `N/A`. Any other read error, access denied among them, is `N/A` as `GuardDuty Findings Routed to Security Hub Incomplete`. `GuardDuty Findings Reviewed in Security Hub` is then `N/A` naming the routing row, and is `Incomplete` only when the routing row is. Security Hub also answers `InvalidAccessException` to a caller it does not permit, so that code without the "not subscribed" message is read as a failed read, not as Security Hub disabled.
+- **Rows emitted:**
+  - `GuardDuty Enabled`, `GuardDuty Detector Disabled`, `GuardDuty Not Enabled` and `GuardDuty Check Error`: the detector leg.
+  - `GuardDuty Findings Routed to Security Hub` and `GuardDuty Findings Reviewed in Security Hub`: the Security Hub legs above.
+  - `GuardDuty Findings Routed to Alerting`: passes when an `ENABLED` rule on the default event bus names source `aws.guardduty`, with no `detail-type` or with `GuardDuty Finding` among them, and has at least one target. No such rule fails. An `events:ListRules` error is `N/A` as `GuardDuty Findings Routed to Alerting Incomplete`, and a target read error is named.
+
+### SM-05: MLOps Features
+
+- **Severity:** Low; Medium for feature groups not in `Created` state
+- **Description:** Checks MLOps pipelines, experiment tracking, and model registry usage.
+
+### SM-06: Clarify Usage
+
+- **Severity:** High
+- **Description:** Validates SageMaker Clarify for bias detection and explainability.
+
+### SM-07: Model Monitor
+
+- **Severity:** Medium
+- **Description:** Checks Model Monitor configuration for drift detection.
+
+### SM-08: Model Registry
+
+- **Severity:** Low for missing approvals; Medium or High for check errors
+- **Description:** Validates model registry usage and permissions.
+
+### SM-09: Notebook Root Access
+
+- **Severity:** High
+- **AWS Security Hub Control:** SageMaker.3
+- **Description:** Validates root access is disabled on notebooks, and that notebook and Studio development environments run with a scoped role, are logged, are evaluated by AWS Config and are guarded at creation (AIR-SGM-TRN-05).
+- **Rows emitted:**
+  - `SageMaker Notebook Root Access Enabled` and `SageMaker Notebook Root Access Check`: each notebook instance's `RootAccess`.
+  - `SageMaker Development Environment Execution Role`: the role of each notebook instance, Studio domain default and default space, and Studio user profile is read from the IAM permissions cache. A role that holds `AmazonSageMakerFullAccess`, `AdministratorAccess`, `PowerUserAccess` or a grant of every SageMaker action fails, unless its permissions boundary does not allow every SageMaker action. A role missing from the cache, or no cache, is `N/A` and withholds `Passed`.
+  - `SageMaker Development Environment API Logging`: passes when one trail that is logging and covers the Region records SageMaker management events, read and write, and delivers them to CloudWatch Logs with no delivery error. A trail read error is `N/A`.
+  - `SageMaker Notebook Config Rules`: passes when the AWS managed Config rules `sagemaker-notebook-no-direct-internet-access` and `sagemaker-notebook-instance-kms-key-configured` are both active and not scoped to named resources or tags, and the KMS rule sets `kmsKeyArns`. A missing or narrowed rule fails.
+  - `SageMaker Notebook Access Guardrail`: for notebook instance, domain and user profile create and update actions on `sagemaker:RootAccess`, `sagemaker:DirectInternetAccess`, `sagemaker:VpcSubnets`, `sagemaker:VpcSecurityGroupIds`, `sagemaker:VolumeKmsKeyArn` and `sagemaker:AppNetworkAccessType`, and for `CreatePresignedNotebookInstanceUrl` and `CreatePresignedDomainUrl` on `aws:SourceIp` or `aws:SourceVpce`, requires a service control policy Deny attached on this account's path to the root. A condition in every identity policy that grants the action still fails, because the account root user is bound by no identity policy. Runs once, on the primary Region, tagged `Global`.
+
+### SM-10: Notebook Amazon VPC Deployment
+
+- **Severity:** High
+- **AWS Security Hub Control:** SageMaker.2
+- **Description:** Ensures notebooks are deployed within an Amazon VPC, and fails a notebook whose subnet's route table routes to an internet gateway. A notebook list or describe error is `N/A` and withholds the all-in-VPC `Passed`. The same check reads every SageMaker Studio domain (AIR-FND-NET-01): `DescribeDomain` reporting `AppNetworkAccessType` `PublicInternetOnly`, or omitting it (the default is `PublicInternetOnly`), fails `SageMaker Studio Domain Network Boundary`, because that mode sends non-EFS traffic through a SageMaker-managed VPC that allows direct internet access. A `VpcOnly` domain's `SubnetIds` go through the same route-table read under `SageMaker Studio Domain Subnet Internet Exposure`. A domain list or describe error, or a `VpcOnly` domain with no `SubnetIds`, is `N/A`.
+- **Rows emitted:**
+  - `SageMaker Notebook Not in VPC` and `SageMaker Notebook VPC Deployment Check`: each notebook instance's `SubnetId`.
+  - `SageMaker Notebook Direct Internet Access in VPC`: a notebook in a VPC whose `DirectInternetAccess` is not `Disabled`, because SageMaker then gives it internet access outside the VPC's routing and security groups.
+  - `SageMaker Notebook Subnet Internet Exposure`: a notebook whose subnet's route table routes to an internet gateway.
+  - `SageMaker Studio Domain Network Boundary` and `SageMaker Studio Domain Subnet Internet Exposure`: the domain legs above.
+
+### SM-11: Model Network Isolation
+
+- **Severity:** High
+- **Related AWS Security Hub control:** SageMaker.5 applies to the model
+  `EnableNetworkIsolation` rows. This check also assesses VPC attachment,
+  endpoint paths, and other network boundaries.
+- **Description:** Checks inference containers have network isolation.
+- **Rows emitted:**
+  - `SageMaker Model Network Isolation Disabled`, `SageMaker Model Network Isolation Summary` and `SageMaker Model Network Isolation Check`: each model's `EnableNetworkIsolation`. Only these rows feed OWASP OW-03 and OW-10 (see `SECURITY_CHECKS_OWASP.md`).
+  - `SageMaker Model VPC Attachment` and `SageMaker Model Subnet Internet Exposure` (AIR-SGM-EP-01): each model's `VpcConfig`, judged apart from isolation because a model can be isolated with no VPC attachment, and its subnets' routes to an internet gateway.
+  - `SageMaker Endpoint Model Network Path` and `SageMaker Endpoint Config Subnet Internet Exposure` (AIR-SGM-EP-01, EP-03): isolation and `VpcConfig` of the models each endpoint serves, inference components included. A model the endpoint names that could not be described leaves that endpoint `N/A`.
+  - `SageMaker Endpoint Config Storage Encryption` (AIR-SGM-EP-03): the endpoint config `KmsKeyId`. No endpoint API field turns on inter-container traffic encryption, and the row says so.
+  - `SageMaker Runtime Private Invoke Path` (AIR-SGM-EP-01): where the Region hosts an endpoint, an available `sagemaker.runtime` interface endpoint with private DNS, in a VPC with `enableDnsSupport` and `enableDnsHostnames` true.
+  - `SageMaker Endpoint Invocation Source Network` (AIR-SGM-EP-01): each principal that can invoke an endpoint must be held to `aws:SourceVpce` or `aws:SourceVpc`. An attached service control policy Deny on every invoke action passes on its own; without one the account root user fails the leg. On the primary Region the service control policies are read once and shared with SM-34, SM-39, SM-09 and SM-42. Each other Region runs in its own Lambda invocation, so this leg reads them once more in each other Region that hosts a SageMaker endpoint; a Region with no endpoint does not read them.
+  - `AI Lambda Function Network Boundary` (AIR-FND-NET-01): every Lambda function an agent action group or AgentCore gateway target invokes, and every Lambda function and ECS awsvpc workload whose role is granted an AI invoke action, must run in VPC subnets with no route to an internet gateway. Bedrock Agents or AgentCore not offered in the Region adds a note and is not a failed read.
+
+### SM-12: Endpoint Instance Count
+
+- **Severity:** Medium
+- **Related AWS Security Hub control:** SageMaker.4 checks the initial
+  production-variant instance count in an endpoint configuration. This check
+  reads `CurrentInstanceCount` for production variants of `InService` endpoints,
+  so its result can differ after scaling.
+- **Description:** Flags current production-variant counts of one or fewer.
+
+### SM-13: Monitoring Network Isolation
+
+- **Severity:** Medium
+- **Description:** Checks monitoring job network isolation.
+
+### SM-14: Model Container Repository
+
+- **Severity:** Medium
+- **Description:** Validates model container repository access.
+
+### SM-15: Feature Store Encryption
+
+- **Severity:** Medium
+- **Description:** Checks feature group encryption settings.
+
+### SM-16: Data Quality Encryption
+
+- **Severity:** Medium
+- **Description:** Validates data quality job encryption.
+
+### SM-17: Processing Job Encryption
+
+- **Severity:** Medium
+- **Description:** Verifies processing job encryption.
+
+### SM-18: Transform Job Encryption
+
+- **Severity:** Medium
+- **Description:** Checks transform job volume encryption, and the output key, model network boundary and buckets of each batch transform job (AIR-SGM-EP-08).
+- **Rows emitted:**
+  - `SageMaker Transform Job Volume Encryption Missing` and `SageMaker Transform Job Encryption Check`: each job's `TransformResources.VolumeKmsKeyId`.
+  - `SageMaker Transform Job Output Key and Model Boundary`: each job must set `TransformOutput.KmsKeyId` and `TransformResources.VolumeKmsKeyId` to customer managed keys, and the model it names (`ModelName`, read with `DescribeModel`) must have a `VpcConfig` with subnets and security groups and `EnableNetworkIsolation` true, because a transform job takes its network posture from its model. An AWS managed key fails; a key or model that cannot be read is named and withholds `Passed`.
+  - `SageMaker Transform Job Model Subnet Exposure`: the subnets of each such model whose route table routes to an internet gateway.
+  - `SageMaker Transform Job S3 VPC Endpoint`: each VPC those models run in needs an available S3 gateway endpoint, or an S3 interface endpoint with private DNS, whose policy does not grant object reads and writes on every bucket to any principal.
+  - `SageMaker Transform Job Bucket Protection`: the input and output buckets of each job are judged like `Training Job Data Bucket Protection` in SM-03.
+
+### SM-19: Hyperparameter Tuning Encryption
+
+- **Severity:** Medium
+- **Description:** Validates hyperparameter tuning job encryption.
+
+### SM-20: Compilation Job Encryption
+
+- **Severity:** Medium
+- **Description:** Checks compilation job encryption.
+
+### SM-21: AutoML Network Isolation
+
+- **Severity:** Medium
+- **Description:** Validates AutoML job network isolation.
+
+### SM-22: Model Approval Workflow
+
+- **Severity:** Medium; Low for pending-approval backlog
+- **Description:** Checks model approval and governance workflow (AIR-SGM-GOV-01).
+- **Rows emitted:**
+  - `Model Approval Workflow Check`, `Model Approval Workflow - Auto-Approval Suspected` and `Model Approval Workflow - Stale Pending Models`: the `ModelApprovalStatus` of each model package version.
+  - `Model Approval Workflow - Approver Attribution`: fails an approved version whose `LastModifiedBy` names no user profile, source identity or IAM ARN, because approval is applied with `UpdateModelPackage` and SageMaker records the caller there. `CreatedBy` names the registrant and is not read as the approver; `ApprovalDescription` is free text and is not an identity.
+  - `Model Registry Lifecycle Stage`: fails an approved version with no `ModelLifeCycle` `Stage` and `StageStatus`.
+  - `Model Registry Cross-Account Visibility`: passes when a model package group is shared from this account or with it through AWS RAM (`sagemaker:ModelPackageGroup`), and fails (Low) when none is, because the registry is then visible only inside this account. A RAM read error is `N/A`.
+  - `Deployed Model Registration`: every model serving on an endpoint or run by a batch transform job must have been created from an `Approved` version in a model package group: each container needs a `ModelPackageName` whose package belongs to a group and is `Approved`. A model or package that cannot be read is named and withholds `Passed`.
+  - A failed model package read leaves the version rows `N/A` naming the number not read.
+
+### SM-23: Model Drift Detection
+
+- **Severity:** Medium; Low for incomplete monitoring
+- **Description:** Validates model drift monitoring configuration, and for each monitoring schedule on an `InService` endpoint, its baseline, its recent reports and its alarm (AIR-SGM-EP-06).
+- **Rows emitted:**
+  - `Model Drift Detection Not Configured`, `Model Drift Detection - Missing Data Quality Monitoring`, `Model Drift Detection - Missing Model Quality Monitoring` and `Model Drift Detection Check`: whether endpoints have data quality and model quality monitoring schedules.
+  - `Model Monitor Baseline Constraints`: fails a schedule whose job definition names no baseline constraints file. A job definition that cannot be described is `N/A`.
+  - `Model Monitor Recent Report`: fails a schedule that has never run, whose latest finished execution is not `Completed` or `CompletedWithViolations`, or whose latest report was scheduled more than twice its cadence ago.
+  - `Model Monitor Violation Alarm`: fails a schedule with no CloudWatch alarm whose `ALARM` state reaches an enabled action, its own or an OR composite alarm's, on a metric in that schedule's monitoring-type namespace with both its endpoint and schedule dimensions. A data quality alarm must read a `feature_baseline_drift_` metric with a rising threshold below 1. A `cloudwatch:DescribeAlarms` error is `N/A`.
+
+### SM-24: A/B Testing and Shadow Deployment
+
+- **Severity:** Informational (advisory)
+- **Description:** Checks for safe deployment patterns.
+
+### SM-25: ML Lineage Tracking
+
+- **Severity:** Low
+- **Description:** Validates experiment tracking and lineage.
+
+### SM-26: GuardDuty AI Protection
+
+- **Severity:** High
+- **Description:** Reuses the regional GuardDuty detector inventory and verifies the detector `Status` and its `AI_PROTECTION` feature are both `ENABLED`. A detector with status `DISABLED` fails whatever its feature status, and a Region with no detector fails, because neither produces AI Protection findings. For an `ENABLED` detector, a second row, `GuardDuty AI Protection Organization Auto-Enable`, reads `DescribeOrganizationConfiguration` (every page) and passes only when `AutoEnableOrganizationMembers` is `ALL` and the `AI_PROTECTION` feature's `AutoEnable` is `ALL`. `NEW`, `NONE` or a missing entry fails. A failed read is `N/A`, because only the GuardDuty delegated administrator can call the API. Each member account's own detector is not read.
+
+### SM-27: HyperPod EBS CMK Encryption
+
+- **Severity:** Medium
+- **Description:** Verifies every HyperPod instance group configures a customer-managed KMS key for its root EBS volume and all configured secondary EBS volumes. AWS documents that HyperPod root volumes use an AWS-owned key by default and that a customer-managed key is supplied through `InstanceStorageConfigs`; therefore, an absent root-volume storage configuration fails this CMK baseline rather than producing `N/A`.
+
+### SM-28: HyperPod VPC Configuration
+
+- **Severity:** Medium
+- **Description:** Verifies each HyperPod instance group's effective VPC configuration has subnets and security groups, honoring `OverrideVpcConfig` before the cluster-level `VpcConfig`.
+- **Rows emitted:**
+  - `HyperPod VPC Configuration`: the leg above.
+  - `HyperPod Subnet Internet Exposure`: an instance group whose subnet's route table routes to an internet gateway.
+
+`SM-29` is reserved for SageMaker Unified Studio private networking. It is not currently emitted because the available domain APIs do not expose a sufficient domain-level networking configuration.
+
+### SM-30: Model Package Group Resource Policy Exposure
+
+- **Severity:** High for public or configured-boundary violations; Informational for unclassified external sharing
+- **Description:** Parses model package group resource policies to identify public wildcard principals and external accounts or organizations outside optional `AIML_APPROVED_EXTERNAL_ACCOUNT_IDS` / `AIML_APPROVED_ORG_IDS` boundaries. Configure those boundaries through the `ApprovedExternalAccountIds` and `ApprovedOrganizationIds` deployment parameters, respectively; both default to empty. Wildcard principals constrained by exact `aws:PrincipalAccount` or `aws:PrincipalOrgID` values, fixed-account `aws:PrincipalArn` patterns, or fixed-organization `aws:PrincipalOrgPaths` patterns are treated as bounded. Wildcard account/organization identifiers remain public; `ForAllValues` organization-path conditions count as boundaries only when a matching `Null: false` condition requires the key to be present. Because AWS supports `NotPrincipal` only with `Deny`, an `Allow` statement containing `NotPrincipal` is reported as unsupported and `N/A` rather than silently passing or being treated as public. Valid `Deny` statements do not create exposure and are ignored. If `sts:GetCallerIdentity` is unavailable, public wildcard statements are still reported, but account principals that cannot be distinguished as same-account or external produce `N/A` instead of an external-access finding. This is a conservative heuristic, not a complete IAM authorization simulator.
+
+### SM-31: Endpoint Inference Data Capture
+
+- **Severity:** Medium
+- **Description:** Requires each SageMaker endpoint to capture inference requests and responses. `DescribeEndpoint` reports the live capture state as `DataCaptureConfig.EnableCapture` plus `CaptureStatus`, so an endpoint whose configuration enables capture but whose `CaptureStatus` is `Stopped` is reported as a failure and not as compliant.
+- **Rows emitted:**
+  - `Endpoint Inference Data Capture`: the capture leg above.
+  - `Data Capture Disk Utilization Alarm`: each instance-backed variant of a capturing endpoint needs an enabled CloudWatch alarm whose `ALARM` state reaches an action, on `DiskUtilization` with its `EndpointName` and `VariantName` dimensions, at 75% or lower. Serverless variants are left out. `Data Capture Disk Utilization Alarm Not Judged` (`N/A`) names variants whose only such alarm evaluates a metric math expression or another account's metric.
+
+### SM-32: SageMaker Configuration Compliance Evaluation
+
+- **Severity:** Medium
+- **Description:** Two independent legs, each with its own finding. `SageMaker Configuration Recording` requires an AWS Config recorder whose recording group covers SageMaker resource types. `SageMaker Config Rule Compliance` requires at least one active Config rule evaluating SageMaker and reports that rule's current compliance result. Neither verdict implies the other: a recorder with no rules evaluates nothing, and a rule with no recorder cannot see configuration changes. Service-linked rules, which carry `CreatedBy` (for example `securityhub.amazonaws.com`), are reported `N/A` naming the owning service, because AWS Config returns their compliance results to no caller.
+- **Rows emitted:**
+  - `SageMaker Configuration Recording` and `SageMaker Config Rule Compliance`: the two legs above.
+  - `SageMaker Required Config Rules`: passes when the AWS managed rules `sagemaker-endpoint-configuration-kms-key-configured` (with `kmsKeyArns` set), `sagemaker-notebook-instance-kms-key-configured` and `sagemaker-notebook-no-direct-internet-access` are all active and not scoped to named resources or tags. A missing or narrowed rule fails.
+  - `SageMaker Config Conformance Pack`: passes only when a conformance pack created by `config-multiaccountsetup.amazonaws.com` (an organization conformance pack) carries all three of those rules. A pack read error is named and withholds `Passed`.
+
+### SM-33: Training Job Network Boundary
+
+- **Severity:** Medium
+- **Description:** Requires training jobs to run inside a customer VPC. Network isolation and `VpcConfig` are reported separately, because a job can set `EnableNetworkIsolation` with no VPC attachment, and an isolated job without a VPC attachment still has no private path to Amazon S3 or Amazon ECR. SM-21 asserts the same VPC boundary for AutoML jobs only. Every training job is listed and described, with no item cap. The same check lists and describes every processing job (AIR-FND-NET-01): a job whose `NetworkConfig` names no `VpcConfig` fails `Processing Job Network Boundary`, and the subnets of the others go through the route-table read under `SageMaker Processing Job Subnet Internet Exposure`. A list or describe error is `N/A`, and `No SageMaker training or processing jobs found` appears only when both lists read empty. In an estate with many jobs this check makes one describe call per job, and when the run deadline is reached during either describe loop, the jobs not described are named in an `N/A` row that withholds `Passed` for that job type.
+- **Rows emitted:**
+  - `Training Job Network Boundary` and `Training Job Network Isolation`: each training job's `VpcConfig` and `EnableNetworkIsolation`, reported apart.
+  - `SageMaker Training Job Subnet Internet Exposure`: a training job's subnets whose route table routes to an internet gateway.
+  - `Training Job VPC Endpoint Coverage` (AIR-SGM-TRN-01): each VPC a training job ran in needs an available endpoint for S3 (gateway, or interface with private DNS), CloudWatch Logs, the SageMaker API, `ecr.api` and `ecr.dkr`. An interface endpoint counts only with private DNS on, and a VPC that relies on one fails when `enableDnsSupport` or `enableDnsHostnames` is false.
+  - `Processing Job Network Boundary` and `SageMaker Processing Job Subnet Internet Exposure`: the processing job legs above.
+
+### SM-34: SageMaker Creation Guardrails
+
+- **Severity:** Medium
+- **Description:** Requires a service control policy that denies creation of unencrypted, internet-exposed, or non-VPC SageMaker resources, with one verdict per guardrail category: `encryption` (`sagemaker:VolumeKmsKey`, `sagemaker:OutputKmsKey`, `sagemaker:InterContainerTrafficEncryption`), `approved network` (`sagemaker:VpcSubnets`, `sagemaker:VpcSecurityGroupIds`, `sagemaker:NetworkIsolation`), and `no direct internet access` (`sagemaker:DirectInternetAccess`). Categories are reported separately because an organization commonly guards encryption at creation and leaves the network parameters unguarded. A Deny that fires when the parameter is absent or holds a non-approved value counts as enforced; a Deny naming one specific value is reported as ambiguous, because whether that value is the non-compliant one depends on the value and this check does not interpret it. An unreadable organization view produces `N/A`.
+
+### SM-35: Security Service Delegated Administrator
+
+- **Severity:** High
+- **Description:** Emits one row per security service principal from a fixed list (Amazon GuardDuty, AWS Security Hub, Amazon Inspector, Amazon Macie, AWS Config through `config.amazonaws.com`, AWS Config multi-account setup through `config-multiaccountsetup.amazonaws.com`, IAM Access Analyzer, AWS CloudTrail, Amazon Detective, Amazon Security Lake, AWS Firewall Manager, AWS Audit Manager), each row naming the list. A service passes when an `ACTIVE` delegated administrator other than the organization management account is registered and the service principal is among the organization's trusted-access principals (`ListAWSServiceAccessForOrganization`). It fails when none is registered, when the only active one is the management account, or when trusted access for the principal is not enabled. That failure for `macie.amazonaws.com`, `detective.amazonaws.com`, `fms.amazonaws.com` or `auditmanager.amazonaws.com` says the principal name is not confirmed by a live read. When the trusted-access list cannot be read, every service with such an administrator is `N/A`. `ListDelegatedAdministrators` is readable only from the management account or a delegated administrator account, so an access denial for one service is `N/A` for that service alone. An account outside AWS Organizations produces one `N/A` row. Runs once, on the primary region, tagged `Global`. A second row, `Security Service Regional Delegated Administrator`, runs per Region and passes when GuardDuty, Security Hub, Amazon Inspector, Amazon Macie and Amazon Detective are all administered there from one account other than the organization management account. A service not enabled in the Region (no GuardDuty detector, Security Hub `InvalidAccessException` with the "not subscribed to AWS Security Hub" message, Macie "not enabled") fails. A service not offered in the Region is left out with a note on the row, and access denied is `N/A` naming the service. The regional row is judged only in the management account and in an account that is an `ACTIVE` delegated administrator for one of those five services, because a delegated administrator is an organization-level setting made in the management account. In any other account the regional rows are not emitted; one `N/A` `Informational` `Security Service Regional Delegated Administrator` row tagged `Global` says the account is a member account, and names an access-denied `ListDelegatedAdministrators` when that is how it was established. A failed read of the account's own role leaves each regional row `N/A`.
+- **Rows emitted:**
+  - `Security Service Delegated Administrator`: one row per service principal, as above.
+  - `Security Service Delegated Administrator Consolidation`: passes when every security service checked is administered from the one account other than the management account. Services administered from different accounts fail, because administrator-member relationships do not carry across services; a service with no non-management administrator fails, and a service whose administrators could not be listed is `N/A` as `Security Service Delegated Administrator Consolidation Incomplete`.
+  - `Security Service Regional Delegated Administrator`: the regional row, or the member-account row, above.
+
+### SM-36: Security Hub AI Security Standard
+
+- **Severity:** High
+- **Description:** Requires the AWS Security Hub AI Security Best Practices v1.0.0 standard (`standards/ai-security-best-practices/v/1.0.0`) to be enabled in the region. `READY` passes; `INCOMPLETE` passes with a note to review the standard's `StatusReason`; any other subscription status fails. Security Hub not enabled in the region (`InvalidAccessException` with the "not subscribed to AWS Security Hub" message) fails, because no standard is evaluating anything; the same code with any other message is `N/A`, because Security Hub also answers it to a caller it does not permit.
+- **Rows emitted:**
+  - `Security Hub AI Security Best Practices Standard`: the standard leg above.
+  - `Security Hub Central Configuration`: passes when Security Hub's organization configuration is `CENTRAL` and `ENABLED` and this account is associated with a configuration policy that enables Security Hub and lists the AI Security Best Practices and AWS Foundational Security Best Practices standards. A self-managed association, an association in `AssociationStatus` `FAILED`, or a policy without those standards fails. `DescribeOrganizationConfiguration`, `GetConfigurationPolicyAssociation` and `GetConfigurationPolicy` answer only for the Security Hub delegated administrator, so a denied read is `N/A` as `Security Hub Central Configuration Incomplete`.
+
+### SM-37: GuardDuty Lambda Protection
+
+- **Severity:** Medium
+- **Description:** Requires the GuardDuty `LAMBDA_NETWORK_LOGS` feature to be `ENABLED` on an enabled detector, so network activity from AI workload Lambda functions is monitored. A disabled or absent feature fails and names its state. No detector produces `N/A`; SM-04 reports the missing detector.
+- **Rows emitted:**
+  - `GuardDuty Lambda Protection`: the feature leg above.
+  - `SageMaker Endpoint Network Anomaly Alerting`: every SageMaker endpoint and AgentCore runtime passes only when each subnet it runs in is covered by an `ACTIVE` VPC or subnet flow log that captures accepted traffic into CloudWatch Logs, and that log group has a metric filter that can match a flow-log record whose metric an alarm with an action evaluates, with a threshold the published values can cross. AgentCore not offered in the Region adds a note and is not a failed read.
+  - `VPC DNS Resolver Visible to GuardDuty`: fails a VPC whose DHCP option set names a domain name server other than `AmazonProvidedDNS`, because GuardDuty analyzes only DNS queries that reach the AWS-provided resolver. `VPC DNS Resolver Visible to GuardDuty Not Judged` (`N/A`) names VPCs whose option set names no server.
+
+### SM-38: GuardDuty Runtime Monitoring
+
+- **Severity:** High
+- **Description:** Requires the GuardDuty `RUNTIME_MONITORING` feature to be `ENABLED` and reports the automated agent management state for EKS, ECS Fargate and EC2. The legacy `EKS_RUNTIME_MONITORING` feature covers EKS only, so a detector with only that feature enabled fails. No detector produces `N/A`.
+- **Rows emitted** (all per Region, because each reads that Region's detector, functions and trails):
+  - `GuardDuty Runtime Monitoring`: the feature leg above.
+  - `GuardDuty Runtime Monitoring Coverage`: per-resource coverage against the EKS and ECS cluster population. A detector with every agent-management option off and no manual agent fails here.
+  - `GuardDuty EKS Audit Log Monitoring`: where EKS clusters exist, the `EKS_AUDIT_LOGS` feature.
+  - `Lambda Runtime Detection Tier`: Lambda has no runtime agent, so the tier is GuardDuty Lambda Protection, Amazon Inspector Lambda standard and code scanning read per function, and, where functions exist, CloudTrail data events on `AWS::Lambda::Function`.
+  - `ECS Managed Instances Runtime Detection Tier`: Runtime Monitoring does not support ECS Managed Instances, so each running task needs `awsvpc` mode with an `ACTIVE` flow log recording `ALL` traffic on its ENI, subnet or VPC, every container's logs sent to CloudWatch Logs through `awslogs`, and a trail or event data store recording the Region's ECS management events.
+  - `Lambda MicroVM Runtime Detection Tier`: VPC Flow Logs on every egress connector subnet, the image version's application logging to CloudWatch Logs, and CloudTrail data events on `AWS::Lambda::MicrovmImage`. A MicroVM with no egress connector fails.
+
+### SM-39: EKS VPC CNI Network Policy
+
+- **Severity:** Medium
+- **Description:** For each EKS cluster, reads the managed `vpc-cni` add-on's `configurationValues` and requires `enableNetworkPolicy` to be true (EKS returns the value as the string `"true"` inside a JSON or YAML document). A pass means network-policy enforcement is enabled on the add-on; whether NetworkPolicy objects restrict pod traffic is a Kubernetes-API fact this scan cannot read. An EKS Auto Mode cluster (`computeConfig.enabled`) is reported `N/A`, because Auto Mode sets network policy on the NodeClass, a Kubernetes object no AWS API returns. Any other cluster without the managed add-on is reported `N/A`, because enforcement by a self-managed CNI is not readable through the EKS API. One cluster's read error is reported for that cluster alone.
+- **Rows emitted:**
+  - `EKS VPC CNI Network Policy Enforcement`: the add-on leg above.
+  - `EKS Network Policy Default-Deny Mode`: a cluster with network policy enabled fails unless `env.NETWORK_POLICY_ENFORCING_MODE` is `strict`, the only default-deny an AWS API returns. Each row says whether security groups for pods are enabled.
+  - `Agent Workload Security Group Segmentation` (AIR-SLF-RT-05): the security groups of each ECS service and standalone task, Lambda function, Lambda MicroVM egress connector and EC2 instance (one per Auto Scaling group). A rule to a /16 (IPv6 /48) or wider fails. `Agent Workload Security Group Segmentation CIDR Width Not Judged` (`N/A`) names rules narrower than that and wider than a /24 (IPv6 /64).
+  - `Lambda MicroVM Ingress` (AIR-SLF-RT-05): a `SHELL_INGRESS` connector fails; a connector type the check does not recognize is `N/A`. Auth token port scope is not returned by `GetMicrovm` and is stated, not judged.
+  - `Agent Workload DNS Egress Control` and `Agent Workload Network Firewall Egress` (AIR-SLF-RT-02): one row each per VPC that an ECS awsvpc service, VPC-attached Lambda function, EKS cluster, EC2 instance, SageMaker endpoint, running training, processing or transform job, HyperPod cluster, notebook instance or Studio domain, or active Bedrock customization or batch inference job runs in. DNS passes only when the first DNS Firewall rule in force over `*` is a `BLOCK` with no query type and `FirewallFailOpen` is `DISABLED`. Network Firewall follows each hosting subnet's internet routes one hop, through a NAT gateway or a transit gateway attachment, to a firewall endpoint; a route to an internet gateway bypasses inspection and fails. An agent Lambda function outside a VPC fails both rows.
+  - `Agent Workload Egress Allow-List Sync`: where a DNS Firewall applies, compares the names it answers ahead of its `BLOCK` over `*` with each reached firewall's `ALLOWLIST` targets.
+  - `Agent Workload Security Group Egress` (AIR-FND-NET-03): fails a SageMaker, EKS or Bedrock workload whose groups' all-protocol egress reaches any destination.
+  - `Lambda VPC Creation Guardrail` and `Lambda Network Connector Creation Guardrail`: the SM-34 legs over the Lambda VPC and network connector condition keys. They run once, on the primary Region, tagged `Global`.
+  - Lambda MicroVMs, Bedrock Agents or AgentCore not offered in the Region make an empty population with a note on each row, and are not failed reads. Access denied stays `N/A` naming the call.
+
+### SM-40: Secrets Manager Rotation
+
+- **Severity:** Medium
+- **Description:** For each customer-managed secret, requires automatic rotation to be turned on and the last rotation to fall within the rotation schedule plus one day. A secret with rotation turned on that has never rotated fails, as does one whose schedule allows a gap longer than 90 days, the default `maxDaysSinceRotation` of Security Hub control `SecretsManager.4`. Schedules are read from `rate()` (hours or days), `cron()` (the longest gap between two scheduled dates), or `AutomaticallyAfterDays`; a `cron()` form this check does not interpret, such as `W`, is reported `N/A`. Secrets with `OwningService` set rotate under that service's control and are skipped and counted. Secret values are never read.
+- **Rows emitted:**
+  - `Secrets Manager Automatic Rotation`: the schedule leg above.
+  - `Secrets Manager Rotation History`: for each rotating secret, reads 90 days of CloudTrail event history. A `RotationFailed` or `RotationAbandoned` event after the last rotation fails, as does a `RotationStarted` event more than 24 hours old with no rotation since. A rotation started within 24 hours is `N/A` with no outcome yet.
+  - `Rotated Secret Propagation`: an ECS task that injects a rotating secret fails when no `ENABLED` EventBridge rule on Secrets Manager rotation events has a target, because ECS resolves the value at task start. An injection from Parameter Store fails, as does an `ACTIVE` Lambda MicroVM image version whose `resume` hook is not `ENABLED`. With a rule that has a target the row is `N/A`, because what the target runs is not read. Lambda functions are not graded.
+  - `Credential Held Outside Secrets Manager`: fails a credential-named environment variable (matched on the name; the value is not logged) set in plaintext on an ECS container, a Lambda function, a SageMaker model or a Lambda MicroVM image version.
+
+### SM-41: AWS IoT Device-Scoped Policy
+
+- **Severity:** High
+- **Description:** For each AWS IoT policy attached to a certificate or other principal, fails an Allow statement that reaches `Publish`, `Subscribe`, `Receive` or `Connect` on `*`, on all topics, topic filters or client IDs, or through `NotResource`, unless the resource embeds `${iot:Connection.Thing.ThingName}` as a whole path segment, with no wildcard or other text before or after it in that segment. `NotAction` Allow statements are expanded to the device actions they reach. A statement allowing `Connect` also needs a `Bool` condition requiring `iot:Connection.Thing.IsAttached` to be `true`. Unattached policies are skipped. No attached policy produces `N/A`. For a policy attached to a thing group, the unique-certificate row lists the group's things with child groups included (`iot:ListThingsInThingGroup` with `recursive`) and each thing's certificate principals (`iot:ListThingPrincipals`), and judges each such certificate like one attached directly; an unread group or thing is `N/A` and named. An `AWS IoT Role Alias Device Scope` row lists every credentials-provider role alias (`ListRoleAliases`), describes each (`DescribeRoleAlias`) and judges its `roleArn` from the IAM permissions cache: the role fails when no Allow statement in its attached or inline policies names a `credentials-iot:` policy variable in `Resource` or `Condition`, because every device that assumes the alias then gets the same AWS access. Whether every statement of the role is device-scoped is not judged. A describe error, a missing `roleArn`, a role absent from the cache, a cache read error or no cache is `N/A`. A Region with no role alias gets no row.
+- **Rows emitted:**
+  - `AWS IoT Device-Scoped Policy`: the policy leg above.
+  - `AWS IoT Unique Device Certificate`: fails a certificate a device policy reaches that `ListPrincipalThings` attaches to more than one thing.
+  - `AWS IoT Role Alias Device Scope`: the role alias leg above.
+  - `AWS IoT Device Defender Audit`: passes when `DEVICE_CERTIFICATE_SHARED_CHECK` is enabled in the account audit configuration, a scheduled audit runs it, a run of that audit completed the check in the last 31 days, and the latest such run holds no unsuppressed finding. A read error is named and withholds `Passed`.
+
+### SM-42: Batch Transform Creation Guardrail
+
+- **Severity:** Medium
+- **Description:** Applies the `SM-34` creation guardrail to the batch transform path only: `CreateTransformJob` on `sagemaker:VolumeKmsKeyArn` and `sagemaker:OutputKmsKeyArn`, and `CreateModel` on `sagemaker:VpcSubnets` or `sagemaker:VpcSecurityGroupIds` and on `sagemaker:NetworkIsolation`. A transform job takes its network posture from its model, so `CreateModel` carries the network keys. Each requirement is met by a service control policy Deny on this account's path to the root or by a condition in every identity policy that grants the action. A training, endpoint configuration or notebook gap does not fail this check. Service control policies are organization-wide, so it runs once, on the primary Region, and its rows are tagged `Global`.
+
+### SM-43: Model Artifact Integrity
+
+- **Severity:** Medium
+- **Description:** Judges every container each InService endpoint serves, including the containers of a model package the model names and of each inference component. The image passes when it is pinned by digest (`@sha256:`) or by a tag that its Amazon ECR repository holds immutable: `IMMUTABLE`, `IMMUTABLE_WITH_EXCLUSION` for a tag no exclusion filter matches, or `MUTABLE_WITH_EXCLUSION` for a tag an exclusion filter matches. An untagged image is read as `latest`. When a managed signing rule of the registry covers the repository (a rule with no filters covers every repository), the image also needs a `COMPLETE` status from `DescribeImageSigningStatus`, read by the digest `DescribeEndpoint` reports the image resolved to; no status, or a `FAILED` one, fails. S3 model data passes when `ModelDataSource.S3DataSource` records an `ETag` or `ManifestEtag`, when a model package container records `ModelDataETag`, or when the source names SageMaker hub content (`HubAccessConfig.HubContentArn`). A bare `ModelDataUrl` fails, as does each `AdditionalModelDataSources` entry with no ETag, and a container whose environment sets `HF_MODEL_ID` with no model data. Only environment keys are read, never values. Each artifact bucket must default to SSE-KMS with a named `KMSMasterKeyID` that `kms:DescribeKey` reports as `KeyManager` `CUSTOMER`; an `alias/aws/` alias or an AWS managed key fails. A repository in another account, an image outside ECR with a tag, or any denied read leaves the endpoint `N/A` naming the permission. A recorded value means an expected value is recorded: whether it was compared at load time is not returned by any API this check reads, and weights fetched by startup code, and models loaded on ECS, EKS or EC2, are not read. Inference components are listed per variant with `ListInferenceComponents`; only `InService` components hosted on the endpoint are judged, every entry of a multi-specification component is judged, and a component that returns no model name, image or artifact URL reads `N/A`. The per-object leg (`HeadObject` on each artifact named as one S3 object, to compare its current `ETag` and its own server-side encryption) runs only when the `EnableSageMakerArtifactObjectReads` deployment parameter is `true`, because `HeadObject` is authorized by `s3:GetObject`, which also allows downloading any object. It defaults to `false`, and an `N/A` row then names the parameter and the number of objects not read; image pinning, recorded expected values, bucket default encryption and role read scope are still judged. An endpoint that meets every other leg but has an artifact object that was not read is named in that row and is `N/A`, not `Passed`, because the object's current `ETag` and encryption were not compared; an endpoint with no S3 object to read can still pass.
+
+---
+
 ## Amazon Bedrock AgentCore Security Checks (53)
 
 ### AC-01: Runtime Amazon VPC Configuration
 
-- **Severity:** High
+- **Severity:** High or Medium, depending on the network gap
 - **Description:** Validates agent runtimes have proper Amazon VPC settings. The egress leg unions the outbound ranges of every security group on a runtime, Code Interpreter or Browser and fails when they together cover `0.0.0.0/0` or `::/0`, split ranges included. A rule naming a prefix list counts as every CIDR in it, and a prefix list whose entries could not be read leaves that resource `N/A` naming `ec2:GetManagedPrefixListEntries`. `PUBLIC` mode fails at High severity and `SANDBOX` mode at Medium, because neither carries a customer security group. RT-08 calls `SANDBOX` the production default for non-regulated data; the row still fails it, and says so, because `SANDBOX` has no explicit allow-list and the AWS managed Config rule `bedrockagentcore-codeinterpreter-networkmode-check` is `NON_COMPLIANT` for `PUBLIC` or `SANDBOX`. A preventive leg, reported once under the `Global` region, requires a service control policy attached to the account, an organizational unit above it, or the root that denies `CreateAgentRuntime`, `UpdateAgentRuntime`, `CreateCodeInterpreter` and `CreateBrowser` when `bedrock-agentcore:subnets` or `bedrock-agentcore:securityGroups` is absent (`Null` true), and, as two rows, a Deny on `bedrock-agentcore:subnets` and a Deny on `bedrock-agentcore:securityGroups` that fire when the key names an ID outside a fixed list (`ForAnyValue:StringNotEquals`, no wildcards). A Deny that ANDs in another key does not count, the other VPC key included, because it fires only when both keys are outside their lists. `CreateHarness` and `UpdateHarness` also take subnets and security groups, but the service authorization reference lists neither condition key for them, so no SCP can pin a harness's VPC and they are not judged. The internet route leg fails a runtime in `PUBLIC` network mode, and fails a VPC-mode runtime, custom Code Interpreter or custom Browser whose subnet's route table (its explicit association, else the VPC main table) routes to an internet gateway that is not a blackhole (AIR-FND-NET-01). Tools report their subnets as `networkConfiguration.vpcConfig.subnets`, under `AgentCore Tool Subnet Internet Exposure`; `PUBLIC` and `SANDBOX` tools attach no customer subnet and are judged by the egress leg. A VPC-mode runtime reporting `requireServiceS3Endpoint` `true` fails `AgentCore Runtime Service-Managed S3 Gateway`, because a runtime created before the 2026-05-05 rollout keeps a service-managed Amazon S3 gateway outside its VPC configuration until the field is set `false` through `UpdateAgentRuntime`. A runtime that does not report the field fails the same way when its `createdAt` falls before 2026-05-05, since an unset field keeps the gateway; the rollout is gradual, so one created on or after that date, or with no `createdAt`, is `N/A`. `GetAgentRuntime` without a version reads only the latest one, so every version `ListAgentRuntimeVersions` returns is read by number and held to the network mode, subnet and S3 gateway legs, named as `version N`. An earlier version that no endpoint serves as its `liveVersion` or `targetVersion` runs no session, so each gap in it is an informational `N/A` advisory instead of a failure, and its security groups are not judged on the egress leg; when `ListAgentRuntimeEndpoints` cannot be read, every version is judged as served. A runtime whose versions cannot be listed is `N/A` naming `bedrock-agentcore:ListAgentRuntimeVersions`, and the `Passed` row is withheld. A version left unread as the Lambda timeout approaches is `N/A` by name. A runtime `ListAgentRuntimes` names that `GetAgentRuntime` reports `ResourceNotFoundException` for is `N/A` by name. A VPC-mode resource with no subnets, a subnet not present in the Region, and an unreadable route table are `N/A`. The `Passed` row names each runtime and states what was read. VPC endpoints are judged by AC-08. NAT gateways are not read: a NAT route gives no inbound path. The tool-level destination allow-list is not read, because no AgentCore API returns one.
 
 ### AC-02: AWS IAM Full Access
@@ -806,7 +1022,7 @@ inventory is never treated as evidence of compliance.
 
 ### AC-03: Stale Access
 
-- **Severity:** Low
+- **Severity:** Medium for stale access
 - **Description:** Detects unused AgentCore permissions by inspecting `Allow` and `NotAction` grants in attached and inline policy documents before querying IAM service-last-accessed history. Only the `bedrock-agentcore` namespace is evaluated; `agent-registry` grants are reported by [AR-02](#ar-02-stale-access) instead. As in the AC-02 wildcard legs, a `NotAction` whose exclusions name no platform namespace is a service-agnostic administrator grant and is not treated as an AgentCore-specific permission. Attached policy names alone are never treated as proof of access. IAM last-accessed jobs are polled within the Lambda deadline; a job that does not complete in time is reported as an indeterminate `N/A` rather than a failed control. A missing, unreadable, or malformed permissions cache is also reported as informational `N/A`. This identifies candidate grants from the cached policy documents; it is not a complete effective-permissions simulation across boundaries, session policies, or organization controls.
 
 ### AC-04: Observability
@@ -816,7 +1032,7 @@ inventory is never treated as evidence of compliance.
 
 ### AC-05: Amazon ECR Repository Encryption
 
-- **Severity:** High
+- **Severity:** High for an unencrypted repository; Low for `AES256` (AWS-managed keys)
 - **Description:** Validates Amazon ECR repositories use encryption.
 
 ### AC-06: Browser Tool Recording
@@ -831,7 +1047,7 @@ inventory is never treated as evidence of compliance.
 
 ### AC-08: Amazon VPC Endpoints
 
-- **Severity:** High
+- **Severity:** High or Medium, depending on the endpoint gap
 - **Description:** Requires an available interface endpoint for the service each AgentCore surface in use is called through: `com.amazonaws.<region>.bedrock-agentcore` when the region holds a runtime, `com.amazonaws.<region>.bedrock-agentcore.gateway` when it holds a gateway, and `com.amazonaws.<region>.bedrock-agentcore-control`, through which both are managed, when it holds either. An endpoint for one service does not count for another, and a region with gateways and no runtime is judged. A region with neither keeps the presence legs `N/A`; when it holds a VPC-mode Code Interpreter or Browser, the data-path endpoints in those tools' VPCs are still judged as below. A region that holds runtimes or gateways and no VPC fails `AgentCore VPC Endpoints Missing` with the counts, because no endpoint can exist there to carry the calls. Each VPC-mode runtime's subnets, for the latest version and each version an endpoint serves, are resolved to their VPCs through `DescribeSubnets`, and `AgentCore Runtime VPC Endpoint Missing` fails a runtime whose VPC holds no available `bedrock-agentcore` endpoint, since an endpoint in another VPC carries none of its calls. A runtime that cannot be read, reports no subnets, or names a subnet that is not returned is `N/A` by name, and the leg passes only when every VPC-mode runtime was resolved and covered. `PUBLIC` runtimes are judged by AC-01. Each AgentCore endpoint, and each S3, DynamoDB and SageMaker endpoint in a VPC that holds an AgentCore endpoint or hosts a VPC-mode runtime version, Code Interpreter or Browser, is also judged on its policy against the default allow-everything document, read by effect: an unconditioned `Allow` for `*` principals whose `Action` is `*`, `*:*` or the endpoint service's own `<prefix>:*` (`bedrock-agentcore:*`, `s3:*`), and whose `Resource` is `*`, `arn:*` or an ARN whose account and resource parts are empty or only `*` (`arn:aws:bedrock-agentcore:*:*:*`, `arn:aws:s3:::*`), fails as unrestricted, while another service's prefix, a partial action such as `bedrock-agentcore:Invoke*`, a named account or resource type, and any condition read as narrower, on private DNS for interface endpoints, and on its security groups' inbound rules. Ranges that together cover `0.0.0.0/0` or `::/0` fail as unrestricted, so `0.0.0.0/1` on one group and `128.0.0.0/1` on another fail. Ranges that together cover a CIDR block of the endpoint's VPC, primary or secondary, and any rule for a protocol or port other than TCP 443, fail `AgentCore VPC Endpoint Network Scope Too Wide`. A rule naming a prefix list counts as every CIDR in it, read with `ec2:GetManagedPrefixListEntries` across every page, and an endpoint whose prefix list could not be read is `N/A` naming the action. An endpoint whose VPC reported no CIDR block is `N/A`, and so is a hosting resource or subnet whose VPC could not be read, naming the action. VPCs, endpoints and both AgentCore inventories are read across every page, and an unreadable inventory is informational `N/A`.
 
 ### AC-09: Service-Linked Role
@@ -841,17 +1057,17 @@ inventory is never treated as evidence of compliance.
 
 ### AC-10: Resource-Based Policies
 
-- **Severity:** Medium
+- **Severity:** High
 - **Description:** Fails an Allow statement on a runtime or gateway resource policy that opens it to any principal without binding the caller's account or organization. An unreadable runtime or gateway list is informational `N/A`.
 
 ### AC-11: Policy Engine Encryption
 
-- **Severity:** Medium
+- **Severity:** High
 - **Description:** Requires every policy engine to name a customer managed key whose `kms:DescribeKey` metadata reports `KeyManager` `CUSTOMER` and `KeyState` `Enabled`. A key that is disabled, pending deletion, pending import or unavailable fails as `AgentCore Policy Engine Key Unusable`: the engine cannot decrypt its policies, so every decision it takes is `DENY`. An engine whose `GetPolicyEngine` read fails, which also happens when its key is unusable because the read decrypts first, and a key `DescribeKey` cannot read, are informational `N/A` naming the engine.
 
 ### AC-12: Gateway Encryption
 
-- **Severity:** Medium
+- **Severity:** Low for no CMK; High for unusable key; Medium for unscoped key policy
 - **Description:** Reads each gateway's `kmsKeyArn` and describes the key. A gateway with no key, or with a key `kms:DescribeKey` reports as not `CUSTOMER` managed, fails `AgentCore Gateway Encryption Missing`, and one whose customer managed key is not `Enabled` fails `AgentCore Gateway Key Unusable`. The key policy is then read against the example in the gateway encryption guide: `kms:Decrypt` and `kms:GenerateDataKey` have to be allowed with `kms:ViaService` `bedrock-agentcore.<region>.amazonaws.com` and `kms:EncryptionContext:aws:bedrock-agentcore-gateway:arn` naming the gateway, `kms:CreateGrant` with that `kms:ViaService` and `kms:GrantConstraintType` `EncryptionContextSubset`, and no unbounded principal may decrypt. An encryption context value binds when it names the partition, service, region, account and resource type literally, so `gateway/*` in the account binds. IfExists forms do not count. A gap fails `AgentCore Gateway Key Policy Unscoped`. A gateway whose `GetGateway`, `kms:DescribeKey` or `kms:GetKeyPolicy` read fails, a gateway deleted during the run included, is `N/A` by name and is not counted in the `Passed` row. A statement granting the same actions with no condition, such as the account-root `kms:*` statement, is not subtracted.
 
 ### AC-13: Gateway Configuration
@@ -1051,7 +1267,7 @@ inventory is never treated as evidence of compliance.
 
 ### AC-51: Web ACL Anti-DDoS
 
-- **Severity:** Medium
+- **Severity:** Medium for WAF and Shield gaps; Low for Firewall Manager enrollment
 - **Description:** For each AgentCore gateway, reads the web ACL that `GetGateway` reports and requires it to run the AWS managed rule group `AWSManagedRulesAntiDDoSRuleSet`. A gateway with no web ACL fails, because nothing mitigates a request flood against it, and AG-27 reports the missing association. The group is not credited when its rule overrides the group action to `Count`, when a rule inside it is overridden to `Count` or `Allow` or excluded, because the group's soft mitigation is a `Challenge`, or when a group of that name comes from a vendor other than AWS. Rule groups that Firewall Manager adds before and after the web ACL's own rules are read as part of it. The web ACL must also apply a rate-based rule whose action is `Block`, which caps the request rate of one caller and so the inference spend a flood runs up; a rule set to `Count`, `Captcha` or `Challenge` is not credited, and the rule's limit and scope-down statement are not judged. Neither the group nor the rate-based rule is credited when it runs after an `Allow` rule, in the order AWS WAF runs the rules, and the finding names the `Allow` rule. A rate-based rule behind an `Allow` on a `RateBasedStatement` fails; behind any other `Allow`, such as an IP set match, the rate leg or the group is informational `N/A`, because the `Allow` statement is not judged for which requests it lets through. When no such rule is found and the ACL references a customer rule group or another vendor's managed rule group, whose rules live in another resource, the rate leg is informational `N/A`. A passing gateway's finding names the `SensitivityToBlock` and `ClientSideActionConfig.Challenge` settings the group runs with, filling in the API defaults (`LOW` to block, `HIGH` to challenge) where the configuration omits one, and says when `UsageOfAction` is `DISABLED`. The settings are reported and not graded: the control asks for a deliberate choice, and the configuration records a value, not whether it was chosen. Shield Advanced enrollment of the gateway itself is not judged, because `shield:CreateProtection` accepts no AgentCore gateway ARN. A gateway whose association cannot be read, and a web ACL whose rules cannot be read, are informational `N/A` with the reason. Each `Passed` or `Failed` row states the scope: AgentCore gateways, and the CloudFront distributions whose origin is a gateway, which the `AgentCore Front Door` rows judge. API Gateway APIs and Application Load Balancers that front an AI workload are outside it, because finding them takes the AWS WAF association reads `wafv2:ListWebACLs` and `wafv2:ListResourcesForWebACL`, which the assessment role does not hold. An `N/A` row carries neither this statement nor the Shield Advanced sentence above.
 - **Front door Shield Protection:** a second row, "AgentCore Front Door Shield Protection", lists CloudFront distributions (`ListDistributions`) and treats one as an AI entry point when an origin's `DomainName` is the host of an AgentCore gateway's `gatewayUrl` in the assessed Region. When `GetSubscriptionState` reports `ACTIVE`, a fronting distribution that no Shield protection (`ListProtections`) names fails at Medium, and one a protection names passes; the protection's health checks and automatic application layer response are not judged. When the subscription is not `ACTIVE` the row is informational `N/A`, because the control asks for Shield Advanced where availability is business-critical. A distribution fronting no gateway gives no row, and a failed CloudFront, Shield or `GetGateway` read is informational `N/A` naming the read.
 - **Shield Response Team proactive engagement:** a row judged once per run under `Global`, when any assessed Region holds an AgentCore gateway, because the setting belongs to the account's Shield Advanced subscription. With the subscription `ACTIVE`, `DescribeSubscription` must report `ProactiveEngagementStatus` `ENABLED`; `PENDING` and `DISABLED` fail. A subscription that is not `ACTIVE` is informational `N/A`. A Region whose gateways could not be listed is named, and when no read Region holds a gateway the row is informational `N/A` saying whether one exists was not read.
@@ -1063,7 +1279,7 @@ inventory is never treated as evidence of compliance.
 
 ### AC-53: Inter-Agent Anomaly Alarms
 
-- **Severity:** Medium
+- **Severity:** Medium for anomaly alarms; Low for scheduled log queries
 - **Description:** Answers AISF `AIR-FND-DET-10` for the agent-to-agent calls Application Signals records. `ListMetrics` on the `ApplicationSignals` namespace, for `Error`, `Fault` and `Latency`, lists a dependency metric per caller (`Service`) and callee (`RemoteService`). A pair is judged when its `Environment` starts with `bedrock-agentcore:` and its `RemoteService`, with any `AWS::` prefix removed, names another runtime or gateway from `ListAgentRuntimes` or `ListGateways`: a gateway by its id or name, a runtime by its id or name or `<agentRuntimeName>.<endpointName>`. A call from a gateway to its policy engine (`ListPolicyEngines`) is excluded, as is a call a resource makes to itself. Each pair fails without a metric alarm whose actions are enabled and non-empty, or that an acting composite alarm reads through a rule joining only `ALARM(...)` terms with `OR`, and whose `ThresholdMetricId` names an `ANOMALY_DETECTION_BAND` expression over a `MetricStat` in `ApplicationSignals`. The pair needs such an alarm on `Latency` and another on `Error` or `Fault`, and a pair alarmed on only one kind fails naming the metric no alarm watches, because DET-10 asks for both the latency and the error rate of each pair. Each metric must carry the pair's `Service` and `RemoteService`; other dimensions it carries, `Operation` included, do not change the result, and the alarm's statistic is not read. A caller whose `RemoteService` is `UnknownRemoteService` is named in an informational `N/A` row and is never `Passed`, because Application Signals did not name its callee. Passed names each pair and its alarms. With no pair the row is informational `N/A` and says a runtime or gateway not instrumented with Application Signals cannot be assessed. Every row names what no AWS API records: how often each multi-agent workflow runs, which metrics a workflow defines as its own, and whether a new pair raises an alert when it first appears. A denied or failed `ListAgentRuntimes`, `ListGateways`, `ListPolicyEngines`, `ListMetrics` or `DescribeAlarms` read is informational `N/A` naming the action. A composite route is named in the row.
 
 ---
@@ -1149,7 +1365,8 @@ default assessment. They follow a hybrid model:
 
 - Reused API-backed controls from Amazon Bedrock, Amazon Bedrock AgentCore,
   and AWS Agent Registry are mapped into agentic security domains.
-- New checks are added only where AWS APIs can prove the control state.
+- Native checks (`AG-24` through `AG-27` and `AG-39`) exist only where AWS APIs can prove
+  the control state.
 - Controls that cannot be proven by AWS APIs are not scored. Human-in-the-loop
   governance is therefore documented as a methodology note, not emitted as an
   automated pass/fail finding.
@@ -1158,166 +1375,52 @@ These checks reference the
 [AWS Well-Architected Agentic AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html),
 with scope limited to the Security pillar.
 
-### AG-01: Agent Guardrail Association
+### Mapped Agentic AI checks
 
-- **Severity:** High
-- **Source:** BR-28
-- **Domain:** Guardrail Enforcement
-- **Description:** Maps Bedrock agent guardrail association into the Agentic AI Security view.
+Mapped `AG-*` rows reuse the source finding's status, details, and Region and inherit its
+severity; a source row with status `N/A` produces an `Informational` `AG-*` row. Mapped
+rows are contextual views of source evidence and are excluded from scoring.
 
-### AG-02: Harmful Content Guardrail Coverage
+| ID | Title | Domain | Source check | Severity | Notes |
+| -- | ----- | ------ | ------------ | -------- | ----- |
+| <a id="ag-01-agent-guardrail-association"></a>AG-01 | Agent Guardrail Association | Guardrail Enforcement | [BR-28](#br-28-agent-guardrail-association) | Inherits source | |
+| <a id="ag-02-harmful-content-guardrail-coverage"></a>AG-02 | Harmful Content Guardrail Coverage | Guardrail Enforcement | [BR-23](#br-23-guardrail-content-filter-coverage) | Inherits source | |
+| <a id="ag-03-sensitive-information-protection"></a>AG-03 | Sensitive Information Protection | Memory & Data Privacy | [BR-26](#br-26-guardrail-sensitive-information-filter) | Inherits source | |
+| <a id="ag-04-automated-reasoning-guardrails"></a>AG-04 | Automated Reasoning Guardrails | Guardrail Enforcement | [BR-24](#br-24-automated-reasoning-policy-implementation) | Inherits source | |
+| <a id="ag-05-grounding-controls"></a>AG-05 | Grounding Controls | Prompt & Input Protection | [BR-27](#br-27-guardrail-contextual-grounding-check) | Inherits source | |
+| <a id="ag-06-tool-execution-least-privilege"></a>AG-06 | Tool Execution Least Privilege | Tool Authorization | [BR-21](#br-21-agent-action-group-iam-least-privilege) | Inherits source | |
+| <a id="ag-07-model-invocation-logging"></a>AG-07 | Model Invocation Logging | Auditability & Observability | [BR-04](#br-04-model-invocation-logging) | Inherits source | |
+| <a id="ag-08-api-audit-trail"></a>AG-08 | API Audit Trail | Auditability & Observability | [BR-06](#br-06-aws-cloudtrail-logging) | Inherits source | |
+| <a id="ag-09-guardrail-enforcement-boundary"></a>AG-09 | Guardrail Enforcement Boundary | Guardrail Enforcement | [BR-15](#br-15-cross-account-guardrails-enforcement) | Inherits source | |
+| <a id="ag-10-adversarial-evaluation-coverage"></a>AG-10 | Adversarial Evaluation Coverage | Prompt & Input Protection | [BR-18](#br-18-model-evaluation-implementation) | Inherits source | |
+| <a id="ag-11-prompt-flow-validation"></a>AG-11 | Prompt Flow Validation | Prompt & Input Protection | [BR-19](#br-19-prompt-flow-validation) | Inherits source | |
+| <a id="ag-12-invocation-abuse-controls"></a>AG-12 | Invocation Abuse Controls | Abuse & Cost Protection | [BR-22](#br-22-model-invocation-throttling-limits) | Inherits source | |
+| <a id="ag-13-session-boundary"></a>AG-13 | Session Boundary | Bounded Autonomy | [BR-29](#br-29-agent-idle-session-ttl) | Inherits source | |
+| <a id="ag-14-operational-abuse-alarms"></a>AG-14 | Operational Abuse Alarms | Abuse & Cost Protection | [BR-32](#br-32-cloudwatch-alarms-on-bedrock-metrics) | Inherits source | |
+| <a id="ag-15-runtime-network-boundary"></a>AG-15 | Runtime Network Boundary | Bounded Autonomy | [AC-01](#ac-01-runtime-amazon-vpc-configuration) | Inherits source | |
+| <a id="ag-16-agentcore-least-privilege"></a>AG-16 | AgentCore Least Privilege | Agent Identity & Access | [AC-02](#ac-02-aws-iam-full-access) | Inherits source | |
+| <a id="ag-17-stale-agentcore-access"></a>AG-17 | Stale AgentCore Access | Agent Identity & Access | [AC-03](#ac-03-stale-access) | Inherits source | |
+| <a id="ag-18-agentcore-observability"></a>AG-18 | AgentCore Observability | Auditability & Observability | [AC-04](#ac-04-observability) | Inherits source | |
+| <a id="ag-19-memory-data-protection"></a>AG-19 | Memory Data Protection | Memory & Data Privacy | [AC-07](#ac-07-memory-encryption) | Inherits source | An AC-07 `GetMemory` denial carries its `kms:Decrypt` cause into this row. |
+| <a id="ag-20-private-agentcore-connectivity"></a>AG-20 | Private AgentCore Connectivity | Bounded Autonomy | [AC-08](#ac-08-amazon-vpc-endpoints) | Inherits source | |
+| <a id="ag-21-resource-policy-boundary"></a>AG-21 | Resource Policy Boundary | Agent Identity & Access | [AC-10](#ac-10-resource-based-policies) | Inherits source | |
+| <a id="ag-22-policy-engine-data-protection"></a>AG-22 | Policy Engine Data Protection | Tool Authorization | [AC-11](#ac-11-policy-engine-encryption) | Inherits source | |
+| <a id="ag-23-gateway-data-protection"></a>AG-23 | Gateway Data Protection | Tool Authorization | [AC-12](#ac-12-gateway-encryption) | Inherits source | |
+| <a id="ag-28-identity-token-vault-protection"></a>AG-28 | Identity Token Vault Protection | Agent Identity & Access | [AC-14](#ac-14-identity-token-vault-cmk-encryption) | Inherits source | |
+| <a id="ag-29-code-interpreter-isolation"></a>AG-29 | Code Interpreter Isolation | Bounded Autonomy | [AC-15](#ac-15-code-interpreter-network-isolation) | Inherits source | |
+| <a id="ag-30-prompt-attack-protection"></a>AG-30 | Prompt Attack Protection | Prompt & Input Protection | [BR-34](#br-34-guardrail-prompt-attack-filter) | Inherits source | |
+| <a id="ag-31-browser-tool-isolation"></a>AG-31 | Browser Tool Isolation | Bounded Autonomy | [AC-16](#ac-16-custom-browser-network-isolation) | Inherits source | |
+| <a id="ag-32-online-evaluation-assurance"></a>AG-32 | Online Evaluation Assurance | Auditability & Continuous Assurance | [AC-17](#ac-17-online-evaluation-coverage) | Inherits source | Does not claim universal runtime trace coverage. |
+| <a id="ag-33-registry-publication-approval-governance"></a>AG-33 | Registry Publication Approval Governance | Agent Identity & Access | [AR-03](#ar-03-registry-publication-approval-governance) | Inherits source | |
+| <a id="ag-34-registry-discovery-authorization"></a>AG-34 | Registry Discovery Authorization | Agent Identity & Access | [AR-04](#ar-04-registry-discovery-authorization) | Inherits source | Configured IAM and constrained JWT authorizers stay informational until effective access or approved JWT caller values can be established. |
+| <a id="ag-35-registry-metadata-encryption"></a>AG-35 | Registry Metadata Encryption | Memory & Data Privacy | [AR-05](#ar-05-registry-customer-managed-kms-encryption) | Inherits source | |
+| <a id="ag-36-organization-discovery-coverage"></a>AG-36 | Organization Discovery Coverage | Auditability & Continuous Assurance | [AR-06](#ar-06-registry-organization-auto-detection) | Inherits source | |
+| <a id="ag-37-registry-record-lifecycle-governance"></a>AG-37 | Registry Record Lifecycle Governance | Agent Identity & Access | [AR-07](#ar-07-registry-record-lifecycle-governance) | Inherits source | Advisory lifecycle observations only. |
+| <a id="ag-38-registry-record-provenance"></a>AG-38 | Registry Record Provenance | Auditability & Continuous Assurance | [AR-08](#ar-08-registry-record-provenance) | Inherits source | |
 
-- **Severity:** Source check severity
-- **Source:** BR-23
-- **Domain:** Guardrail Enforcement
-- **Description:** Maps guardrail content filter coverage for agent-facing workloads.
+### Native Agentic AI checks
 
-### AG-03: Sensitive Information Protection
-
-- **Severity:** Source check severity
-- **Source:** BR-26
-- **Domain:** Memory & Data Privacy
-- **Description:** Maps guardrail sensitive-information and PII protection controls.
-
-### AG-04: Automated Reasoning Guardrails
-
-- **Severity:** Source check severity
-- **Source:** BR-24
-- **Domain:** Guardrail Enforcement
-- **Description:** Maps automated reasoning policies used to verify responses against deterministic rules.
-
-### AG-05: Grounding Controls
-
-- **Severity:** Source check severity
-- **Source:** BR-27
-- **Domain:** Prompt & Input Protection
-- **Description:** Maps contextual grounding checks for RAG and tool-using agents.
-
-### AG-06: Tool Execution Least Privilege
-
-- **Severity:** Source check severity
-- **Source:** BR-21
-- **Domain:** Tool Authorization
-- **Description:** Maps Bedrock agent action group IAM least-privilege findings.
-
-### AG-07: Model Invocation Logging
-
-- **Severity:** Source check severity
-- **Source:** BR-04
-- **Domain:** Auditability & Observability
-- **Description:** Maps model invocation logging for agent prompts, responses, and guardrail traces.
-
-### AG-08: API Audit Trail
-
-- **Severity:** Source check severity
-- **Source:** BR-06
-- **Domain:** Auditability & Observability
-- **Description:** Maps CloudTrail coverage for Bedrock activity.
-
-### AG-09: Guardrail Enforcement Boundary
-
-- **Severity:** Source check severity
-- **Source:** BR-15
-- **Domain:** Guardrail Enforcement
-- **Description:** Maps organization-level guardrail enforcement controls.
-
-### AG-10: Adversarial Evaluation Coverage
-
-- **Severity:** Source check severity
-- **Source:** BR-18
-- **Domain:** Prompt & Input Protection
-- **Description:** Maps model/application evaluation coverage for adversarial and safety testing.
-
-### AG-11: Prompt Flow Validation
-
-- **Severity:** Source check severity
-- **Source:** BR-19
-- **Domain:** Prompt & Input Protection
-- **Description:** Maps Bedrock flow validation before deployment.
-
-### AG-12: Invocation Abuse Controls
-
-- **Severity:** Source check severity
-- **Source:** BR-22
-- **Domain:** Abuse & Cost Protection
-- **Description:** Maps Bedrock service quota and throttling controls.
-
-### AG-13: Session Boundary
-
-- **Severity:** Source check severity
-- **Source:** BR-29
-- **Domain:** Bounded Autonomy
-- **Description:** Maps Bedrock agent idle session TTL controls.
-
-### AG-14: Operational Abuse Alarms
-
-- **Severity:** Source check severity
-- **Source:** BR-32
-- **Domain:** Abuse & Cost Protection
-- **Description:** Maps CloudWatch alarms for Bedrock invocation abuse and operational anomalies.
-
-### AG-15: Runtime Network Boundary
-
-- **Severity:** Source check severity
-- **Source:** AC-01
-- **Domain:** Bounded Autonomy
-- **Description:** Maps AgentCore runtime VPC configuration.
-
-### AG-16: AgentCore Least Privilege
-
-- **Severity:** Source check severity
-- **Source:** AC-02
-- **Domain:** Agent Identity & Access
-- **Description:** Maps AgentCore full-access IAM findings.
-
-### AG-17: Stale AgentCore Access
-
-- **Severity:** Source check severity
-- **Source:** AC-03
-- **Domain:** Agent Identity & Access
-- **Description:** Maps stale AgentCore permissions.
-
-### AG-18: AgentCore Observability
-
-- **Severity:** Source check severity
-- **Source:** AC-04
-- **Domain:** Auditability & Observability
-- **Description:** Maps AgentCore logging, tracing, and observability coverage.
-
-### AG-19: Memory Data Protection
-
-- **Severity:** Source check severity
-- **Source:** AC-07
-- **Domain:** Memory & Data Privacy
-- **Description:** Maps AgentCore memory encryption controls. The row carries AC-07's details, so the row for a memory that `GetMemory` denied names the `kms:Decrypt` cause too.
-
-### AG-20: Private AgentCore Connectivity
-
-- **Severity:** Source check severity
-- **Source:** AC-08
-- **Domain:** Bounded Autonomy
-- **Description:** Maps VPC endpoint coverage for AgentCore services.
-
-### AG-21: Resource Policy Boundary
-
-- **Severity:** Source check severity
-- **Source:** AC-10
-- **Domain:** Agent Identity & Access
-- **Description:** Maps AgentCore runtime and gateway resource-based policy controls.
-
-### AG-22: Policy Engine Data Protection
-
-- **Severity:** Source check severity
-- **Source:** AC-11
-- **Domain:** Tool Authorization
-- **Description:** Maps AgentCore policy engine encryption controls.
-
-### AG-23: Gateway Data Protection
-
-- **Severity:** Source check severity
-- **Source:** AC-12
-- **Domain:** Tool Authorization
-- **Description:** Maps AgentCore gateway encryption controls.
+These five checks inspect AgentCore gateways directly and are emitted by the AgentCore assessment for each gateway in each assessed region. When a region has no gateways, each check reports informational `N/A`. Like mapped rows, native `AG-*` rows appear in the Agentic AI area and are excluded from scoring.
 
 ### AG-24: Gateway Inbound Authorization
 
@@ -1347,83 +1450,6 @@ with scope limited to the Security pillar.
 - **Domain:** Abuse & Cost Protection
 - **Description:** Fails AgentCore gateways without an associated AWS WAF web ACL. An associated gateway passes only with `wafConfiguration` `failureMode` `FAIL_CLOSE`; `FAIL_OPEN` fails, because the gateway then allows a request unfiltered when AWS WAF cannot be evaluated, and an unset value is informational `N/A` because the API states no default. Each `Passed` or `Failed` row also states the scope: AgentCore gateways, and the CloudFront distributions whose origin is a gateway, which the `AgentCore Front Door WAF Rule Coverage` row judges. API Gateway APIs and Application Load Balancers that front an AI workload are outside it, because finding them and their web ACLs takes `wafv2:ListWebACLs` and `wafv2:ListResourcesForWebACL`, which the assessment role does not hold. An `N/A` row, such as one for an account with no gateways, carries no scope statement.
 
-### AG-28: Identity Token Vault Protection
-
-- **Severity:** Source check severity
-- **Source:** AC-14
-- **Domain:** Agent Identity & Access
-- **Description:** Maps AgentCore Identity token-vault CMK encryption.
-
-### AG-29: Code Interpreter Isolation
-
-- **Severity:** Source check severity
-- **Source:** AC-15
-- **Domain:** Bounded Autonomy
-- **Description:** Maps custom Code Interpreter VPC isolation.
-
-### AG-30: Prompt Attack Protection
-
-- **Severity:** Source check severity
-- **Source:** BR-34
-- **Domain:** Prompt & Input Protection
-- **Description:** Maps preventive Bedrock Guardrails prompt-attack filtering.
-
-### AG-31: Browser Tool Isolation
-
-- **Severity:** Source check severity
-- **Source:** AC-16
-- **Domain:** Bounded Autonomy
-- **Description:** Maps custom AgentCore browser VPC isolation.
-
-### AG-32: Online Evaluation Assurance
-
-- **Severity:** Source check severity
-- **Source:** AC-17
-- **Domain:** Auditability & Continuous Assurance
-- **Description:** Maps AgentCore online evaluation configuration without claiming universal runtime trace coverage.
-
-### AG-33: Registry Publication Approval Governance
-
-- **Severity:** Source check severity
-- **Source:** AR-03
-- **Domain:** Agent Identity & Access
-- **Description:** Maps Agent Registry publication approval configuration into the Agentic AI Security view.
-
-### AG-34: Registry Discovery Authorization
-
-- **Severity:** Source check severity
-- **Source:** AR-04
-- **Domain:** Agent Identity & Access
-- **Description:** Maps Agent Registry authorizer inventory and manual-review guidance into the Agentic AI Security view. Configured IAM and constrained JWT authorizers remain informational until effective access or approved JWT caller values can be established.
-
-### AG-35: Registry Metadata Encryption
-
-- **Severity:** Source check severity
-- **Source:** AR-05
-- **Domain:** Memory & Data Privacy
-- **Description:** Maps Agent Registry customer-managed KMS encryption into the Agentic AI Security view.
-
-### AG-36: Organization Discovery Coverage
-
-- **Severity:** Source check severity
-- **Source:** AR-06
-- **Domain:** Auditability & Continuous Assurance
-- **Description:** Maps organization-scoped Agent Registry auto-detection health into the Agentic AI Security view.
-
-### AG-37: Registry Record Lifecycle Governance
-
-- **Severity:** Source check severity
-- **Source:** AR-07
-- **Domain:** Agent Identity & Access
-- **Description:** Maps advisory Agent Registry record lifecycle observations into the Agentic AI Security view.
-
-### AG-38: Registry Record Provenance
-
-- **Severity:** Source check severity
-- **Source:** AR-08
-- **Domain:** Auditability & Continuous Assurance
-- **Description:** Maps Agent Registry creator attribution and auto-detected runtime or gateway lineage into the Agentic AI Security view.
-
 ### AG-39: Gateway WAF Rule Coverage
 
 - **Severity:** Medium
@@ -1437,23 +1463,18 @@ with scope limited to the Security pillar.
 
 ---
 
-## Additional Resources
-
-- [Amazon SageMaker Security Best Practices](https://docs.aws.amazon.com/sagemaker/latest/dg/security.html)
-- [Amazon Bedrock Security](https://docs.aws.amazon.com/bedrock/latest/userguide/security.html)
-- [AWS Well-Architected Agentic AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html)
-- [AWS Security Hub SageMaker Controls](https://docs.aws.amazon.com/securityhub/latest/userguide/sagemaker-controls.html)
-- [AWS Well-Architected Framework - Security Pillar](https://docs.aws.amazon.com/wellarchitected/latest/security-pillar/welcome.html)
-
----
-
 ## Responsible AI GRC Checks (64 additional, 5 upstream extensions)
 
-These 64 standalone checks (FS-XX) extend the framework with cross-industry AI
-governance, risk, and compliance controls derived from the
-[AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://aws.amazon.com/blogs/security/introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/).
-An additional 5 FS checks are contributed as extensions to existing SM-07,
-SM-22, SM-23, BR-04, and BR-06 (see in-file extension notes).
+These 64 opt-in standalone checks (`FS-XX`) add cross-industry AI governance,
+risk, and compliance controls derived from the
+[AWS User Guide to Governance, Risk, and Compliance for Responsible AI Adoption](https://d1.awsstatic.com/whitepapers/compliance/AWS-User-Guide-Governance-Risk-Compliance-for-Responsible-AI-Adoption-Financial-Services.pdf)
+(see also the
+[AWS Security Blog announcement](https://aws.amazon.com/blogs/security/introducing-the-updated-aws-user-guide-to-governance-risk-and-compliance-for-responsible-ai-adoption/)).
+Enable them with the `EnableResponsibleAIGRCAssessment` deployment parameter.
+Five more `FS` numbers (FS-17, FS-18, FS-19, FS-23, and FS-64) are merged into
+the SM-07, SM-23, SM-22, BR-06, and BR-04 checks rather than shipped
+separately; see
+[Relationship to SM/BR/AC checks](SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md#relationship-to-smbrac-checks).
 
 The full catalog is in **[`SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md`](./SECURITY_CHECKS_RESPONSIBLE_AI_GRC.md)**,
 organized into three parts:
@@ -1468,8 +1489,8 @@ organized into three parts:
   (Hallucination, Prompt Injection, Improper Output Handling, Off-Topic Output,
   Out-of-Date Training Data, and 6 cross-category material gap checks).
 
-The same document includes the shared intro, severity rubric, validation note,
-upstream-overlap table, and the compliance framework mapping table
+That document also contains the severity rubric, validation note,
+upstream-overlap table, and compliance framework mapping table
 (SR 11-7, FFIEC CAT, NYDFS 500.06, PCI-DSS 12.3.2, DORA Art.6, MAS TRM 9,
 ISO 27001 A.12, ECOA, OWASP LLM Top 10).
 
@@ -1477,37 +1498,25 @@ ISO 27001 A.12, ECOA, OWASP LLM Top 10).
 
 ## OWASP Top 10 for LLM Checks (12)
 
-These 12 checks (OW-XX) map the AI/ML Security Assessment findings to the
-[OWASP Top 10 for LLM 2025](https://genai.owasp.org/llm-top-10/) categories.
-OW-01..OW-10 are **derived by mapping** from existing BR/SM/AC/FS findings.
-The OWASP Lambda itself does not call AWS APIs for mapped rows, but enabling
-OWASP can auto-run Responsible AI GRC to produce FS-* source findings when
-Responsible AI GRC is otherwise disabled. OW-11 and OW-12 are net-new checks
-that address LLM07 (System Prompt Leakage), which the existing checks do not
-directly cover.
-If a required source CSV is missing, the OWASP Lambda emits an informational
-`OW-00` completeness row rather than silently dropping derived rows.
+These 12 opt-in checks (`OW-XX`) align findings to the
+[OWASP Top 10 for LLM 2025](https://genai.owasp.org/llm-top-10/). OW-01 through
+OW-10 are mapped from existing Bedrock, SageMaker AI, AgentCore, and
+Responsible AI GRC findings; OW-11 and OW-12 are native LLM07 (System Prompt
+Leakage) checks. Enable them with the `EnableOWASPAssessment` deployment
+parameter. Because many mappings (and all of LLM05) use `FS-*` evidence, enabling OWASP also runs
+Responsible AI GRC as a hidden source dependency when GRC itself is disabled.
+The full catalog, mappings, and disclaimer are in
+**[`SECURITY_CHECKS_OWASP.md`](./SECURITY_CHECKS_OWASP.md)**.
 
-**Opt-in.** OWASP checks run only when the `EnableOWASPAssessment` deployment
-parameter is `true` and the Step Functions execution includes `"enableOWASP": "true"`.
+---
 
-**Rendered under a new "By Compliance Standard" sidebar section** of the HTML
-report, alongside future NIST AI RMF and EU AI Act sections.
+## Additional Resources
 
-The full catalog is in **[`SECURITY_CHECKS_OWASP.md`](./SECURITY_CHECKS_OWASP.md)**,
-organized by OWASP category:
-
-- **LLM01 Prompt Injection** — OW-01
-- **LLM02 Sensitive Information Disclosure** — OW-02
-- **LLM03 Supply Chain** — OW-03
-- **LLM04 Data and Model Poisoning** — OW-04
-- **LLM05 Improper Output Handling** — OW-05
-- **LLM06 Excessive Agency** — OW-06
-- **LLM07 System Prompt Leakage** — OW-07 (mapping-based) + OW-11, OW-12 (native)
-- **LLM08 Vector and Embedding Weaknesses** — OW-08
-- **LLM09 Misinformation** — OW-09
-- **LLM10 Unbounded Consumption** — OW-10
-
-**Preliminary and illustrative.** OWASP mappings have not been reviewed by
-external auditors. Validate mappings with your Security/Compliance team
-before using as audit evidence.
+- [Amazon SageMaker Security Best Practices](https://docs.aws.amazon.com/sagemaker/latest/dg/security.html)
+- [Amazon Bedrock Security](https://docs.aws.amazon.com/bedrock/latest/userguide/security.html)
+- [Amazon Bedrock AgentCore Security](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security.html)
+- [OWASP Top 10 for LLM 2025](https://genai.owasp.org/llm-top-10/)
+- [AWS Well-Architected Generative AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/generative-ai-lens.html)
+- [AWS Well-Architected Agentic AI Lens](https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html)
+- [AWS Security Hub SageMaker Controls](https://docs.aws.amazon.com/securityhub/latest/userguide/sagemaker-controls.html)
+- [AWS Well-Architected Framework - Security Pillar](https://docs.aws.amazon.com/wellarchitected/latest/security-pillar/welcome.html)

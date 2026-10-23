@@ -2892,7 +2892,7 @@ def check_sagemaker_sso_configuration(region: str = "") -> Dict[str, Any]:
                             "Enable and properly configure AWS IAM Identity Center (successor to AWS SSO) "
                             "for centralized access management. Ensure Identity Store ID is configured."
                         ),
-                        reference="https://aws.amazon.com/blogs/machine-learning/team-and-user-management-with-amazon-sagemaker-and-aws-sso/",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/onboard-custom.html#onboard-custom-authentication-details",
                         severity="Medium",
                         status="Failed",
                         region=region,
@@ -2905,7 +2905,7 @@ def check_sagemaker_sso_configuration(region: str = "") -> Dict[str, Any]:
                     finding_name="SageMaker SSO Configuration Check",
                     finding_details="No SageMaker domains found, or all domains use SSO with IAM Identity Center configured",
                     resolution="No action required",
-                    reference="https://aws.amazon.com/blogs/machine-learning/team-and-user-management-with-amazon-sagemaker-and-aws-sso/",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/onboard-custom.html#onboard-custom-authentication-details",
                     severity="Medium",
                     status="Passed",
                     region=region,
@@ -8334,7 +8334,7 @@ def check_sagemaker_model_container_repository(region: str = "") -> Dict[str, An
                             "container to pull its image from a private Docker "
                             "registry in your VPC."
                         ),
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-container-repositories.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/your-algorithms-containers-inference-private.html",
                         severity="Medium",
                         status="Failed",
                         region=region,
@@ -8348,7 +8348,7 @@ def check_sagemaker_model_container_repository(region: str = "") -> Dict[str, An
                         finding_name="SageMaker Model Repository Access Summary",
                         finding_details=f"Found {len(models_platform_mode)} served model containers using Platform repository access (showing first 15)",
                         resolution="Review all models and configure VPC repository access where appropriate",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-container-repositories.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/your-algorithms-containers-inference-private.html",
                         severity="Medium",
                         status="Failed",
                         region=region,
@@ -8367,7 +8367,7 @@ def check_sagemaker_model_container_repository(region: str = "") -> Dict[str, An
                             "access on every container"
                         ),
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-container-repositories.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/your-algorithms-containers-inference-private.html",
                         severity="Medium",
                         status="Passed",
                         region=region,
@@ -8381,7 +8381,7 @@ def check_sagemaker_model_container_repository(region: str = "") -> Dict[str, An
                         finding_name="SageMaker Model Repository Access Check",
                         finding_details="No endpoint or inference component serves a model",
                         resolution="No action required",
-                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/model-container-repositories.html",
+                        reference="https://docs.aws.amazon.com/sagemaker/latest/dg/your-algorithms-containers-inference-private.html",
                         severity="Informational",
                         status="N/A",
                         region=region,
@@ -8396,7 +8396,7 @@ def check_sagemaker_model_container_repository(region: str = "") -> Dict[str, An
                     unread,
                     f"{len(models_vpc_mode)} served model(s) use VPC repository "
                     "access on every container.",
-                    "https://docs.aws.amazon.com/sagemaker/latest/dg/model-container-repositories.html",
+                    "https://docs.aws.amazon.com/sagemaker/latest/dg/your-algorithms-containers-inference-private.html",
                     region,
                 )
             )
@@ -11681,7 +11681,7 @@ def check_hyperpod_ebs_cmk_encryption(
                 finding_name="HyperPod EBS CMK Encryption",
                 finding_details=build_could_not_assess_detail(error, region),
                 resolution=COULD_NOT_ASSESS_RESOLUTION,
-                reference="https://aws.amazon.com/about-aws/whats-new/2025/08/sagemaker-hyperpod-customer-managed-kms-ebs-volumes/",
+                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/smcluster-cmk.html",
                 severity="Informational",
                 status="N/A",
                 region=region,
@@ -11696,7 +11696,7 @@ def check_hyperpod_ebs_cmk_encryption(
                 finding_name="HyperPod EBS CMK Encryption",
                 finding_details="No SageMaker HyperPod clusters found",
                 resolution="No action required",
-                reference="https://aws.amazon.com/about-aws/whats-new/2025/08/sagemaker-hyperpod-customer-managed-kms-ebs-volumes/",
+                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/smcluster-cmk.html",
                 severity="Informational",
                 status="N/A",
                 region=region,
@@ -11792,7 +11792,7 @@ def check_hyperpod_ebs_cmk_encryption(
                 finding_name="HyperPod EBS CMK Encryption",
                 finding_details=details,
                 resolution=resolution,
-                reference="https://aws.amazon.com/about-aws/whats-new/2025/08/sagemaker-hyperpod-customer-managed-kms-ebs-volumes/",
+                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/smcluster-cmk.html",
                 severity=severity,
                 status=status,
                 region=region,
@@ -11806,7 +11806,7 @@ def check_hyperpod_ebs_cmk_encryption(
                 finding_name="HyperPod EBS CMK Encryption",
                 finding_details=f"HyperPod cluster '{item['summary'].get('ClusterName', 'unknown')}' could not be assessed: {type(item['error']).__name__}.",
                 resolution="Grant sagemaker:DescribeCluster and retry.",
-                reference="https://aws.amazon.com/about-aws/whats-new/2025/08/sagemaker-hyperpod-customer-managed-kms-ebs-volumes/",
+                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/smcluster-cmk.html",
                 severity="Informational",
                 status="N/A",
                 region=region,
@@ -11830,7 +11830,7 @@ def check_hyperpod_vpc_configuration(
                     inventory["list_error"], region
                 ),
                 resolution=COULD_NOT_ASSESS_RESOLUTION,
-                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-security.html",
+                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-prerequisites.html#sagemaker-hyperpod-prerequisites-optional-vpc",
                 severity="Informational",
                 status="N/A",
                 region=region,
@@ -11845,7 +11845,7 @@ def check_hyperpod_vpc_configuration(
                 finding_name="HyperPod VPC Configuration",
                 finding_details="No SageMaker HyperPod clusters found",
                 resolution="No action required",
-                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-security.html",
+                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-prerequisites.html#sagemaker-hyperpod-prerequisites-optional-vpc",
                 severity="Informational",
                 status="N/A",
                 region=region,
@@ -11890,7 +11890,7 @@ def check_hyperpod_vpc_configuration(
                         if compliant
                         else "Configure non-empty subnets and security groups at the cluster level or in OverrideVpcConfig."
                     ),
-                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-security.html",
+                    reference="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-prerequisites.html#sagemaker-hyperpod-prerequisites-optional-vpc",
                     severity="Medium",
                     status="Passed" if compliant else "Failed",
                     region=region,
@@ -11904,7 +11904,7 @@ def check_hyperpod_vpc_configuration(
                 finding_name="HyperPod VPC Configuration",
                 finding_details=f"HyperPod cluster '{item['summary'].get('ClusterName', 'unknown')}' could not be assessed: {type(item['error']).__name__}.",
                 resolution="Grant sagemaker:DescribeCluster and retry.",
-                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-security.html",
+                reference="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-prerequisites.html#sagemaker-hyperpod-prerequisites-optional-vpc",
                 severity="Informational",
                 status="N/A",
                 region=region,
@@ -11919,7 +11919,7 @@ def check_hyperpod_vpc_configuration(
             finding_name="HyperPod Subnet Internet Exposure",
             resources=groups_in_vpc,
             region=region,
-            reference="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-security.html",
+            reference="https://docs.aws.amazon.com/sagemaker/latest/dg/sagemaker-hyperpod-prerequisites.html#sagemaker-hyperpod-prerequisites-optional-vpc",
             resolution=(
                 "Point the cluster or the instance group's OverrideVpcConfig at "
                 "subnets whose route tables have no internet gateway route, or "

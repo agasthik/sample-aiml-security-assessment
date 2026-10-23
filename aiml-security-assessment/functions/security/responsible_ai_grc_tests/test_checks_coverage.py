@@ -91,8 +91,9 @@ class TestFS07AgentBoundariesNewPaths:
         )
 
     @patch("finserv_app.boto3.client")
-    def test_agent_no_role_arn_skipped(self, mock_client):
-        """Line 537: agent with no agentResourceRoleArn → continue."""
+    def test_agent_no_role_arn_is_incomplete(self, mock_client):
+        """An agent with no agentResourceRoleArn is not assessed, so it is
+        named as not read and blocks a Passed."""
         c = MagicMock()
         c.list_agents.return_value = {
             "agentSummaries": [{"agentId": "a1", "agentName": "NoRoleAgent"}]
@@ -102,8 +103,13 @@ class TestFS07AgentBoundariesNewPaths:
         result = app.check_bedrock_agent_action_boundaries(
             {"role_permissions": {}, "user_permissions": {}}
         )
-        _assert_structure(result)
-        assert result["status"] == "PASS"
+        assert result["status"] == "N/A"
+        row = result["csv_data"][0]
+        assert row["Finding"] == "Agent Action Boundary Check Incomplete"
+        assert (
+            "agent 'NoRoleAgent' (GetAgent returned no execution role ARN)"
+            in (row["Finding_Details"])
+        )
 
     @patch("finserv_app.boto3.client")
     def test_policy_doc_as_string_is_parsed(self, mock_client):

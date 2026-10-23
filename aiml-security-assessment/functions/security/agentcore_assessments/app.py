@@ -94,28 +94,22 @@ AGENTIC_AI_LENS_URL = (
     "agentic-ai-lens.html"
 )
 AGENTCORE_STARTER_TOOLKIT_URL = (
-    "https://aws.github.io/bedrock-agentcore-starter-toolkit/"
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "what-is-bedrock-agentcore.html"
 )
 AGENTCORE_VPC_REFERENCE_URL = (
-    "https://aws.github.io/bedrock-agentcore-starter-toolkit/"
-    "user-guide/security/agentcore-vpc.html"
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-vpc.html"
 )
 AGENTCORE_OBSERVABILITY_REFERENCE_URL = (
-    "https://aws.github.io/bedrock-agentcore-starter-toolkit/"
-    "user-guide/observability/quickstart.html"
+    "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
+    "observability-configure.html"
 )
-AGENTCORE_MEMORY_REFERENCE_URL = (
-    "https://aws.github.io/bedrock-agentcore-starter-toolkit/"
-    "user-guide/memory/quickstart.html"
-)
+AGENTCORE_MEMORY_REFERENCE_URL = "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/storage-encryption.html"
 AGENTCORE_MEMORY_NAMESPACE_REFERENCE_URL = (
     "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/"
     "specify-long-term-memory-organization.html"
 )
-AGENTCORE_GATEWAY_REFERENCE_URL = (
-    "https://aws.github.io/bedrock-agentcore-starter-toolkit/"
-    "user-guide/gateway/quickstart.html"
-)
+AGENTCORE_GATEWAY_REFERENCE_URL = "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-building.html"
 AGENTCORE_DATA_ENCRYPTION_REFERENCE_URL = (
     "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/data-encryption.html"
 )
@@ -5214,9 +5208,7 @@ def _unread_principals_detail(unread: List[str]) -> str:
     )
 
 
-AC02_REFERENCE = (
-    "https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html"
-)
+AC02_REFERENCE = "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-iam-awsmanpol.html"
 MERGED_READ_WRITE_FINDING = "AgentCore Read and Write Merged in One Grant"
 
 
@@ -5346,7 +5338,7 @@ def check_agentcore_full_access_roles(
         List of findings
     """
     findings = []
-    reference = "https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html"
+    reference = "https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-iam-awsmanpol.html"
 
     try:
         logger.info("Checking for AgentCore full access roles")
@@ -5671,7 +5663,7 @@ def check_agentcore_full_access_roles(
                         "Review the IAM Permission Caching task output, then rerun "
                         "the assessment."
                     ),
-                    reference="https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam-awsmanpol.html",
+                    reference="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/security-iam-awsmanpol.html",
                     severity=SeverityEnum.INFORMATIONAL,
                     status=StatusEnum.NA,
                 )

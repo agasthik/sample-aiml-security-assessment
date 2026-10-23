@@ -44,7 +44,8 @@ AISF_GLOBAL_REGION = "Global"
 
 # Severity comes from the AISF control's own `risk` field, NOT from the source
 # check's severity. This deviates from OWASP, which inherits the source row's
-# severity (AGENTS.md:132). The deviation is deliberate: an `AISF-` row is a
+# severity (docs/SECURITY_CHECKS_OWASP.md#severity--status-semantics).
+# The deviation is deliberate: an `AISF-` row is a
 # verdict on an AISF control, and the severity of one incumbent check is not
 # that control's risk rating. AISF-08 makes the difference concrete: it derives
 # from three source checks whose own severities differ, so there is no single
@@ -52,7 +53,7 @@ AISF_GLOBAL_REGION = "Global"
 #
 # AISF `risk` has five bands and this repository's `SeverityEnum` has four:
 # there is no `Critical`. The collapse below follows the decision recorded at
-# `docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md:156-169`
+# `docs/SECURITY_CHECKS_RESPONSIBLE_AI_GRC_SEVERITY_METHODOLOGY.md#6-why-critical-is-not-used`
 # ("keep four levels; a genuinely critical risk is reported as High"), so this
 # module inherits an existing repository decision rather than inventing one.
 AISF_RISK_TO_SEVERITY = {
@@ -83,7 +84,8 @@ SEVERITY_COLLAPSE_NOTE = {
 }
 
 # Status `N/A` forces `Severity=Informational`, matching the OWASP rule at
-# AGENTS.md:132: a row that asserts nothing must not carry High/Medium.
+# docs/SECURITY_CHECKS_OWASP.md#severity--status-semantics: a row that asserts
+# nothing must not carry High/Medium.
 NA_SEVERITY = "Informational"
 
 # Ids removed from AISF_DERIVED_MAP, each with the control it named and why.
@@ -252,7 +254,7 @@ def _normalise(row: Dict[str, Any]) -> Dict[str, str]:
 
     The report Lambda hands this function CSV-cased rows (`Check_ID`, `Region`,
     `Account_ID`); the root consolidator's rows are lowercase-keyed
-    (`consolidate_html_reports.py:146-156`). Normalising on input means one
+    (`consolidate_html_reports.py`). Normalising on input means one
     derivation serves both callers.
     """
     return {
