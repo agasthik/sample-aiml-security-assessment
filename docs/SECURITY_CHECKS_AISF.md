@@ -112,8 +112,11 @@ the `Global` Region. An account-wide verdict holds in every Region, so each `Glo
 regional key of the same account, and `Finding_Details` says so. The `Global`
 key gets its own `AISF-` rows only for an account with no regional key.
 Otherwise a `Global` `Failed` would sit beside a regional `Passed` for the same
-control. The changes report ([ASSESSMENT_HISTORY.md](ASSESSMENT_HISTORY.md#what-is-compared)) differs here: it keeps
-`Global` AISF rows under `Global` in every run, so they pair across runs.
+control. The changes report ([ASSESSMENT_HISTORY.md](ASSESSMENT_HISTORY.md#what-is-compared))
+keeps a `Global` AISF row when that control has no regional source row, so it
+can pair across runs despite unrelated regional checks. When the control has
+regional source rows, those rows include the `Global` evidence and its
+separate `Global` AISF row is suppressed.
 
 `AISF-00` is a report-completeness marker, not an AISF control. It lists every
 derived control of a selected service that had no source check for that account

@@ -110,6 +110,13 @@ def test_a_service_selected_in_one_run_derives_none_of_its_controls():
     )
     assert sorted(_aisf(result)) == ["AISF-05"]
     assert {item.reason for item in result.excluded} == {SERVICE_NOT_IN_BOTH_RUNS}
+    note = (
+        "AWS AI Security Framework controls not compared "
+        "(a source check's service was not selected in both runs): AISF-07, AISF-08"
+    )
+    assert result.notes == (note,)
+    assert f"  {note}" in cli.describe(result)
+    assert note in html.unescape(render_changes_page(result, csv_name="changes.csv"))
 
 
 def test_a_region_scanned_in_one_run_derives_no_aisf_row_there():
@@ -198,6 +205,47 @@ def test_the_mapping_is_the_main_reports_own_module():
     assert module.__name__ == derived.AISF_MODULE_NAME
     assert derived.AISF_MAPPINGS_PATH.is_file()
     assert module.AISF_SERVICE_SLUG == derived.AISF_AREA
+
+
+def test_omitted_aisf_controls_follow_the_compared_services():
+    assert derived.omitted_aisf_control_ids(frozenset({"bedrock"})) == [
+        "AISF-07",
+        "AISF-08",
+    ]
+    assert derived.omitted_aisf_control_ids(frozenset({"bedrock", "sagemaker"})) == []
+
+
+def test_omitted_aisf_controls_preserve_a_derivation_error(monkeypatch):
+    def broken():
+        raise derived.DerivationError("missing mapping")
+
+    monkeypatch.setattr(derived, "aisf_mappings", broken)
+    with pytest.raises(derived.DerivationError, match="missing mapping"):
+        derived.omitted_aisf_control_ids(frozenset())
+
+
+def test_omitted_aisf_controls_wrap_an_unexpected_error(monkeypatch):
+    class Broken:
+        @staticmethod
+        def omitted_aisf_controls(_selected):
+            raise KeyError("sources")
+
+    monkeypatch.setattr(derived, "aisf_mappings", lambda: Broken)
+    with pytest.raises(derived.DerivationError, match="KeyError: 'sources'"):
+        derived.omitted_aisf_control_ids(frozenset())
+
+
+def test_unreadable_omitted_controls_keep_other_aisf_rows(monkeypatch):
+    def broken(_services):
+        raise derived.DerivationError("missing sources")
+
+    monkeypatch.setattr(compare_module, "omitted_aisf_control_ids", broken)
+    result = _compare(_sources(), _sources(br20="Failed"))
+    assert _aisf(result)["AISF-05"].change is Change.REGRESSED
+    assert result.notes == (
+        "AWS AI Security Framework omitted controls could not be listed: "
+        "missing sources",
+    )
 
 
 def test_a_derived_finding_has_its_own_module_and_others_are_still_rejected():
@@ -293,9 +341,49 @@ def test_no_global_coverage_row_beside_regional_rows():
     assert "AISF-08" in rows[(REGION, "AISF-00")].current.details
 
 
+@pytest.mark.parametrize(
+    ("global_check", "regional_checks"),
+    [
+        ("SM-42", ("SM-18",)),
+        ("SM-09", ("SM-01", "SM-03")),
+    ],
+)
+@pytest.mark.parametrize(
+    ("before", "after", "change"),
+    [
+        ("Failed", "Passed", Change.RESOLVED),
+        ("Passed", "Failed", Change.REGRESSED),
+    ],
+)
+def test_global_source_change_has_only_regional_aisf_changes(
+    global_check, regional_checks, before, after, change
+):
+    def findings(global_status):
+        return [
+            make_finding(global_check, global_status, region="Global"),
+            *[
+                make_finding(check_id, "Passed", region=region)
+                for region in (REGION, "eu-west-1")
+                for check_id in regional_checks
+            ],
+        ]
+
+    control = "AISF-07" if global_check == "SM-42" else "AISF-08"
+    result = _compare(findings(before), findings(after))
+    rows = [
+        row for row in result.rows if row.area == "aisf" and row.check_id == control
+    ]
+    assert {(row.region, row.change) for row in rows} == {
+        (REGION, change),
+        ("eu-west-1", change),
+    }
+    assert all(row.previous_status == before for row in rows)
+    assert all(row.current_status == after for row in rows)
+
+
 def test_a_regional_row_still_includes_the_global_verdict():
     # A Global Failed for BR-20 still fails the regional AISF-05, as in the
-    # main report, and the Global row says so too.
+    # main report. Its Global row is suppressed because BR-20 ran regionally.
     findings = [
         make_finding("BR-20", "Failed"),
         make_finding("BR-20", "Passed", region=REGION),
@@ -304,7 +392,7 @@ def test_a_regional_row_still_includes_the_global_verdict():
         (row.region, row.check_id): row for row in _compare(findings, findings).rows
     }
     assert rows[(REGION, "AISF-05")].current_status == "Failed"
-    assert rows[("Global", "AISF-05")].current_status == "Failed"
+    assert ("Global", "AISF-05") not in rows
     assert rows[(REGION, "AISF-05")].change is Change.STILL_OPEN
 
 

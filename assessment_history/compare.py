@@ -36,7 +36,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable, Sequence
 
-from .derived import DerivationError, derive_aisf
+from .derived import DerivationError, derive_aisf, omitted_aisf_control_ids
 from .models import (
     AREAS,
     CORE_MODULES,
@@ -150,6 +150,19 @@ def compare_runs(previous: Run, current: Run) -> Comparison:
     else:
         previous_rows += previous_aisf
         current_rows += current_aisf
+        try:
+            omitted_controls = omitted_aisf_control_ids(shared_services)
+        except DerivationError as error:
+            notes.append(
+                f"AWS AI Security Framework omitted controls could not be listed: {error}"
+            )
+        else:
+            if omitted_controls:
+                notes.append(
+                    "AWS AI Security Framework controls not compared "
+                    "(a source check's service was not selected in both runs): "
+                    f"{', '.join(omitted_controls)}"
+                )
 
     return Comparison(
         account_id=current.account_id,

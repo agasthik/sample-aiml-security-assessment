@@ -4,7 +4,8 @@ No scanner writes AISF rows to a findings CSV: the main report derives them
 from the service findings each time it is built (``derive_aisf_findings`` in
 generate_consolidated_report/aisf_mappings.py). The changes report does the
 same, from each run's compared findings, with that same module loaded by file
-path, so the two reports can't disagree. Both runs are derived with today's
+path. The changes report retains Global rows for controls without regional
+sources to keep comparison keys stable. Both runs are derived with today's
 mapping, so a mapping change never reads as a change in findings.
 """
 
@@ -65,6 +66,22 @@ def aisf_mappings():
     return load_aisf_mappings()
 
 
+def omitted_aisf_control_ids(compared_services: frozenset[str]) -> list[str]:
+    """Controls with no source service selected in both compared runs."""
+    try:
+        selected = {service: service in compared_services for service in CORE_MODULES}
+        return sorted(
+            check_id
+            for check_id, _services in aisf_mappings().omitted_aisf_controls(selected)
+        )
+    except DerivationError:
+        raise
+    except Exception as error:
+        raise DerivationError(
+            f"can't list omitted controls: {type(error).__name__}: {error}"
+        ) from None
+
+
 def derive_aisf(
     findings: Iterable[Finding],
     account_id: str,
@@ -78,9 +95,9 @@ def derive_aisf(
     control whose sources all belong to another service gets no row, as in the
     main report when that service isn't selected.
 
-    The Global rows get a key of their own in every run that has them
-    (``separate_global``), so a control sourced only from Global rows is under
-    Global in both runs, and its two rows pair.
+    Controls sourced only from Global rows keep a Global key
+    (``separate_global``), so their rows pair when unrelated regional findings
+    appear. Controls with regional sources use regional keys instead.
 
     A mapping error or a derived row that can't be read as a Finding is named
     in ``notes``; the other rows are kept.

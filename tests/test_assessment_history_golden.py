@@ -112,6 +112,31 @@ def test_saved_files_are_up_to_date():
     )
 
 
+@pytest.mark.parametrize("report_name", script.SAMPLES.values())
+def test_main_samples_use_synthetic_ids_and_informational_bedrock_na(report_name):
+    report = (REPO_ROOT / "sample-reports" / report_name).read_text(encoding="utf-8")
+    capture_path = SCRIPT.parent / "capture_screenshots.py"
+    capture_spec = importlib.util.spec_from_file_location(
+        "sample_capture_screenshots", capture_path
+    )
+    capture = importlib.util.module_from_spec(capture_spec)
+    capture_spec.loader.exec_module(capture)
+
+    assert capture.ANONYMIZED_MARKER in report
+    unexpected_ids = set(re.findall(r"\b\d{12}\b", report)) - set(
+        capture.ANONYMIZED_ACCOUNT_IDS
+    )
+    assert not unexpected_ids, f"{len(unexpected_ids)} unrecognized account IDs"
+
+    bedrock_na = [
+        row
+        for row in script.parse_report(report)
+        if row.area == "bedrock" and row.status == "N/A"
+    ]
+    assert bedrock_na
+    assert all(row.severity == "Informational" for row in bedrock_na)
+
+
 def test_no_input_csvs_are_committed():
     # The previous runs' CSVs are built at test time (review item L7).
     assert sorted(GOLDEN.rglob("*.csv")) == []
@@ -263,7 +288,7 @@ def test_single_account_sample_results(folders):
     # The AISF row the comparison derives from BR-20 changes with it.
     (aisf05,) = rows[("AISF-05", "us-east-2")]
     assert (aisf05.change, aisf05.match_rule) == (Change.NEW, MatchRule.SINGLE_ROW)
-    # Previous run: 399 failed By Service rows. AC-09, both AC-14 rows and BR-39
+    # Previous run: 402 failed By Service rows. AC-09, both AC-14 rows and BR-39
     # changed. Regressed: BR-56 in us-east-1 and the two BR-56 rows in us-west-2.
     tiles = comparison.tile_counts()
     assert {change: tiles[change] for change in script.CHANGES} == {
@@ -273,7 +298,7 @@ def test_single_account_sample_results(folders):
         Change.NO_LONGER_REPORTED: 1,
         Change.NO_LONGER_ASSESSED: 1,
     }
-    assert tiles[Change.STILL_OPEN] == 399 - 4
+    assert tiles[Change.STILL_OPEN] == 402 - 4
     assert comparison.days_apart == 24
 
 

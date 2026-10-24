@@ -385,12 +385,12 @@ def derive_aisf_findings(
     property of any one control, so with the default a control sourced only
     from `Global` rows would move between `Global` and every Region from one run
     to the next, and its two rows would never pair. With `separate_global`, the
-    `Global` key is emitted for every account that has `Global` rows, and is
-    derived from them alone; a regional key emits only the controls with a
-    source row of its own in that Region (their verdicts still include the
-    folded `Global` rows). The `Global` key's AISF-00 row is emitted only for an
-    account with no regional key, as with the default: beside regional keys,
-    a control with no `Global` leg is reported, or named as absent, by them.
+    `Global` key is retained for controls whose sources have no regional row
+    for that account. A control with any regional source row is emitted only
+    under its regional keys (their verdicts still include the folded `Global`
+    rows). The `Global` key's AISF-00 row is emitted only for an account with
+    no regional key, as with the default: beside regional keys, a control
+    with no `Global` leg is reported, or named as absent, by them.
 
     Per-row work is isolated with try/except, matching
     `owasp_assessments.build_owasp_mapping_findings`, so one malformed source
@@ -429,6 +429,10 @@ def derive_aisf_findings(
     regional_accounts = {
         account_id for (account_id, region) in legs if region != AISF_GLOBAL_REGION
     }
+    regional_sources: Dict[str, set] = {}
+    for (account_id, region), present in legs.items():
+        if region != AISF_GLOBAL_REGION:
+            regional_sources.setdefault(account_id, set()).update(present)
     # (account_id, region) -> the source check ids with rows of its own
     own = {key: set(present) for key, present in legs.items()}
     # (account_id, region) -> source check ids that carry folded Global rows
@@ -450,6 +454,13 @@ def derive_aisf_findings(
             try:
                 sources = mapping["sources"]
                 if not any(_source_selected(c, selected_services) for c in sources):
+                    continue
+                if (
+                    separate_global
+                    and region == AISF_GLOBAL_REGION
+                    and regional_sources.get(account_id, set()).intersection(sources)
+                ):
+                    # Regional rows already include these account-wide legs.
                     continue
                 have = [cid for cid in sources if cid in present]
                 missing = [cid for cid in sources if cid not in present]

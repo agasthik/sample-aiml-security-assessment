@@ -1489,7 +1489,7 @@ class TestGlobalSourceRows(unittest.TestCase):
         self.assertEqual(row["Status"], "Failed")
 
     def test_separate_global_keeps_the_global_key_beside_regional_ones(self):
-        """The changes report's shape: Global rows keep a key of their own."""
+        """A control with only Global sources keeps its own comparison key."""
         rows = aisf_mappings.derive_aisf_findings(
             [
                 _source_row("BR-20", "Failed", region="Global"),
@@ -1518,7 +1518,7 @@ class TestGlobalSourceRows(unittest.TestCase):
         )
         by_key = self._by_key(rows, "AISF-05")
         self.assertEqual(by_key[("111122223333", "us-east-1")]["Status"], "Failed")
-        self.assertEqual(by_key[("111122223333", "Global")]["Status"], "Failed")
+        self.assertNotIn(("111122223333", "Global"), by_key)
 
     def test_separate_global_only_global_rows_match_the_default(self):
         source = [_source_row("BR-20", "Failed", region="Global")]

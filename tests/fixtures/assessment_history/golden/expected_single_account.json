@@ -6,7 +6,7 @@
   "tile_counts": {
    "Regressed": 3,
    "New": 3,
-   "Still open": 395,
+   "Still open": 398,
    "Resolved": 2,
    "No longer reported": 1,
    "No longer assessed": 1,
@@ -21,7 +21,7 @@
     "Not failing": 195
    },
    "sagemaker": {
-    "Still open": 155,
+    "Still open": 158,
     "Not failing": 165
    },
    "agentcore": {
@@ -55,7 +55,7 @@
    },
    "aisf": {
     "New": 1,
-    "Still open": 8,
+    "Still open": 6,
     "Not failing": 2
    }
   },
@@ -99,7 +99,7 @@
     "previous_status": "Passed",
     "current_status": "Failed",
     "severity": "High",
-    "previous_details": "No identity called more than 40% of the 14 actions judged in the last 24 hours; 3 identities observed. The lookup reads CloudTrail event history, which holds management events only. It sees InvokeModel and InvokeModelWithResponseStream, which Bedrock logs as management events. It cannot see InvokeModelWithBidirectionalStream, StartAsyncInvoke, GetAsyncInvoke, InvokeAgent, InvokeInlineAgent, which Bedrock logs as data events. Converse and ConverseStream are management events but are not among the 14 actions judged.",
+    "previous_details": "No identity called more than 40% of the 14 actions judged in the last 24 hours; 1 identity observed. The lookup reads CloudTrail event history, which holds management events only. It sees InvokeModel and InvokeModelWithResponseStream, which Bedrock logs as management events. It cannot see InvokeModelWithBidirectionalStream, StartAsyncInvoke, GetAsyncInvoke, InvokeAgent, InvokeInlineAgent, which Bedrock logs as data events. Converse and ConverseStream are management events but are not among the 14 actions judged.",
     "current_details": "Potential LLM jacking activity from AWS IAMUser arn:aws:iam::123456789012:user/sample-ci-user: it called 7 of the 14 actions judged (CreateFoundationModelAgreement, GetFoundationModelAvailability, InvokeModel, ListFoundationModelAgreementOffers, ListFoundationModels, PutFoundationModelEntitlement, PutUseCaseForModelAccess) in the last 24 hours, a share of 0.50, above the 0.4 threshold."
    },
    {
@@ -203,7 +203,7 @@
     "previous_status": "N/A",
     "current_status": "Failed",
     "severity": "Medium",
-    "previous_details": "The following principals have AWS Agent Registry permissions but no service-last-accessed evidence: role 'aiml-sec-test-resources-AgentRegistryWildcardRole-yF0ocXVmmRDc', role 'AWSServiceRoleForAgentRegistry', role 'cdk-hnb659fds-lookup-role-666677778888-us-east-1', role 'cdk-hnb659fds-lookup-role-666677778888-us-east-2', role 'ScoutSuiteRole'",
+    "previous_details": "The following principals have AWS Agent Registry permissions but no service-last-accessed evidence: role 'aiml-sec-test-resources-AgentRegistryWildcardRole-gD2wfPBzeZCd', role 'AWSServiceRoleForAgentRegistry', role 'cdk-hnb659fds-lookup-role-666677778888-us-east-1', role 'cdk-hnb659fds-lookup-role-666677778888-us-east-2', role 'ScoutSuiteRole'",
     "current_details": "The following principals have AWS Agent Registry permissions they have not used: role 'sample-registry-role'"
    },
    {

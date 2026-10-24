@@ -989,8 +989,8 @@ def build(root: Path = REPO_ROOT) -> dict[Path, str]:
             expected[account_id] = summarize(comparison)
             if sample == "single_account":
                 samples = root / "sample-reports"
-                outputs[samples / SAMPLE_CHANGES_CSV] = changes_csv(comparison).decode(
-                    "utf-8"
+                outputs[samples / SAMPLE_CHANGES_CSV] = (
+                    changes_csv(comparison).decode("utf-8").replace("\r\n", "\n")
                 )
                 # The sample main report sits next to it, so its link works.
                 outputs[samples / SAMPLE_CHANGES_PAGE] = render_changes_page(

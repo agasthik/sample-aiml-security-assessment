@@ -26,11 +26,13 @@ section.
   (plus, in single-account mode, the run records described under Deployment
   impact). Like the main report, it derives AWS AI Security Framework (AISF)
   rows from the service findings, so a control changes only when one of its
-  source checks does. Account-wide rows remain under `Global` to pair across
-  runs. It runs in the CodeBuild post-build phase in both deployment modes and
-  can't fail a run: problems are logged as warnings, and the step is skipped
-  when little build time is left. The first run of an account is skipped. See
-  `docs/ASSESSMENT_HISTORY.md`.
+  source checks does. Controls with only account-wide source rows remain under
+  `Global` to pair across runs; controls with regional source rows appear only
+  under those Regions. A note names AISF controls omitted because their source
+  service was not selected in both runs. It runs in the CodeBuild post-build
+  phase in both deployment modes and can't fail a run: problems are logged as
+  warnings, and the step is skipped when little build time is left. The first
+  run of an account is skipped. See `docs/ASSESSMENT_HISTORY.md`.
 - Added the `EnableAssessmentHistory` deployment parameter (default `true`) to
   both deployment templates, passed to CodeBuild as
   `ENABLE_ASSESSMENT_HISTORY`. Set it to `false` to turn the report off. A
@@ -498,9 +500,11 @@ back `Passed` names what it could not read.
 - Every Bedrock `N/A` row, for an unavailable feature, a failed or partial
   read, or an empty inventory, is now `Informational`. Rows that carried `Low`,
   `Medium` or `High` no longer count toward those totals. This affects
-  `BR-01`, `BR-02`, `BR-07`, `BR-09` to `BR-11`, `BR-13`, `BR-15` to `BR-31`,
-  `BR-33`, `BR-45` and `BR-46`. A `Passed` or `Failed` row from the same
-  check keeps its severity.
+  `BR-01`, `BR-02`, `BR-04`, `BR-07`, `BR-09` to `BR-11`, `BR-13`, `BR-15` to
+  `BR-31`, `BR-33`, `BR-39`, `BR-42`, `BR-45`, `BR-46` and `BR-57`, including
+  rows held back by incomplete IAM cache or customization job reads. A
+  `Passed` or `Failed` row from the same check keeps its severity. The synthetic
+  single- and multi-account sample reports now reflect this rule.
 - `FS-07` no longer reports `Passed` when an agent has no execution role ARN,
   and one unparsable policy document no longer turns the check into an error
   row. Both cases now name the agent as not read and produce
@@ -554,9 +558,10 @@ back `Passed` names what it could not read.
   failed run is never used as the previous run. It isn't written while
   `EnableAssessmentHistory` is `false`. With service selection, only the
   services selected in both runs are compared; a service selected in only one
-  of them is listed as not compared. AISF comparisons and skipped-control
-  notes take effect on the next CodeBuild run using this revision; they need
-  no additional infrastructure update.
+  of them is listed as not compared. AISF comparisons, corrected `Global` row
+  placement, and omitted-control notes take effect on the next single-account
+  or multi-account CodeBuild run using this revision; they need no additional
+  infrastructure, member-role StackSet, or IAM update.
 - **Console parameter groups:** No deployment is required. The revised groups
   and descriptions appear when
   `deployment/aiml-security-single-account.yaml` or
