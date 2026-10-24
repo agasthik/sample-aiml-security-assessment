@@ -432,6 +432,8 @@ back `Passed` names what it could not read.
 
 ### Fixed
 
+- Parse IAM Resource policy variables in the SageMaker AI assessment without
+  repeated regex backtracking on malformed `${` sequences.
 - The changes report names AISF controls skipped because a mapping failed.
   Other derived controls remain in the comparison.
 - Preserve default-enabled artifact completeness checks when an older CodeBuild
@@ -591,6 +593,10 @@ back `Passed` names what it could not read.
   redeploy the Bedrock and Responsible AI GRC assessment Lambdas. No template
   or IAM changes, so no infrastructure update and no member-role StackSet
   update are required.
+- **SageMaker AI policy-variable parsing:** Run the single-account or
+  multi-account CodeBuild project with this revision to redeploy the SageMaker
+  AI assessment Lambda. No infrastructure template, member-role StackSet, or
+  IAM update is required.
 
 These instructions assume the 2.0.0 prerequisites below are already applied.
 When upgrading from an earlier release, complete the 2.0.0 member-role and
