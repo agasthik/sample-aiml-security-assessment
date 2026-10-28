@@ -88,6 +88,15 @@ The script will:
 5. Optimize and compress images
 6. Save to `sample-reports/` folder
 
+Before capturing, it rewrites the sample reports in place: account IDs,
+resource identifiers, and resource names become synthetic placeholders.
+This includes IAM, CloudTrail, bucket, session, Identity Center, and workload
+names. The same source value gets the same placeholder across the two reports.
+Reports cleaned by an earlier version receive the new name pass without
+changing their existing ID placeholders. A second run changes nothing. To
+clean a newly generated sample without a browser, run `--anonymize-only`, then
+run `build_changes_sample.py`.
+
 ### Configuration
 
 Edit `sample-reports/scripts/capture_screenshots.py` to customize:
