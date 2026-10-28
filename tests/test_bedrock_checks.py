@@ -3471,6 +3471,7 @@ class TestBR02DataPathEndpointPolicy:
         )
 
         assert [row["Status"] for row in rows] == ["N/A"]
+        assert rows[0]["Severity"] == "Informational"
         assert "not reported as Passed" in rows[0]["Finding_Details"]
 
     def test_no_data_path_endpoint_in_an_ai_vpc_writes_no_row(self):
@@ -12179,6 +12180,9 @@ class TestBR42ModelAllowList:
         )
         statuses = [f["Status"] for f in findings]
         assert "Passed" not in statuses
+        assert all(
+            f["Severity"] == "Informational" for f in findings if f["Status"] == "N/A"
+        )
         unread = [
             f
             for f in findings
@@ -12363,6 +12367,13 @@ class TestBR42ModelAllowList:
                 ]
             }
         )
+
+    def test_br42_complete_scoped_grant_keeps_medium_severity(self):
+        findings = self._run(self._scoped_cache())
+
+        assert [(f["Status"], f["Severity"]) for f in findings] == [
+            ("Passed", "Medium")
+        ]
 
     @staticmethod
     def _policy(**statement):
@@ -12624,6 +12635,9 @@ class TestBR42ModelAllowList:
             },
         )
         assert "Passed" not in [f["Status"] for f in findings]
+        assert all(
+            f["Severity"] == "Informational" for f in findings if f["Status"] == "N/A"
+        )
         details = " ".join(f["Finding_Details"] for f in findings)
         assert "bucket 'train-a' policy was not read with s3:GetBucketPolicy" in (
             details
@@ -34492,7 +34506,10 @@ class TestBR39AIWorkloadSubnetPrivacy:
             ]
         )
 
-        assert [row["Status"] for row in rows] == ["Failed", "Passed"]
+        assert [(row["Status"], row["Severity"]) for row in rows] == [
+            ("Failed", "High"),
+            ("Passed", "High"),
+        ]
         failed = rows[0]["Finding_Details"]
         assert "2 AI workload(s)" in failed
         assert "ECS service 'public-svc' in vpc-1" in failed
@@ -34513,7 +34530,9 @@ class TestBR39AIWorkloadSubnetPrivacy:
             ]
         )
 
-        assert [row["Status"] for row in rows] == ["Passed"]
+        assert [(row["Status"], row["Severity"]) for row in rows] == [
+            ("Passed", "High")
+        ]
         assert "i-web" not in rows[0]["Finding_Details"]
 
     def test_an_unread_inventory_part_or_uncached_role_keeps_it_from_passing(self):
@@ -34525,7 +34544,10 @@ class TestBR39AIWorkloadSubnetPrivacy:
             errors=["ECS clusters were not listed with ecs:ListClusters (Denied)"],
         )
 
-        assert [row["Status"] for row in rows] == ["N/A", "N/A"]
+        assert [(row["Status"], row["Severity"]) for row in rows] == [
+            ("N/A", "Informational"),
+            ("N/A", "Informational"),
+        ]
         assert "not reported as Passed" in rows[0]["Finding_Details"]
         assert "ECS clusters were not listed" in rows[1]["Finding_Details"]
         assert "role 'MissingRole', which the IAM cache" in rows[1]["Finding_Details"]
@@ -34687,6 +34709,9 @@ class TestBR39JobVpc:
         )
 
         assert "Passed" not in [row["Status"] for row in rows]
+        assert all(
+            row["Severity"] == "Informational" for row in rows if row["Status"] == "N/A"
+        )
         assert any(
             phrase in row["Finding_Details"] for row in rows if row["Status"] == "N/A"
         )
@@ -42928,6 +42953,10 @@ class TestIamCacheContract:
         )
 
         assert [f["Status"] for f in findings["csv_data"]] == ["N/A", "N/A"]
+        assert [f["Severity"] for f in findings["csv_data"]] == [
+            "Informational",
+            "Informational",
+        ]
         assert "BrokenRole" in findings["csv_data"][1]["Finding_Details"]
         assert "BrokenUser" in findings["csv_data"][1]["Finding_Details"]
         assert findings["status"] == "N/A"
@@ -47531,6 +47560,7 @@ class TestBR11ValueDepth:
             assert not self._rows(findings, self.DATA_ROW, "Passed")
             held = self._rows(findings, self.DATA_ROW, "N/A")
             assert len(held) == 1
+            assert held[0]["Severity"] == "Informational"
             assert "1 of 1 custom model data bucket(s)" in held[0]["Finding_Details"]
             assert (
                 "This is not reported as Passed because these customization job "
@@ -48123,6 +48153,9 @@ class TestBR57AgentHandoffSourceIdentity:
         rows = extract_csv_data(result)
         assert iam.get_role.call_count == 2
         assert not self._status(rows, "Passed")
+        assert all(
+            row["Severity"] == "Informational" for row in self._status(rows, "N/A")
+        )
         assert any(
             "the trust policies of 1 of 3 role(s) were not read: the read stopped "
             f"{bedrock_app.DEADLINE_STOP}" in row["Finding_Details"]
@@ -52956,6 +52989,10 @@ class TestBR04SageMakerInferenceRetention:
             errors=["endpoint 'ep9' was not read with sagemaker:DescribeEndpoint"],
         )
         assert [r["Status"] for r in rows] == ["N/A", "N/A"]
+        assert [r["Severity"] for r in rows] == [
+            "Informational",
+            "Informational",
+        ]
         assert "This is not reported as Passed" in rows[0]["Finding_Details"]
         assert "endpoint 'ep9' was not read" in rows[1]["Finding_Details"]
 
@@ -55114,23 +55151,40 @@ class TestInvocationDeadline:
 # N/A rows carry Informational severity
 # ===================================================================
 def _na_branch_severities(source):
-    """Yield (line, check_id, severity) for each create_finding call whose
-    status is, or may be, N/A, taking the severity on the N/A branch."""
+    """Yield (line, check_id or row, severity) for N/A finding construction
+    and later assignments that change a row's status to N/A."""
     import ast
 
     def const(node):
-        return node.value if isinstance(node, ast.Constant) else None
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            if node.value.id == "StatusEnum" and node.attr == "NA":
+                return "N/A"
+            if node.value.id == "SeverityEnum":
+                return node.attr.title()
+        return None
 
-    for node in ast.walk(ast.parse(source)):
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
         if not (
             isinstance(node, ast.Call) and ast.unparse(node.func) == "create_finding"
         ):
             continue
         keywords = {k.arg: k.value for k in node.keywords if k.arg}
-        status, severity = keywords.get("status"), keywords.get("severity")
+
+        def argument(name, position):
+            return keywords.get(
+                name, node.args[position] if len(node.args) > position else None
+            )
+
+        status, severity = argument("status", 6), argument("severity", 5)
         if status is None or severity is None:
             continue
-        check_id = const(keywords.get("check_id")) or ast.unparse(keywords["check_id"])
+        check_id_node = argument("check_id", 0)
+        check_id = const(check_id_node) or (
+            ast.unparse(check_id_node) if check_id_node is not None else "<unknown>"
+        )
         statuses, severities = [status], [severity]
         while isinstance(statuses[-1], ast.IfExp) and isinstance(
             severities[-1], ast.IfExp
@@ -55145,6 +55199,52 @@ def _na_branch_severities(source):
         for leg_status, leg_severity in zip(statuses, severities):
             if const(leg_status) == "N/A":
                 yield node.lineno, check_id, const(leg_severity)
+
+    def field_write(statement):
+        if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+            target, value = statement.targets[0], statement.value
+        elif isinstance(statement, ast.AnnAssign):
+            target, value = statement.target, statement.value
+        else:
+            return None
+        if not isinstance(target, ast.Subscript):
+            return None
+        field = const(target.slice)
+        if field not in {"Status", "Severity"}:
+            return None
+        return ast.dump(target.value), ast.unparse(target.value), field, value
+
+    # A row can be changed to N/A after create_finding returned. Look for the
+    # final Severity write to that row in the same statement block; no write
+    # is inconclusive and fails the Informational assertion below.
+    for container in ast.walk(tree):
+        for _, statements in ast.iter_fields(container):
+            if not (
+                isinstance(statements, list)
+                and statements
+                and all(isinstance(statement, ast.stmt) for statement in statements)
+            ):
+                continue
+            writes = []
+            for statement in statements:
+                write = field_write(statement)
+                if write is not None:
+                    writes.append((statement, write))
+            for statement, write in writes:
+                row_key, row_name, field, value = write
+                if field != "Status" or const(value) != "N/A":
+                    continue
+                severity = next(
+                    (
+                        written_value
+                        for _, (key, _, written_field, written_value) in reversed(
+                            writes
+                        )
+                        if key == row_key and written_field == "Severity"
+                    ),
+                    None,
+                )
+                yield statement.lineno, row_name, const(severity)
 
 
 class TestBedrockNASeverity:
@@ -55201,7 +55301,39 @@ class TestBedrockNASeverity:
                 'status="Passed" if ok else "N/A" if unknown else "Failed")',
                 "High",
             ),
+            (
+                'create_finding("BR-99", "name", "details", "resolution", '
+                '"https://example.com", "High", "N/A")',
+                "High",
+            ),
+            (
+                'create_finding("BR-99", "name", "details", "resolution", '
+                '"https://example.com", SeverityEnum.HIGH, StatusEnum.NA)',
+                "High",
+            ),
+            ('row["Status"] = "N/A"\nrow["Severity"] = "High"', "High"),
+            ('row["Status"] = "N/A"', None),
+            (
+                'row["Status"] = "N/A"\nother["Severity"] = "Informational"',
+                None,
+            ),
+            (
+                'row["Status"] = "N/A"\nrow["Severity"] = "Informational"\n'
+                'row["Severity"] = "High"',
+                "High",
+            ),
         ],
     )
     def test_the_source_scan_finds_a_non_informational_na_row(self, source, expected):
         assert [row[2] for row in _na_branch_severities(source)] == [expected]
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            'create_finding("BR-99", "name", "details", "resolution", '
+            '"https://example.com", "Informational", "N/A")',
+            'row["Status"] = "N/A"\nrow["Severity"] = "Informational"',
+        ],
+    )
+    def test_the_source_scan_accepts_informational_na_rows(self, source):
+        assert [row[2] for row in _na_branch_severities(source)] == ["Informational"]

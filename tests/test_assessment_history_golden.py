@@ -36,7 +36,7 @@ from tests.assessment_history_helpers import assert_invariants
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "sample-reports" / "scripts" / "build_changes_sample.py"
 GOLDEN = REPO_ROOT / "tests" / "fixtures" / "assessment_history" / "golden"
-SINGLE = "123456789012"
+SINGLE = "666677778888"
 
 
 def _load_script():
@@ -112,6 +112,71 @@ def test_saved_files_are_up_to_date():
     )
 
 
+@pytest.mark.parametrize("report_name", script.SAMPLES.values())
+def test_main_samples_use_synthetic_ids_and_informational_bedrock_na(report_name):
+    report = (REPO_ROOT / "sample-reports" / report_name).read_text(encoding="utf-8")
+    capture_path = SCRIPT.parent / "capture_screenshots.py"
+    capture_spec = importlib.util.spec_from_file_location(
+        "sample_capture_screenshots", capture_path
+    )
+    capture = importlib.util.module_from_spec(capture_spec)
+    capture_spec.loader.exec_module(capture)
+
+    assert capture.ANONYMIZED_MARKER in report
+    assert capture.ANONYMIZED_NAMES_MARKER in report
+    unexpected_ids = set(re.findall(r"\b\d{12}\b", report)) - set(
+        capture.ANONYMIZED_ACCOUNT_IDS
+    )
+    assert not unexpected_ids, f"{len(unexpected_ids)} unrecognized account IDs"
+
+    bedrock_na = [
+        row
+        for row in script.parse_report(report)
+        if row.area == "bedrock" and row.status == "N/A"
+    ]
+    assert bedrock_na
+    assert all(row.severity == "Informational" for row in bedrock_na)
+
+
+def test_sample_report_tree_has_no_source_account_names():
+    # Hash the denied stems so this regression test does not republish them.
+    denied = {
+        (8, "8758607d0bcaa8a6efc8f92aa63bf367a6f088001d8fd2f16d1583c356a1a23f"),
+        (7, "54fb7f6e0735b34f6de7b9372d6da6c33b22050ae073d581e22e92b3c52cbd21"),
+        (18, "0f00093800aaa65d92bb61f02ef6f4afc619ca66ce92073e54796c7ad34ca277"),
+        (21, "3329bb23a9f9c3657602052184ec70ad9e918366b443b2f35ea388a0ee073263"),
+        (13, "a123d5283b414537f6dde7f049d967a2a6cdee7c41f1609f07bb2e3f2aff6513"),
+        (8, "999e2a35ced09b5ae03b18b54defe3fc6d808a5ce165bbf1666b3c84e049c9c3"),
+    }
+    name_token = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.@+=-]+")
+    identity_center_id = re.compile(r"\bssoins-[0-9a-f]{16}\b")
+    identity_center_role = re.compile(r"\bAWSReservedSSO_[A-Za-z0-9_+=,.@-]+\b")
+    leaked = {}
+    for path in sorted((REPO_ROOT / "sample-reports").rglob("*")):
+        if not path.is_file():
+            continue
+        text = path.read_bytes().decode("utf-8", errors="ignore")
+        counts = Counter()
+        for match in name_token.finditer(text):
+            value = match.group().lower()
+            starts = (0, *(i + 1 for i, char in enumerate(value) if char in "-_"))
+            if any(
+                len(value) - start >= width
+                and hashlib.sha256(value[start : start + width].encode()).hexdigest()
+                == fingerprint
+                for start in starts
+                for width, fingerprint in denied
+            ):
+                counts["source-specific name"] += 1
+        counts["Identity Center instance ID"] = len(identity_center_id.findall(text))
+        counts["Identity Center role name"] = len(identity_center_role.findall(text))
+        if any(counts.values()):
+            leaked[str(path.relative_to(REPO_ROOT))] = {
+                kind: count for kind, count in counts.items() if count
+            }
+    assert not leaked, f"source account names remain: {leaked}"
+
+
 def test_no_input_csvs_are_committed():
     # The previous runs' CSVs are built at test time (review item L7).
     assert sorted(GOLDEN.rglob("*.csv")) == []
@@ -125,6 +190,17 @@ def test_the_script_is_found_by_the_expected_paths():
         "multi_account",
         "multi_account",
     ]
+
+
+def test_builder_requires_name_anonymization(tmp_path):
+    samples = tmp_path / "sample-reports"
+    samples.mkdir()
+    (samples / script.SAMPLES["single_account"]).write_text(
+        "<!-- sample-report identifiers anonymized -->",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="resource-name anonymization pass"):
+        script.sample_rows("single_account", tmp_path)
 
 
 # --- reading the runs back gives the sample reports' rows -------------------------
@@ -216,40 +292,39 @@ def test_single_account_sample_results(folders):
         assert len(changed) == 1, changed
         return changed[0].change, changed[0].match_rule
 
-    assert only("SM-04", "us-east-1") == (Change.REGRESSED, MatchRule.SINGLE_ROW)
+    assert only("BR-56", "us-east-1") == (Change.REGRESSED, MatchRule.SINGLE_ROW)
     assert only("AC-09", "Global") == (Change.RESOLVED, MatchRule.SINGLE_ROW)
-    assert only("SM-26", "us-east-2") == (
+    assert only("AC-14", "us-east-2") == (
         Change.NO_LONGER_ASSESSED,
         MatchRule.SINGLE_ROW,
     )
-    assert only("BR-37", "us-west-2") == (
+    assert only("BR-39", "us-east-1") == (
         Change.NO_LONGER_REPORTED,
         MatchRule.UNMATCHED,
     )
+    assert only("BR-20", "us-east-2") == (Change.NEW, MatchRule.SINGLE_ROW)
     assert only("AR-02", "Global") == (Change.NEW, MatchRule.SINGLE_ROW)
     assert only("AC-14", "us-east-1") == (Change.RESOLVED, MatchRule.SINGLE_ROW)
     assert only("BR-03", "Global") == (Change.NEW, MatchRule.UNMATCHED)
-    # The three roles already in BR-03 are still open, paired by identical details.
+    # The five roles already in BR-03 are still open, paired by identical details.
     assert Counter(
         (row.change, row.match_rule) for row in rows[("BR-03", "Global")]
     ) == Counter(
-        {(Change.STILL_OPEN, MatchRule.EXACT): 3, (Change.NEW, MatchRule.UNMATCHED): 1}
+        {(Change.STILL_OPEN, MatchRule.EXACT): 5, (Change.NEW, MatchRule.UNMATCHED): 1}
     )
     # Titles change with the status, as the scanners write them (review F1).
-    (sm04,) = rows[("SM-04", "us-east-1")]
-    assert (sm04.previous.finding, sm04.current.finding) == (
-        "GuardDuty Enabled",
-        "GuardDuty Not Enabled",
+    (ac14,) = rows[("AC-14", "us-east-2")]
+    assert (ac14.previous.finding, ac14.current.finding) == (
+        "AgentCore Identity Token Vault CMK Encryption",
+        "AgentCore Identity Token Vault CMK Encryption Incomplete",
     )
-    # AR-01: one Passed summary row became two Failed rows with their own
-    # titles; both pair with the summary row (check-level) and show Regressed.
-    ar01 = rows[("AR-01", "Global")]
-    assert Counter((row.change, row.match_rule) for row in ar01) == Counter(
+    # BR-56: one Passed summary row became one Failed row per identity; both
+    # pair with the summary row (check-level) and show Regressed.
+    br56 = rows[("BR-56", "us-west-2")]
+    assert Counter((row.change, row.match_rule) for row in br56) == Counter(
         {(Change.REGRESSED, MatchRule.CHECK_LEVEL): 2}
     )
-    assert {row.previous.finding for row in ar01} == {
-        "AWS Agent Registry IAM Full Access Check"
-    }
+    assert {row.previous.status for row in br56} == {"Passed"}
     # AC-17: one Failed row each, about different things (review item F3). Its
     # Agentic AI row (AG-32) follows it.
     for check_id in ("AC-17", "AG-32"):
@@ -260,19 +335,21 @@ def test_single_account_sample_results(folders):
             True,
         ), check_id
     # The severity shown for a finding no longer assessed is the previous run's.
-    (sm26,) = rows[("SM-26", "us-east-2")]
-    assert sm26.severity == "High"
-    # Previous run: 17 failed By Service rows. AC-09, AC-14, SM-26 and BR-37
-    # changed. Regressed: SM-04 and the two AR-01 rows.
+    assert ac14.severity == "High"
+    # The AISF row the comparison derives from BR-20 changes with it.
+    (aisf05,) = rows[("AISF-05", "us-east-2")]
+    assert (aisf05.change, aisf05.match_rule) == (Change.NEW, MatchRule.SINGLE_ROW)
+    # Previous run: 402 failed By Service rows. AC-09, both AC-14 rows and BR-39
+    # changed. Regressed: BR-56 in us-east-1 and the two BR-56 rows in us-west-2.
     tiles = comparison.tile_counts()
     assert {change: tiles[change] for change in script.CHANGES} == {
         Change.REGRESSED: 3,
-        Change.NEW: 2,
+        Change.NEW: 3,
         Change.RESOLVED: 2,
         Change.NO_LONGER_REPORTED: 1,
         Change.NO_LONGER_ASSESSED: 1,
     }
-    assert tiles[Change.STILL_OPEN] == 17 - 4
+    assert tiles[Change.STILL_OPEN] == 402 - 4
     assert comparison.days_apart == 24
 
 
@@ -283,12 +360,12 @@ def test_multi_account_sample_results(folders):
     (br03,) = _rows_by_check(comparison)[("BR-03", "Global")]
     assert (br03.change, br03.match_rule) == (Change.REGRESSED, MatchRule.SINGLE_ROW)
 
-    # Every account had AR-01's Passed summary row: two Regressed, check-level.
+    # Every account had BR-56's Passed summary row: two Regressed, check-level.
     for account_id in ("111122223333", "444455556666", "777788889999"):
-        ar01 = _rows_by_check(_compared(folders, "multi_account", account_id)[2])[
-            ("AR-01", "Global")
+        br56 = _rows_by_check(_compared(folders, "multi_account", account_id)[2])[
+            ("BR-56", "us-west-2")
         ]
-        assert Counter((row.change, row.match_rule) for row in ar01) == Counter(
+        assert Counter((row.change, row.match_rule) for row in br56) == Counter(
             {(Change.REGRESSED, MatchRule.CHECK_LEVEL): 2}
         ), account_id
 
@@ -311,39 +388,26 @@ def test_multi_account_sample_results(folders):
 @pytest.mark.parametrize("sample, account_id", ACCOUNTS)
 def test_derived_rows_change_with_their_source(folders, sample, account_id):
     # AC-14 us-east-1 resolved: its AG-28 and OW-02 rows are resolved too.
-    # SM-26 us-east-2 no longer assessed: its OW-01 and OW-10 rows too.
-    # BR-37 us-west-2 gone: its OW-02 row too.
+    # AC-14 us-east-2 no longer assessed: its AG-28 and OW-02 rows too.
+    # BR-39 us-east-1 gone: its OW-03 row too.
+    # BR-20 us-east-2 new: its OW-08 row, and the AISF-05 row the comparison
+    # derives, are new too.
     _p, _c, comparison = _compared(folders, sample, account_id)
     derived = Counter(
         (row.area, row.check_id, row.region, row.change, row.match_rule)
         for row in comparison.rows
-        if row.area in script.DERIVED_AREAS and row.change in script.CHANGES
+        if row.area in (*script.DERIVED_AREAS, "aisf") and row.change in script.CHANGES
     )
+    single, unmatched = MatchRule.SINGLE_ROW, MatchRule.UNMATCHED
     assert derived == Counter(
         [
-            ("agentic", "AG-28", "us-east-1", Change.RESOLVED, MatchRule.SINGLE_ROW),
-            ("owasp", "OW-02", "us-east-1", Change.RESOLVED, MatchRule.SINGLE_ROW),
-            (
-                "owasp",
-                "OW-01",
-                "us-east-2",
-                Change.NO_LONGER_ASSESSED,
-                MatchRule.SINGLE_ROW,
-            ),
-            (
-                "owasp",
-                "OW-10",
-                "us-east-2",
-                Change.NO_LONGER_ASSESSED,
-                MatchRule.SINGLE_ROW,
-            ),
-            (
-                "owasp",
-                "OW-02",
-                "us-west-2",
-                Change.NO_LONGER_REPORTED,
-                MatchRule.UNMATCHED,
-            ),
+            ("agentic", "AG-28", "us-east-1", Change.RESOLVED, single),
+            ("owasp", "OW-02", "us-east-1", Change.RESOLVED, single),
+            ("agentic", "AG-28", "us-east-2", Change.NO_LONGER_ASSESSED, single),
+            ("owasp", "OW-02", "us-east-2", Change.NO_LONGER_ASSESSED, single),
+            ("owasp", "OW-03", "us-east-1", Change.NO_LONGER_REPORTED, unmatched),
+            ("owasp", "OW-08", "us-east-2", Change.NEW, single),
+            ("aisf", "AISF-05", "us-east-2", Change.NEW, single),
         ]
     )
 
@@ -351,10 +415,10 @@ def test_derived_rows_change_with_their_source(folders, sample, account_id):
 def test_an_edit_that_matches_no_row_is_an_error(folders):
     previous = _previous(folders, "single_account", SINGLE)
     without = tuple(
-        finding for finding in previous.findings if finding.check_id != "SM-04"
+        finding for finding in previous.findings if finding.check_id != "BR-56"
     )
     with pytest.raises(
-        ValueError, match="edit SM-04 us-east-1 Passed: expected one row"
+        ValueError, match="edit BR-56 us-east-1 Passed: expected one row"
     ):
         script.apply_edits(without)
 
@@ -410,9 +474,17 @@ COMMITTED_FILES = sorted(
 
 
 def test_every_kind_of_generated_value_occurs_in_the_samples():
-    # A pattern that matches nothing is a mistake, or no longer needed.
+    # Cleaning whole names removes several old suffix-only match sites.
     kinds = {kind for kind, _pattern in script.GENERATED_VALUE_KINDS}
-    assert set(SAMPLE_VALUES) == kinds | {script.PERSONAL_NAME}
+    removed_with_names = {
+        "console role suffix",
+        "shortened account ID in a stack name",
+        "Bedrock ID in a role name",
+        "CloudTrail bucket suffix",
+        "Identity Center instance",
+        "Identity Center role",
+    }
+    assert set(SAMPLE_VALUES) - {script.PERSONAL_NAME} == kinds - removed_with_names
 
 
 @pytest.mark.parametrize(
@@ -424,6 +496,7 @@ def test_no_generated_value_from_the_samples_is_committed(path):
     leaked = Counter(
         kind
         for kind, values in SAMPLE_VALUES.items()
+        if kind not in script.NAME_KINDS
         for value in values
         if value in text
     )
@@ -446,11 +519,12 @@ def test_replacing_generated_values_keeps_everything_else():
     )
     spans = script.generated_values(text)
     assert [text[start:end] for start, end, _kind in spans] == [
-        "4B1C2D3E",
-        "Qx4mTr8vLp2K",
+        "DemoStack-Ec2Role4B1C2D3E-Qx4mTr8vLp2K",
         "0a1b2c3d4e5f60718",
         "1a2b3c4d",
         "K7Q2ZP9XWA",
+        "cdk-hnb659fds-lookup-role-123456789012-us-east-1",
+        "demo-bucket-111122223333",
     ]
     replaced = script.replace_generated_values(text)
     assert len(replaced) == len(text)
@@ -461,8 +535,10 @@ def test_replacing_generated_values_keeps_everything_else():
         covered.update(range(start, end))
     kept = [i for i in range(len(text)) if i not in covered]
     assert [replaced[i] for i in kept] == [text[i] for i in kept]
-    start, end, _kind = spans[2]
+    start, end, _kind = spans[1]
     assert re.fullmatch(r"[0-9a-f]{17}", replaced[start:end])  # hex stays hex
+    assert "123456789012" in replaced
+    assert "111122223333" in replaced
     assert script.replace_generated_values(text) == replaced  # same every time
 
 
@@ -472,7 +548,7 @@ def test_a_personal_name_is_replaced(monkeypatch):
     text = "Bucket 'kb-agent-jdoe', owner JDoe"
     spans = script.generated_values(text)
     assert [(text[start:end], kind) for start, end, kind in spans] == [
-        ("jdoe", script.PERSONAL_NAME),
+        ("kb-agent-jdoe", "quoted resource name"),
         ("JDoe", script.PERSONAL_NAME),
     ]
     assert "jdoe" not in script.replace_generated_values(text).lower()
