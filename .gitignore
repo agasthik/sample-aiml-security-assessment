@@ -47,5 +47,9 @@ tmp/
 
 .ruff_cache/
 .ash/
+.protoshield/
 .coverage
 design-plans/
+# Report UI (Cloudscape) build inputs; the built bundle under
+# generate_consolidated_report/report_ui/ is committed.
+report-ui/node_modules/

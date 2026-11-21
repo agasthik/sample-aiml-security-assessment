@@ -1,0 +1,98 @@
+/*
+ * Layout-only helpers. Colors, type, spacing and borders come from Cloudscape
+ * components and design tokens; nothing here sets a color of its own.
+ */
+
+.report-top-nav {
+  position: sticky;
+  top: 0;
+  z-index: 1002;
+}
+
+.report-section {
+  scroll-margin-top: 72px;
+}
+
+.report-icon-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  vertical-align: middle;
+}
+
+.report-area-icon {
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.report-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.report-filter-search {
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
+.report-filter-select {
+  flex: 0 1 auto;
+  min-width: 200px;
+}
+
+.report-prewrap {
+  white-space: pre-wrap;
+  /* Break long resource names only where they would overflow. */
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.report-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.report-detail-list .report-list {
+  margin-block-start: 4px;
+}
+
+.report-list {
+  margin: 0;
+  padding-inline-start: 20px;
+}
+
+.report-list li + li {
+  margin-block-start: 4px;
+}
+
+@media print {
+  .report-top-nav {
+    position: static;
+  }
+}
+
+/*
+ * The product title is short and the bar has room; Chrome sizes the
+ * identity link before the inlined font is applied, which clips the title.
+ */
+.report-top-nav [class*='awsui_identity-link_'] {
+  min-inline-size: 220px;
+}
+
+/* AWS identifiers in finding text, drawn with Cloudscape's inline-code style.
+   Long names may break anywhere so they never overflow the details panel. */
+.report-identifier > * {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+/* Shown in place of the report when it cannot be drawn. */
+.report-load-error {
+  margin: 0;
+  padding: 24px;
+  font-family: system-ui, sans-serif;
+}

@@ -1,0 +1,14 @@
+{
+  "sourceSha256": "eb15880fe9bdf0aea07582b40393b0fae81a51681cd2bcc54a42113975a92fe6",
+  "files": [
+    "report-ui.js",
+    "report-ui.css"
+  ],
+  "versions": {
+    "@cloudscape-design/components": "3.0.1421",
+    "@cloudscape-design/global-styles": "1.0.72",
+    "@cloudscape-design/collection-hooks": "1.0.111",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}
