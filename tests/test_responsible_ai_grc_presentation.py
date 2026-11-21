@@ -20,6 +20,8 @@ import sys
 
 import pytest
 
+from tests.report_data import area, nav_headings, report_data
+
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 REPORT_DIR = os.path.join(
     REPO_ROOT,
@@ -55,15 +57,14 @@ RETIRED_LABELS = [
     "Financial Services Risk",
     "Financial Services GenAI Risk",
     "Financial Services GenAI Risk Findings",
-    "<h3>By Industry</h3>",
-    ">FinServ<",
+    "By Industry",
+    '"FinServ"',
 ]
 
-# ">FinServ<" above is tag-delimited, so it only catches "FinServ" appearing as
-# its own HTML text node -- it cannot catch the word inside a table cell that
-# also contains other text (e.g. a finding name or resolution sentence), or
-# inside prose split across markup. test_bare_finserv_word_is_absent_from_rendered_text
-# below closes that gap with a substring check against de-tagged text content.
+# '"FinServ"' above only catches "FinServ" as a whole JSON string value -- it
+# cannot catch the word inside a longer string (a finding name or resolution
+# sentence). test_bare_finserv_word_is_absent_from_rendered_text below closes
+# that gap with a substring check against the whole model text.
 # The one legitimate survivor is the source PDF's URL slug
 # (".../global-FinServ-ComplianceGuide-GenAIRisks-public.pdf"), which names an
 # external AWS document, not this project's retired capability name.
@@ -98,14 +99,27 @@ def _render(with_capability: bool = True) -> str:
     )
 
 
+# The report page is the Cloudscape UI bundle plus an embedded JSON model; the
+# model holds every word the report shows, so the text checks below read the
+# model (serialized) rather than the bundle's source code.
 @pytest.fixture(scope="module")
-def html() -> str:
-    return _render(with_capability=True)
+def data() -> dict:
+    return report_data(_render(with_capability=True))
 
 
 @pytest.fixture(scope="module")
-def html_without() -> str:
-    return _render(with_capability=False)
+def data_without() -> dict:
+    return report_data(_render(with_capability=False))
+
+
+@pytest.fixture(scope="module")
+def html(data) -> str:
+    return json.dumps(data, ensure_ascii=False)
+
+
+@pytest.fixture(scope="module")
+def html_without(data_without) -> str:
+    return json.dumps(data_without, ensure_ascii=False)
 
 
 # ---------------------------------------------------------------------------
@@ -143,12 +157,11 @@ def test_retired_labels_do_not_render(html, retired):
 
 
 def test_bare_finserv_word_is_absent_from_rendered_text(html):
-    """Case-insensitive substring check, not tag-delimited.
+    """Case-insensitive substring check over the whole report model.
 
-    ">FinServ<" in RETIRED_LABELS only matches "FinServ" as an isolated HTML
-    text node. It cannot catch the word occurring inside a table cell that
-    also has other text (a finding name, a resolution sentence) or split
-    across markup -- exactly the shape of the 7 finding_details/resolution
+    '"FinServ"' in RETIRED_LABELS only matches "FinServ" as a whole string
+    value. It cannot catch the word occurring inside a longer string (a
+    finding name, a resolution sentence) -- exactly the shape of the 7 finding_details/resolution
     leaks this test was added to close. Strip every substring known to be an
     acceptable, non-capability-name occurrence first (currently only the
     source PDF's URL slug), then require the word to be gone from what
@@ -173,18 +186,22 @@ def test_no_financial_services_capability_label_anywhere(html):
     assert "Financial Services" not in html
 
 
-def test_taxonomy_moved_out_of_by_industry(html):
-    assert "<h3>By Governance Framework</h3>" in html
-    assert "<h3>By Industry</h3>" not in html
-    assert '<div class="scope-governance-label">Governance Framework</div>' in html
-    assert '<div class="scope-industry-label">Industry</div>' not in html
-    assert '<div class="scope-industry-label">' not in html
+def test_taxonomy_moved_out_of_by_industry(data):
+    assert "By Governance Framework" in nav_headings(data)
+    assert "By Industry" not in nav_headings(data)
+    labels = [g["label"] for g in data["methodology"]["scopeGroups"]]
+    assert "Governance Framework" in labels
+    assert "Industry" not in labels
 
 
-def test_capability_absent_from_the_by_service_nav(html):
+def test_capability_absent_from_the_by_service_nav(data):
     """It is a governance grouping, not a service."""
-    by_service = html.split("<h3>By Service</h3>", 1)[1].split("<h3>", 1)[0]
-    assert CANONICAL_LABEL not in by_service
+    by_service = next(g for g in data["navGroups"] if g["heading"] == "By Service")
+    assert CANONICAL_SLUG not in by_service["areas"]
+    governance = next(
+        g for g in data["navGroups"] if g["heading"] == "By Governance Framework"
+    )
+    assert governance["areas"] == [CANONICAL_SLUG]
 
 
 # ---------------------------------------------------------------------------
@@ -197,63 +214,47 @@ def test_capability_absent_from_the_by_service_nav(html):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "selector",
-    [
-        'id="responsible-ai-grc"',
-        'href="#responsible-ai-grc"',
-        'data-service="responsible-ai-grc"',
-        'data-filter-service="responsible-ai-grc"',
-        'data-scope-service="responsible-ai-grc"',
-        '<option value="responsible-ai-grc">',
-    ],
-)
-def test_selectors_use_the_new_slug(html, selector):
-    assert selector in html
+def test_machine_identity_uses_the_new_slug(data):
+    """The slug is the section anchor id, the area filter value, and the row service.
+
+    The Cloudscape report has no data-* attributes or <option> markup; the
+    persisted identity lives in the model fields the UI turns into them.
+    """
+    grc = area(data, CANONICAL_SLUG)
+    assert grc is not None and grc["name"] == CANONICAL_LABEL
+    assert {"value": CANONICAL_SLUG, "label": CANONICAL_LABEL} in data["filters"][
+        "areas"
+    ]
+    assert [f["service"] for f in data["findings"]] == [CANONICAL_SLUG]
+
+
+def test_legacy_finserv_identity_is_retired(data, html):
+    assert area(data, "finserv") is None
+    assert all(o["value"] != "finserv" for o in data["filters"]["areas"])
+    assert '"finserv"' not in html
+
+
+def test_governance_grouping_fields_are_frozen(data):
+    """Replaces the frozen governance-* CSS class checks: the Cloudscape UI has
+    no such classes, so the grouping is frozen as model fields instead."""
+    assert {"heading": "By Governance Framework", "areas": [CANONICAL_SLUG]} in data[
+        "navGroups"
+    ]
+    group = next(
+        g
+        for g in data["methodology"]["scopeGroups"]
+        if g["label"] == report_template.RESPONSIBLE_AI_GRC_SCOPE_LABEL
+    )
+    assert [c["label"] for c in group["chips"]] == [CANONICAL_LABEL]
 
 
 @pytest.mark.parametrize(
-    "selector",
-    [
-        'id="finserv"',
-        'href="#finserv"',
-        'data-service="finserv"',
-        'data-filter-service="finserv"',
-        'data-scope-service="finserv"',
-        '<option value="finserv">',
-    ],
+    "legacy",
+    ["industry-item", "industry-nav", "industry-chip", "scope-industry", "Industry"],
 )
-def test_legacy_finserv_selectors_are_retired(html, selector):
-    assert selector not in html
-
-
-@pytest.mark.parametrize(
-    "css_class",
-    [
-        "governance-item",
-        "governance-nav",
-        "governance-chip",
-        "scope-governance",
-        "scope-governance-label",
-    ],
-)
-def test_governance_css_classes_are_present(html, css_class):
-    """The visible heading moved off "Industry"; the class names moved with it."""
-    assert css_class in html
-
-
-@pytest.mark.parametrize(
-    "css_class",
-    [
-        "industry-item",
-        "industry-nav",
-        "industry-chip",
-        "scope-industry",
-        "scope-industry-label",
-    ],
-)
-def test_legacy_industry_css_classes_are_retired(html, css_class):
-    assert css_class not in html
+def test_legacy_industry_grouping_is_retired(data, html, legacy):
+    assert legacy not in nav_headings(data)
+    assert f'"{legacy}"' not in html
 
 
 # ---------------------------------------------------------------------------
@@ -326,8 +327,8 @@ def test_source_shorthand_never_names_the_capability(html):
 # ---------------------------------------------------------------------------
 
 
-def test_capability_chrome_omitted_when_no_findings(html_without):
+def test_capability_chrome_omitted_when_no_findings(data_without, html_without):
     assert CANONICAL_LABEL not in html_without
-    assert 'id="responsible-ai-grc"' not in html_without
-    assert "<h3>By Governance Framework</h3>" not in html_without
-    assert 'id="bedrock"' in html_without
+    assert area(data_without, CANONICAL_SLUG) is None
+    assert "By Governance Framework" not in nav_headings(data_without)
+    assert area(data_without, "bedrock") is not None

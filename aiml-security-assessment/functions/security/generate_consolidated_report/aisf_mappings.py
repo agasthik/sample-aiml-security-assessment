@@ -336,7 +336,7 @@ def _row(
 ) -> Dict[str, str]:
     """Build one derived finding in the CSV-cased shape the report layer reads.
 
-    Every key here is read by `report_template.generate_table_rows` (:201-234),
+    Every key here is read by `report_template.finding_rows`,
     which accepts either casing via `finding.get("x", finding.get("X"))`.
     """
     if status == "N/A":

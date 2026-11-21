@@ -3,6 +3,7 @@ compliance-standard section when the "owasp" service key has findings.
 """
 
 import importlib.util
+import json
 import os
 import sys
 
@@ -22,6 +23,14 @@ _spec = importlib.util.spec_from_file_location(
 report_template = importlib.util.module_from_spec(_spec)
 sys.modules["report_template_mod"] = report_template
 _spec.loader.exec_module(report_template)
+
+
+def _data(html):
+    return report_template.extract_report_data(html)
+
+
+def _overview(html, label):
+    return next(m for m in _data(html)["overview"] if m["label"] == label)
 
 
 def _base_kwargs():
@@ -83,10 +92,11 @@ def _direct_finding(check_id, status, severity, details):
 class TestOWASPSectionRendering:
     def test_no_owasp_findings_hides_compliance_section(self):
         html = report_template.generate_html_report(**_base_kwargs())
+        data = _data(html)
         # When there are zero OWASP findings, no compliance nav / filter option.
-        assert 'class="nav-section compliance-nav"' not in html
-        assert 'value="owasp"' not in html
-        assert 'id="owasp"' not in html
+        assert "By Compliance Standard" not in [g["heading"] for g in data["navGroups"]]
+        assert "owasp" not in [o["value"] for o in data["filters"]["areas"]]
+        assert "owasp" not in [a["slug"] for a in data["areas"]]
 
     def test_with_owasp_findings_renders_all_owasp_ui(self):
         kwargs = _base_kwargs()
@@ -98,16 +108,23 @@ class TestOWASPSectionRendering:
 
         html = report_template.generate_html_report(**kwargs)
 
-        # Sidebar
-        assert 'class="nav-section compliance-nav"' in html
-        assert "By Compliance Standard" in html
-        assert "OWASP Top 10 LLM" in html
+        data = _data(html)
+        # Navigation
+        nav = {g["heading"]: g["areas"] for g in data["navGroups"]}
+        assert nav["By Compliance Standard"] == ["owasp"]
+        owasp = next(a for a in data["areas"] if a["slug"] == "owasp")
+        assert owasp["name"] == "OWASP Top 10 LLM"
+        assert owasp["countText"] == "2"
         # Filter option
-        assert 'value="owasp"' in html
+        assert {"value": "owasp", "label": "OWASP Top 10 LLM"} in data["filters"][
+            "areas"
+        ]
         # Section — heading uses the registry's `section_title`, which
         # for OWASP is "OWASP Top 10 for LLM Findings" (with "for").
-        assert 'id="owasp"' in html
-        assert "OWASP Top 10 for LLM Findings" in html
+        assert owasp["sectionTitle"] == "OWASP Top 10 for LLM Findings"
+        assert "OWASP Top 10 LLM" in [
+            c["label"] for g in data["methodology"]["scopeGroups"] for c in g["chips"]
+        ]
 
     def test_contextual_rows_do_not_inflate_open_action_items(self):
         kwargs = _base_kwargs()
@@ -131,20 +148,19 @@ class TestOWASPSectionRendering:
 
         html = report_template.generate_html_report(**kwargs)
 
-        assert (
-            '<div class="metric danger"><div class="metric-label">Open Action Items</div>'
-            '<div class="metric-value">1</div><div class="metric-sub">Direct failed service rows</div></div>'
-            in html
+        open_items = _overview(html, "Open Action Items")
+        assert (open_items["value"], open_items["description"]) == (
+            "1",
+            "Direct failed service rows",
         )
-        assert (
-            '<div class="metric"><div class="metric-label">Lens / Compliance Rows</div>'
-            '<div class="metric-value">1</div><div class="metric-sub">1 failed; may map to service rows</div></div>'
-            in html
+        lens = _overview(html, "Lens / Compliance Rows")
+        assert (lens["value"], lens["description"]) == (
+            "1",
+            "1 failed; may map to service rows",
         )
-        assert (
-            '<div class="metric"><div class="metric-label">Overall</div><div class="metric-value">0.0%</div>'
-            '<div class="metric-sub">0 of 1 scored controls passed</div>' in html
-        )
+        overall = _data(html)["risk"]["overall"]
+        assert overall["passRateText"] == "0.0%"
+        assert overall["description"] == "0 of 1 scored controls passed"
 
     def test_repeated_resource_passes_count_as_one_scored_control(self):
         kwargs = _base_kwargs()
@@ -172,11 +188,9 @@ class TestOWASPSectionRendering:
 
         html = report_template.generate_html_report(**kwargs)
 
-        assert (
-            '<div class="metric"><div class="metric-label">Overall</div>'
-            '<div class="metric-value">50.0%</div>'
-            '<div class="metric-sub">1 of 2 scored controls passed</div>' in html
-        )
+        overall = _data(html)["risk"]["overall"]
+        assert overall["passRateText"] == "50.0%"
+        assert overall["description"] == "1 of 2 scored controls passed"
         assert "99.5%" not in html
 
     def test_any_failed_resource_makes_the_unique_control_fail(self):
@@ -243,14 +257,22 @@ class TestOWASPSectionRendering:
 
         html = report_template.generate_html_report(**kwargs)
 
+        # The JSON model escapes "<" so no finding text can start markup or
+        # close its <script> element; the UI renders the text, never markup.
         assert "<script>alert" not in html
         assert "<img src=x" not in html
         assert "<b>markup</b>" not in html
-        assert 'href="javascript:alert(1)"' not in html
-        assert 'data-region="us-east-1" onclick=' not in html
-        assert "&lt;script&gt;alert" in html
-        assert "&lt;img src=x onerror=" in html
-        assert 'Use "quotes" and &lt;b&gt;markup&lt;/b&gt; safely.' in html
+        assert "\\u003cscript\\u003ealert" in html
+        (row,) = _data(html)["findings"]
+        # Text is preserved exactly; only the transport is escaped.
+        assert row["checkId"] == 'OW-01"><script>alert(1)</script>'
+        assert row["finding"] == '<img src=x onerror="alert(1)">'
+        assert row["details"] == '<script>alert("details")</script>'
+        assert row["resolution"] == 'Use "quotes" and <b>markup</b> safely.'
+        assert row["region"] == 'us-east-1" onclick="alert(1)'
+        # A non-HTTPS reference is not offered as a link, nor kept anywhere.
+        assert row["reference"] is None
+        assert "javascript:alert(1)" not in json.dumps(_data(html))
 
     def test_compliance_standards_is_data_driven(self):
         """The extensibility contract: adding a standard is a data-only edit."""
@@ -264,7 +286,6 @@ class TestOWASPSectionRendering:
                 "name",
                 "prefix",
                 "icon",
-                "icon_small",
                 "reference_url",
                 "section_title",
                 "scope_text",
@@ -282,8 +303,7 @@ class TestOWASPSectionRendering:
                     "slug": "nist",
                     "name": "NIST AI RMF",
                     "prefix": "NR-",
-                    "icon": '<span class="service-icon">N</span>',
-                    "icon_small": '<span class="service-icon">N</span>',
+                    "icon": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"/>',
                     "reference_url": "https://example.com/nist",
                     "section_title": "NIST AI RMF Findings",
                     "scope_text": "Test scope.",
@@ -308,7 +328,7 @@ class TestOWASPSectionRendering:
 
         html = report_template.generate_html_report(**kwargs)
 
-        assert '<div class="alert-category">NIST AI RMF</div>' in html
+        assert [a["area"] for a in _data(html)["alerts"]] == ["NIST AI RMF"]
 
 
 def test_grc_only_report_has_no_direct_service_score():
@@ -324,12 +344,10 @@ def test_grc_only_report_has_no_direct_service_score():
     kwargs["service_selection"] = dict.fromkeys(
         ("bedrock", "sagemaker", "agentcore", "agent-registry"), False
     )
-    html = report_template.generate_html_report(**kwargs)
-    from bs4 import BeautifulSoup
-
-    soup = BeautifulSoup(html, "html.parser")
-    risk = soup.select_one("#risk").get_text(" ", strip=True)
-    assert "0 of 0 scored controls passed" in risk
-    assert "0 of 1 scored controls passed" not in risk
-    assert soup.select_one("#responsible-ai-grc") is not None
-    assert "FS-01" in soup.select_one("#findingsTable").get_text()
+    data = _data(report_template.generate_html_report(**kwargs))
+    risk = data["risk"]
+    descriptions = [r["description"] for r in [*risk["severity"], risk["overall"]]]
+    assert risk["overall"]["description"] == "0 of 0 scored controls passed"
+    assert "0 of 1 scored controls passed" not in descriptions
+    assert "responsible-ai-grc" in [a["slug"] for a in data["areas"]]
+    assert [f["checkId"] for f in data["findings"]] == ["FS-01"]

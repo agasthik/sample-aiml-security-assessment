@@ -68,47 +68,41 @@ def _render(service_findings, **kwargs):
     )
 
 
+def _data(html):
+    return report_template.extract_report_data(html)
+
+
 def _tile(html, label):
-    """Return (value, sub-text) for the overview metric tile with this label."""
-    match = re.search(
-        r'<div class="metric-label">(?:(?!</div>).)*?'
-        + re.escape(label)
-        + r'</div><div class="metric-value">([^<]+)</div>'
-        r'(?:<div class="metric-sub">([^<]*)</div>)?',
-        html,
-        re.S,
-    )
-    assert match, f"metric tile {label!r} not found"
-    return match.group(1), match.group(2) or ""
+    """Return (value, sub-text) for the overview, Overall, or area tile `label`."""
+    data = _data(html)
+    for metric in data["overview"]:
+        if metric["label"] == label:
+            return metric["value"], metric["description"]
+    overall = data["risk"]["overall"]
+    if overall["label"] == label:
+        return overall["passRateText"], overall["description"]
+    for area in data["areas"]:
+        if area["name"] == label:
+            return area["countText"], area["cardStatus"]
+    raise AssertionError(f"metric tile {label!r} not found")
 
 
 def _severity_pass_rate(html, severity):
-    match = re.search(
-        r'<span class="severity '
-        + severity
-        + r'"[^>]*>'
-        + severity.upper()
-        + r"</span></div>"
-        r'<div class="metric-value">([^<]+)</div>',
-        html,
-    )
-    assert match, f"{severity} pass-rate tile not found"
-    return match.group(1)
+    for rate in _data(html)["risk"]["severity"]:
+        if rate["key"] == severity:
+            return rate["passRateText"]
+    raise AssertionError(f"{severity} pass-rate tile not found")
 
 
 def _risk_card(html, label):
     """Return the text of the per-region / per-account risk card for `label`."""
-    block = re.search(
-        r'</h4>\s*<div class="metrics" style="margin-bottom: 32px;">(.*)', html, re.S
-    )
-    assert block, "risk card section not rendered"
-    card = re.search(
-        re.escape(label) + r'</div>(.*?)(?=<div class="metric[ "]|$)',
-        block.group(1),
-        re.S,
-    )
-    assert card, f"risk card {label!r} not found"
-    return " ".join(re.sub(r"<[^>]+>", " ", card.group(1)).split())
+    risk = _data(html)["risk"]
+    cards = (risk["regions"] or []) + (risk["accounts"] or [])
+    assert cards, "risk card section not rendered"
+    for card in cards:
+        if card["label"] == label:
+            return f"{card['high']} High {card['medium']} Med {card['low']} Low"
+    raise AssertionError(f"risk card {label!r} not found")
 
 
 def test_agent_registry_control_reported_per_region_scores_once():
@@ -275,12 +269,12 @@ def test_agent_registry_counts_reach_the_area_tile_and_navigation():
     assert "1 Failed" in sub and "1 Passed" in sub and "1 N/A" in sub
     # AgentCore must not absorb the Agent Registry rows.
     assert _tile(html, "AgentCore")[0] == "1"
-    nav = re.search(r"<h3>By Service</h3>(.*?)</nav>", html, re.S).group(1)
-    registry_nav = re.search(
-        r'<a href="#agent-registry" class="nav-item">(.*?)</a>', nav, re.S
+    nav = next(g for g in _data(html)["navGroups"] if g["heading"] == "By Service")
+    assert "agent-registry" in nav["areas"], (
+        "AWS Agent Registry navigation entry missing"
     )
-    assert registry_nav, "AWS Agent Registry navigation entry missing"
-    assert '<span class="count">3</span>' in registry_nav.group(1)
+    registry = next(a for a in _data(html)["areas"] if a["slug"] == "agent-registry")
+    assert registry["countText"] == "3"
 
 
 def test_contextual_rows_are_excluded_from_the_agent_registry_score():

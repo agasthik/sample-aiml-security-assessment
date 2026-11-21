@@ -20,6 +20,7 @@ from assessment_history import __main__ as cli
 from assessment_history.discover import StoredFile, parse_report_name
 from assessment_history.models import CORE_MODULES, CSV_COLUMNS, Comparison
 from assessment_history.render_common import RenderError
+from tests.report_data import report_data
 from tests.assessment_history_helpers import (
     ACCOUNT,
     OTHER_ACCOUNT,
@@ -93,10 +94,10 @@ def test_single_account_writes_the_changes_csv():
         f"  Written: s3://{BUCKET}/{key}",
         f"  Written: s3://{BUCKET}/{page_key}",
     ]
-    page = s3.objects[page_key][0].decode("utf-8")
-    assert "Changes Since Last Assessment" in page
-    assert 'href="security_assessment_changes_20260927_061500.csv"' in page
-    assert "open main report" not in page  # no main report in the folder
+    page = report_data(s3.objects[page_key][0].decode("utf-8"))
+    assert page["heading"] == "Changes Since Last Assessment"
+    assert page["csvName"] == "security_assessment_changes_20260927_061500.csv"
+    assert page["mainReport"] is None  # no main report in the folder
     rows = list(csv.DictReader(io.StringIO(s3.objects[key][0].decode("utf-8"))))
     assert tuple(rows[0]) == CSV_COLUMNS
     assert len(rows) == 4
@@ -604,8 +605,8 @@ def test_local_mode_writes_the_csv_and_ignores_the_setting(tmp_path):
     page = written.with_suffix(".html")
     assert code == 0
     assert written.is_file()
-    assert 'href="security_assessment_single_account_20260927_000003.html"' in (
-        page.read_text(encoding="utf-8")
+    assert report_data(page.read_text(encoding="utf-8"))["mainReport"] == (
+        "security_assessment_single_account_20260927_000003.html"
     )
     assert lines == [
         f"Changes report for account {ACCOUNT}",
@@ -795,7 +796,7 @@ def test_the_page_links_the_main_report_saved_with_the_run():
     code, _lines = _run(_single(), s3=s3)
     page = s3.objects[CHANGES_PAGE_KEY][0].decode("utf-8")
     assert code == 0
-    assert page.count(f'href="{name}"') == 2  # header and sidebar
+    assert report_data(page)["mainReport"] == name  # header and side navigation
     assert "20260903_000001" not in page
 
 

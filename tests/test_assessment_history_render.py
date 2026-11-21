@@ -1,35 +1,34 @@
 """The changes page (render_changes.py) and the parts it borrows (render_common.py).
 
-The page is checked with BeautifulSoup. Its script can't run under pytest,
-so a test checks that every element the script looks up exists; open
-sample-reports/security_assessment_changes.html in a browser to try it.
+The page is drawn in the browser by the main report's Cloudscape UI from a
+JSON model embedded in the HTML. These tests check that model; open
+sample-reports/security_assessment_changes.html in a browser to try the page.
 """
 
-import re
 from datetime import UTC, datetime
 
 import pytest
-from bs4 import BeautifulSoup
 
 from assessment_history.compare import compare_runs
 from assessment_history.models import AREAS
 from assessment_history.render_changes import (
     DETAILS_CHANGED_NOTE,
     ROW_ORDER,
-    SCRIPT,
+    TONES,
     change_slug,
+    changes_page_data,
     days_apart_text,
     format_time,
     render_changes_page,
 )
 from assessment_history.render_common import (
-    EXTRA_CSS,
     TEMPLATE_PATH,
     RenderError,
     load_parts,
     page_parts,
 )
 from tests.assessment_history_helpers import ACCOUNT, make_finding, make_run, utc
+from tests.report_data import report_data, rich_text
 
 CSV_NAME = "security_assessment_changes_20260927_061500.csv"
 MAIN_REPORT = "security_assessment_single_account_20260927_061433.html"
@@ -55,9 +54,16 @@ def _comparison(previous_rows, current_rows, *, previous=None, current=None):
 
 
 def _page(comparison, **options):
+    """The page's data model, as the Cloudscape UI receives it."""
     options.setdefault("csv_name", CSV_NAME)
     options.setdefault("generated_at", GENERATED)
-    return BeautifulSoup(render_changes_page(comparison, **options), "html.parser")
+    return changes_page_data(comparison, **options)
+
+
+def _html(comparison, **options):
+    options.setdefault("csv_name", CSV_NAME)
+    options.setdefault("generated_at", GENERATED)
+    return render_changes_page(comparison, **options)
 
 
 def _every_state():
@@ -88,55 +94,47 @@ def _every_state():
 
 def test_parts_are_borrowed_from_the_main_report():
     parts = page_parts()
-    for css_class in (
-        ".layout",
-        ".sidebar",
-        ".nav-item",
-        ".metric",
-        ".card",
-        ".filter-bar",
-        "#findingsTable.single-account-report",
-        ".finding-more",
-        ".severity.high",
-        ".status.error",
-        ".status.warning",
-        ".status.success",
-        '[data-theme="dark"]',
-    ):
-        assert css_class in parts.css, css_class
-    assert "{{" not in parts.css and "}}" not in parts.css
-    assert parts.css.endswith(EXTRA_CSS)
-    assert parts.fonts_link.startswith('<link href="https://fonts.googleapis.com')
-    assert 'id="themeToggle"' in parts.theme_button
-    assert 'class="theme-label"' in parts.theme_button
-    assert parts.page_footer.startswith('<footer class="page-footer">')
     assert set(parts.area_labels) == set(AREAS) == set(parts.area_icons)
-    assert [group[0] for group in parts.nav_groups] == [
+    for icon in parts.area_icons.values():
+        assert icon.startswith("data:image/svg+xml;base64,")
+    assert [heading for heading, _areas in parts.nav_groups] == [
         "By Service",
         "By Lens",
         "By Governance Framework",
         "By Compliance Standard",
     ]
+    assert rich_text(parts.footer).startswith("Copyright Amazon.com, Inc.")
+    assert parts.github_url.startswith("https://github.com/")
+    assert [o["value"] for o in parts.severity_options] == [
+        "high",
+        "medium",
+        "low",
+        "informational",
+    ]
     assert page_parts() is parts  # read once
 
 
-def test_copied_icons_and_names_still_match_the_main_report():
+def test_icons_and_names_match_the_main_report():
     parts = page_parts()
-    for area in ("bedrock", "sagemaker", "agentcore"):
-        icon = parts.area_icons[area]
-        assert icon.startswith('<span class="service-icon"><svg')
-        assert icon in TEMPLATE_TEXT
-    # The main report's Assessment Area filter uses the same names.
+    template = load_parts.__globals__["_load_module"](TEMPLATE_PATH)
     for area in ("bedrock", "sagemaker", "agentcore", "agent-registry", "agentic"):
-        option = f'<option value="{area}">{parts.area_labels[area]}</option>'
-        assert option in TEMPLATE_TEXT, option
+        assert parts.area_icons[area] == template.svg_data_uri(
+            template.AREA_ICONS[area]
+        )
+        # The main report's Assessment Area filter uses the same names.
+        assert parts.area_labels[area] == template.AREA_NAMES[area]
 
 
-def test_the_main_reports_theme_setting_is_shared():
-    # Both pages keep the reader's light/dark choice under the same key.
-    assert "localStorage.getItem('theme')" in TEMPLATE_TEXT
-    assert "localStorage.getItem('theme')" in SCRIPT
-    assert "localStorage.setItem('theme', 'dark')" in SCRIPT
+def test_the_page_uses_the_main_reports_cloudscape_shell():
+    html = _html(_every_state())
+    assert html.startswith("<!DOCTYPE html>")
+    assert '<script type="application/json" id="report-data">' in html
+    assert '<link rel="icon" type="image/svg+xml"' in html
+    assert "<title>Changes Since Last Assessment - 123456789012</title>" in html
+    template = load_parts.__globals__["_load_module"](TEMPLATE_PATH)
+    assets = template.report_ui_assets()
+    assert assets["js"] in html and assets["css"] in html
+    assert report_data(html)["kind"] == "changes"
 
 
 def test_a_missing_template_is_a_render_error(tmp_path):
@@ -146,32 +144,40 @@ def test_a_missing_template_is_a_render_error(tmp_path):
 
 FAKE_TEMPLATE = """
 COMPLIANCE_STANDARDS = [
-    {"slug": "owasp", "name": "OWASP", "icon": "<i></i>"},
-    {"slug": "aisf", "name": "AISF", "icon": "<i></i>"},
+    {"slug": "owasp", "name": "OWASP", "icon": "<svg></svg>"},
+    {"slug": "aisf", "name": "AISF", "icon": "<svg></svg>"},
 ]
 RESPONSIBLE_AI_GRC_LABEL = "GRC"
 RESPONSIBLE_AI_GRC_NAV_HEADING = "By Governance Framework"
-AGENT_REGISTRY_ICON = AGENTIC_ICON = RESPONSIBLE_AI_GRC_ICON = ""
-_escape_text = _escape_attr = _safe_https_url = str
-
-
-def get_html_template():
-    return "<html><body>no styles</body></html>"
 """
 
 
 @pytest.mark.parametrize(
-    "source, message",
+    "source",
     [
-        ("def get_html_template():\n    return ''\n", "no longer provides"),
-        (FAKE_TEMPLATE.replace('"owasp"', '"nist"'), "no longer provides"),
-        (FAKE_TEMPLATE, "no longer has the report styles"),
+        "def get_html_template():\n    return ''\n",
+        FAKE_TEMPLATE.replace('"owasp"', '"nist"'),
+        FAKE_TEMPLATE,
     ],
 )
-def test_a_changed_template_is_a_render_error(tmp_path, source, message):
+def test_a_changed_template_is_a_render_error(tmp_path, source):
     path = tmp_path / "report_template.py"
     path.write_text(source, encoding="utf-8")
-    with pytest.raises(RenderError, match=message):
+    with pytest.raises(RenderError, match="no longer provides"):
+        load_parts(path)
+
+
+def test_a_template_with_bad_footer_markup_is_a_render_error(tmp_path):
+    # rich() raises ValueError for markup it doesn't accept.
+    source = TEMPLATE_TEXT.replace(
+        'f\'<a href="{AWS_CUSTOMER_AGREEMENT_URL}">AWS Customer Agreement</a>',
+        "'<em>AWS Customer Agreement</em>",
+        1,
+    )
+    assert source != TEMPLATE_TEXT
+    path = tmp_path / "report_template.py"
+    path.write_text(source, encoding="utf-8")
+    with pytest.raises(RenderError, match="no longer provides"):
         load_parts(path)
 
 
@@ -206,39 +212,37 @@ def test_change_slugs():
 
 def test_header_shows_both_runs_and_the_account():
     page = _page(_every_state())
-    assert page.title.string == f"Changes Since Last Assessment - {ACCOUNT}"
-    meta = page.select_one(".page-header-meta").get_text(" ", strip=True)
-    assert "Previous run saved Sep 3, 2026 23:37 UTC" in meta
-    assert "Current run saved Sep 27, 2026 06:15 UTC" in meta
-    assert "24 days apart" in meta
-    assert f"Account {ACCOUNT}" in meta
-    assert "open main report" not in meta
+    assert page["kind"] == "changes"
+    assert page["title"] == f"Changes Since Last Assessment - {ACCOUNT}"
+    assert page["meta"] == [
+        "Previous run saved Sep 3, 2026 23:37 UTC",
+        "Current run saved Sep 27, 2026 06:15 UTC",
+        "24 days apart",
+        f"Account {ACCOUNT}",
+    ]
+    assert page["mainReport"] is None
 
 
-def test_main_report_is_linked_in_the_header_and_sidebar_when_known():
+def test_main_report_is_linked_when_known():
     page = _page(_every_state(), main_report_name=MAIN_REPORT)
-    links = [a["href"] for a in page.find_all("a")]
-    assert links.count(MAIN_REPORT) == 2
-    assert page.select_one(".page-header-meta a").string == "open main report"
-    footer = page.select_one(".sidebar-footer")
-    assert [a["href"] for a in footer.find_all("a")][:2] == [MAIN_REPORT, CSV_NAME]
-    assert "Links work when these files are in the same folder" in footer.get_text()
+    assert page["mainReport"] == MAIN_REPORT
+    assert page["csvName"] == CSV_NAME
+    assert page["sameFolderNote"].startswith(
+        "Links work when these files are in the same folder"
+    )
 
 
 def test_without_a_main_report_only_the_csv_is_linked():
-    footer = _page(_every_state()).select_one(".sidebar-footer")
-    assert [a["href"] for a in footer.find_all("a")][:1] == [CSV_NAME]
-    assert "Generated: Sep 27, 2026 06:20 UTC" in footer.get_text()
+    page = _page(_every_state(), main_report_name="")
+    assert page["mainReport"] is None
+    assert page["csvName"] == CSV_NAME
+    assert page["generated"] == "Sep 27, 2026 06:20 UTC"
+    assert page["accountId"] == ACCOUNT
 
 
 def test_tiles_count_the_four_services():
     page = _page(_every_state())
-    tiles = {
-        tile.select_one(".metric-label").get_text()[2:]: int(
-            tile.select_one(".metric-value").get_text()
-        )
-        for tile in page.select(".metrics .metric")
-    }
+    tiles = {tile["label"]: int(tile["value"]) for tile in page["tiles"]}
     # AG-01 regressed too, but it's derived, so it isn't counted here.
     assert tiles == {
         "Regressed": 1,
@@ -248,135 +252,116 @@ def test_tiles_count_the_four_services():
         "No longer reported": 1,
         "No longer assessed": 1,
     }
-    classes = [tile["class"] for tile in page.select(".metrics .metric")]
-    assert classes[0] == ["metric", "danger"]
-    assert classes[4] == ["metric"]
+    assert page["tiles"][0]["tone"] == "error"
+    assert page["tiles"][0]["description"] == "Passed before, failing now"
+    assert page["tiles"][4]["tone"] == "neutral"
+
+
+def _table_rows(page):
+    return page["areaTable"]["rows"]
 
 
 def test_area_table_groups_areas_under_the_main_reports_headings():
     page = _page(_every_state())
-    rows = [
-        [cell.get_text() for cell in row.find_all("td")]
-        for row in page.select(".area-table tbody tr")
+    assert page["areaTable"]["columns"] == [
+        "Regressed",
+        "New",
+        "Still open",
+        "Resolved",
+        "No longer reported",
+        "No longer assessed",
     ]
-    assert [row[0] for row in rows] == [
+    rows = _table_rows(page)
+    assert [(row["type"], row["label"]) for row in rows] == [
+        ("group", "By Service"),
+        ("area", "Bedrock"),
+        ("area", "SageMaker"),
+        ("area", "AgentCore"),
+        ("area", "AWS Agent Registry"),
+        ("total", "By Service total"),
+        ("group", "By Lens"),
+        ("area", "Agentic AI Security"),
+    ]
+    assert rows[1]["counts"] == [1, 0, 1, 0, 0, 0]
+    assert rows[5]["counts"] == [1, 1, 1, 1, 1, 1]
+    assert rows[7]["counts"] == [1, 0, 0, 0, 0, 0]
+
+
+def _nav_counts(page):
+    return {
+        area["slug"]: area["count"]
+        for group in page["navGroups"]
+        for area in group["areas"]
+    }
+
+
+def test_navigation_lists_areas_with_the_rows_shown_by_default():
+    page = _page(_every_state())
+    assert _nav_counts(page) == {
+        "bedrock": "2",
+        "sagemaker": "2",
+        "agentcore": "1",  # AC-17 is Not failing
+        "agent-registry": "1",
+        "agentic": "1",
+    }
+    assert page["changedCount"] == 7
+    assert [group["heading"] for group in page["navGroups"]] == [
         "By Service",
-        "Bedrock",
-        "SageMaker",
-        "AgentCore",
-        "AWS Agent Registry",
-        "By Service total",
         "By Lens",
-        "Agentic AI Security",
-    ]
-    assert rows[1] == ["Bedrock", "1", "0", "1", "0", "0", "0"]
-    assert rows[5] == ["By Service total", "1", "1", "1", "1", "1", "1"]
-    assert rows[7] == ["Agentic AI Security", "1", "0", "0", "0", "0", "0"]
+    ]  # GRC wasn't compared
+    bedrock = page["navGroups"][0]["areas"][0]
+    assert bedrock["name"] == "Bedrock"
+    assert bedrock["icon"] == page_parts().area_icons["bedrock"]
 
 
-def test_sidebar_lists_areas_with_the_rows_shown_by_default():
+def test_changes_table_rows():
     page = _page(_every_state())
-    items = {
-        item["data-filter-area"]: int(item.select_one(".count").get_text())
-        for item in page.select("a.nav-item[data-filter-area]")
-    }
-    assert items == {
-        "bedrock": 2,
-        "sagemaker": 2,
-        "agentcore": 1,  # AC-17 is Not failing
-        "agent-registry": 1,
-        "agentic": 1,
-    }
-    changes = page.select_one('.nav-section a[href="#changes"]:not([data-filter-area])')
-    assert changes.select_one(".count").get_text() == "7"
-    assert page.select_one(".lens-nav h3").get_text() == "By Lens"
-    assert page.select_one(".governance-nav") is None  # GRC wasn't compared
-
-
-def test_changes_table_matches_the_main_reports_columns():
-    page = _page(_every_state())
-    table = page.select_one("#findingsTable")
-    assert table["class"] == ["single-account-report"]
-    assert [th.get_text() for th in table.select("thead th")] == [
-        "Account ID",
-        "Region",
-        "Check ID",
-        "Finding",
-        "Severity",
-        "Change",
-    ]
-    assert [th["data-sort"] for th in table.select("thead th")] == [
-        "account",
-        "region",
-        "checkId",
-        "finding",
-        "severity",
-        "change",
-    ]
-    rows = table.select("tbody tr")
+    rows = page["rows"]
     # Ordered by change, as the Change column sorts.
-    assert [row["data-rank"] for row in rows] == sorted(
-        row["data-rank"] for row in rows
-    )
+    assert [row["rank"] for row in rows] == sorted(row["rank"] for row in rows)
     regressed = rows[0]
-    assert (regressed["data-change"], regressed["data-service"]) == (
-        "regressed",
-        "bedrock",
-    )
-    cells = regressed.find_all("td", recursive=False)
-    assert [cell.get_text(strip=True) for cell in cells[:3]] == [
+    assert (regressed["changeSlug"], regressed["service"]) == ("regressed", "bedrock")
+    assert (regressed["account"], regressed["region"], regressed["checkId"]) == (
         ACCOUNT,
         "Global",
         "BR-01",
-    ]
-    assert cells[4].select_one(".severity.high")
-    assert cells[5].select_one(".status.error").get_text() == "▼ Regressed"
-    assert cells[5].select_one(".change-sub").get_text() == "Passed → Failed"
+    )
+    assert regressed["severity"] == "High"
+    assert regressed["change"] == "Regressed"
+    assert regressed["statuses"] == "Passed → Failed"
 
 
-def test_change_labels_use_the_main_reports_colors():
+def test_change_labels_use_status_tones():
     page = _page(_every_state())
-    labels = {
-        row["data-change"]: row.select_one("td:last-child .status")["class"]
-        for row in page.select("#findingsTable tbody tr")
+    tones = {row["changeSlug"]: row["tone"] for row in page["rows"]}
+    assert tones == {
+        "regressed": "error",
+        "new": "error",
+        "still-open": "warning",
+        "resolved": "success",
+        "no-longer-reported": "neutral",
+        "no-longer-assessed": "info",
+        "not-failing": "neutral",
     }
-    assert labels == {
-        "regressed": ["status", "error"],
-        "new": ["status", "error"],
-        "still-open": ["status", "warning"],
-        "resolved": ["status", "success"],
-        "no-longer-reported": ["status", "muted"],
-        "no-longer-assessed": ["status", "muted"],
-        "not-failing": ["status", "muted"],
-    }
-    assert ".status.muted" in EXTRA_CSS
+    assert set(TONES) == set(ROW_ORDER)
+
+
+def _row(page, check_id):
+    return next(row for row in page["rows"] if row["checkId"] == check_id)
 
 
 def _details(page, check_id):
-    row = next(
-        row
-        for row in page.select("#findingsTable tbody tr")
-        if row.select("code")[2].get_text() == check_id
-    )
-    return [
-        (part.strong.get_text(), part.p.get_text())
-        for part in row.select(".finding-more-body > div")
-    ]
+    return [(d["label"], d["text"]) for d in _row(page, check_id)["details"]]
 
 
 def test_details_show_both_runs_only_when_they_differ():
     page = _page(_every_state())
-    assert _details(page, "BR-01")[:2] == [
+    assert _details(page, "BR-01") == [
         ("Details (previous run)", "No roles found"),
         ("Details (current run)", "Role 'admin' has the policy"),
     ]
-    assert _details(page, "BR-02")[0] == ("Details", "details")  # same in both
-    assert _details(page, "SM-02")[0] == ("Details", "details")  # previous only
-    assert [label for label, _ in _details(page, "SM-02")] == [
-        "Details",
-        "Resolution",
-        "Reference",
-    ]
+    assert _details(page, "BR-02") == [("Details", "details")]  # same in both
+    assert _details(page, "SM-02") == [("Details", "details")]  # previous only
 
 
 def test_a_single_row_pair_with_changed_details_is_marked():
@@ -392,37 +377,24 @@ def test_a_single_row_pair_with_changed_details_is_marked():
         ],
     )
     page = _page(comparison)
-    subs = {
-        row.select("code")[2].get_text(): row.select_one(".change-sub").get_text()
-        for row in page.select("#findingsTable tbody tr")
-    }
-    assert subs == {
+    assert {row["checkId"]: row["statuses"] for row in page["rows"]} == {
         "AC-17": "Failed → Failed · details changed",
         "BR-02": "Failed → Failed",
     }
     assert _details(page, "AC-17")[2] == ("Note", DETAILS_CHANGED_NOTE)
-    assert [label for label, _ in _details(page, "BR-02")] == [
-        "Details",
-        "Resolution",
-        "Reference",
-    ]
+    assert [label for label, _ in _details(page, "BR-02")] == ["Details"]
 
 
 def test_a_finding_only_in_the_current_run_shows_its_details():
     comparison = _comparison([], [make_finding("BR-05", details="only now")])
-    assert _details(_page(comparison), "BR-05")[0] == ("Details", "only now")
+    assert _details(_page(comparison), "BR-05") == [("Details", "only now")]
 
 
 def test_severity_shown_is_the_previous_runs_for_findings_that_went_away():
     page = _page(_every_state())
-    rows = {
-        row.select("code")[2].get_text(): row.select_one(".severity")
-        for row in page.select("#findingsTable tbody tr")
-    }
-    assert rows["AC-09"].get_text() == "Medium"  # No longer assessed
-    assert rows["AC-09"]["class"] == ["severity", "medium"]
-    assert rows["SM-02"]["class"] == ["severity", "low"]  # No longer reported
-    assert rows["AR-02"]["class"] == ["severity", "medium"]  # New: current run's
+    assert _row(page, "AC-09")["severity"] == "Medium"  # No longer assessed
+    assert _row(page, "SM-02")["severity"] == "Low"  # No longer reported
+    assert _row(page, "AR-02")["severity"] == "Medium"  # New: current run's
 
 
 def test_resource_text_is_escaped_and_unsafe_links_are_not_links():
@@ -440,74 +412,59 @@ def test_resource_text_is_escaped_and_unsafe_links_are_not_links():
             make_finding("BR-06", reference="https://docs.aws.amazon.com/x?a=1&b=2"),
         ],
     )
-    html = render_changes_page(comparison, csv_name=CSV_NAME, generated_at=GENERATED)
+    html = _html(comparison)
     assert "<script>alert(1)</script>" not in html
-    assert html.count("<script>") == 1  # the page's own script
-    page = BeautifulSoup(html, "html.parser")
-    assert page.select_one(".col-domain").get_text() == hostile
-    references = [
-        row.select(".finding-more-body > div")[-1]
-        for row in page.select("#findingsTable tbody tr")
-    ]
-    assert references[0].a is None
-    assert references[1].a["href"] == "https://docs.aws.amazon.com/x?a=1&b=2"
-    assert references[1].a["rel"] == ["noopener", "noreferrer"]
+    assert html.count("</script>") == 2  # the data element and the UI bundle
+    page = report_data(html)
+    assert _row(page, "BR-05")["finding"] == hostile  # kept as text, not markup
+    assert _row(page, "BR-05")["resolution"] == hostile
+    assert _row(page, "BR-05")["reference"] is None
+    assert _row(page, "BR-06")["reference"] == "https://docs.aws.amazon.com/x?a=1&b=2"
 
 
 def test_filters_offer_only_what_is_on_the_page():
     page = _page(_every_state())
-    options = {
-        select["id"]: [(o["value"], o.get_text()) for o in select.find_all("option")]
-        for select in page.select(".filter-bar select")
-    }
-    assert options["regionFilter"] == [
-        ("", "All Regions"),
+    filters = page["filters"]
+    assert [(o["value"], o["label"]) for o in filters["regions"]] == [
         ("global", "Global"),
         ("us-east-1", "us-east-1"),
     ]
-    assert options["serviceFilter"] == [
-        ("", "All Assessment Areas"),
+    assert [(o["value"], o["label"]) for o in filters["areas"]] == [
         ("bedrock", "Bedrock"),
         ("sagemaker", "SageMaker"),
         ("agentcore", "AgentCore"),
         ("agent-registry", "AWS Agent Registry"),
         ("agentic", "Agentic AI Security"),
     ]
-    assert options["changeFilter"][0] == ("changes", "All Changes")
-    assert page.select_one("#changeFilter option[selected]")["value"] == "changes"
-    assert [value for value, _ in options["changeFilter"]][1:] == [
+    changes = [(o["value"], o["label"]) for o in filters["changes"]]
+    assert changes[0] == ("changes", "All Changes")
+    assert filters["defaultChange"] == "changes"
+    assert [value for value, _ in changes][1:] == [
         change_slug(change) for change in ROW_ORDER[:-1]
     ] + ["not-failing", "all"]
+    assert [o["value"] for o in filters["severities"]] == [
+        "high",
+        "medium",
+        "low",
+        "informational",
+    ]
 
 
-def test_every_element_the_script_uses_exists():
-    html = render_changes_page(
-        _every_state(), csv_name=CSV_NAME, generated_at=GENERATED
-    )
-    page = BeautifulSoup(html, "html.parser")
-    ids = set(re.findall(r"getElementById\('(\w+)'\)", SCRIPT))
-    ids |= set(re.findall(r"'(\w+Filter)'", SCRIPT))
-    assert ids == {
-        "themeToggle",
-        "searchInput",
-        "regionFilter",
-        "serviceFilter",
-        "severityFilter",
-        "changeFilter",
-        "resetFilters",
-    }
-    for element_id in ids:
-        assert page.find(id=element_id) is not None, element_id
-    for target in {a["href"] for a in page.select("a.nav-item")}:
-        assert page.select_one(target) is not None, target
-    for key in (
-        "data-change",
-        "data-rank",
-        "data-service",
-        "data-severity",
-        "data-region",
-    ):
-        assert page.select_one(f"#findingsTable tbody tr[{key}]") is not None
+def test_every_row_has_the_keys_the_ui_filters_on():
+    page = _page(_every_state())
+    area_values = {o["value"] for o in page["filters"]["areas"]}
+    region_values = {o["value"] for o in page["filters"]["regions"]}
+    change_values = {o["value"] for o in page["filters"]["changes"]}
+    for row in page["rows"]:
+        assert row["service"] in area_values
+        assert row["region"].lower() in region_values
+        assert row["changeSlug"] in change_values
+    nav_areas = {a["slug"] for group in page["navGroups"] for a in group["areas"]}
+    assert nav_areas == area_values
+
+
+def _notes(page):
+    return page["notes"]
 
 
 def test_notes_list_what_was_not_compared():
@@ -518,7 +475,7 @@ def test_notes_list_what_was_not_compared():
         previous={"regions": {"us-east-1", "us-west-2"}},
         current={"regions": {"us-east-1"}},
     )
-    notes = [li.get_text() for li in _page(comparison).select("#notes li")]
+    notes = _notes(_page(comparison))
     assert notes[0] == (
         "Not compared (enabled in only one run): OWASP Top 10 LLM (current run only)"
     )
@@ -535,45 +492,37 @@ def test_notes_list_what_was_not_compared():
 def test_no_changes_is_said_plainly_and_empty_areas_still_show():
     same = [make_finding("BR-01", "Failed")]
     page = _page(_comparison(same, same))
-    assert [li.get_text() for li in page.select("#notes li")] == [
-        "No changes since the last assessment."
-    ]
-    assert [row["data-change"] for row in page.select("#findingsTable tbody tr")] == [
-        "still-open"
-    ]
-    assert len(page.select("a.nav-item[data-filter-area]")) == 4
+    assert _notes(page) == ["No changes since the last assessment."]
+    assert [row["changeSlug"] for row in page["rows"]] == ["still-open"]
+    assert len(_nav_counts(page)) == 4
 
 
-def _sidebar_areas(page):
-    return [
-        item["data-filter-area"] for item in page.select("a.nav-item[data-filter-area]")
-    ]
+def _nav_areas(page):
+    return [area["slug"] for group in page["navGroups"] for area in group["areas"]]
 
 
 def _area_options(page):
-    return [option["value"] for option in page.select("#serviceFilter option")][1:]
+    return [option["value"] for option in page["filters"]["areas"]]
 
 
-def test_every_sidebar_area_can_be_selected_in_the_area_filter():
+def test_every_navigation_area_can_be_selected_in_the_area_filter():
     # Review item L4: SageMaker, AgentCore and Agent Registry have no rows here.
-    # Their sidebar links used to set a value the filter didn't have, and the
-    # browser then showed every area.
+    # Their navigation links used to set a value the filter didn't have, and
+    # the browser then showed every area.
     same = [make_finding("BR-01", "Failed")]
     page = _page(_comparison(same, same))
-    assert _sidebar_areas(page) == [
-        "bedrock",
-        "sagemaker",
-        "agentcore",
-        "agent-registry",
+    assert _nav_areas(page) == ["bedrock", "sagemaker", "agentcore", "agent-registry"]
+    assert _area_options(page) == _nav_areas(page)
+    assert [option["label"] for option in page["filters"]["areas"]] == [
+        "Bedrock",
+        "SageMaker",
+        "AgentCore",
+        "AWS Agent Registry",
     ]
-    assert _area_options(page) == _sidebar_areas(page)
-    assert [option.get_text() for option in page.select("#serviceFilter option")][
-        1:
-    ] == ["Bedrock", "SageMaker", "AgentCore", "AWS Agent Registry"]
 
 
 @pytest.mark.parametrize("which", ["every state", "optional areas", "empty"])
-def test_the_area_filter_and_the_sidebar_list_the_same_areas(which):
+def test_the_area_filter_and_the_navigation_list_the_same_areas(which):
     comparison = {
         "every state": _every_state,
         "optional areas": lambda: _comparison(
@@ -583,10 +532,10 @@ def test_the_area_filter_and_the_sidebar_list_the_same_areas(which):
         "empty": lambda: _comparison([], []),
     }[which]()
     page = _page(comparison)
-    assert _area_options(page) == _sidebar_areas(page)
+    assert _area_options(page) == _nav_areas(page)
 
 
-NOT_COUNTED = "\u2014"
+NOT_COUNTED = "—"
 WITHOUT_SAGEMAKER = ("bedrock", "agentcore", "agent-registry")
 OMITTED_SAGEMAKER_AISF = (
     "AWS AI Security Framework controls not compared "
@@ -608,35 +557,27 @@ def _deselected_page(current_modules):
 
 def _area_rows(page):
     return {
-        row.find_all("td")[0].get_text(): [
-            cell.get_text() for cell in row.find_all("td")[1:]
-        ]
-        for row in page.select(".area-table tbody tr")
-        if "group" not in (row.get("class") or [])
+        row["label"]: row["counts"] if row["counts"] is not None else [row["note"]]
+        for row in _table_rows(page)
+        if row["type"] != "group"
     }
 
 
 def test_a_service_not_selected_in_both_runs_is_not_shown_as_zero():
     comparison, page = _deselected_page(WITHOUT_SAGEMAKER)
     assert comparison.not_selected_services == {"sagemaker": "previous run only"}
-    assert [row["data-service"] for row in page.select("#findingsTable tbody tr")] == [
-        "bedrock"
-    ]
+    assert [row["service"] for row in page["rows"]] == ["bedrock"]
     rows = _area_rows(page)
     assert rows["SageMaker"] == ["Not selected in both runs"]
-    assert rows["Bedrock"] == ["0", "0", "0", "1", "0", "0"]
-    assert rows["By Service total"] == ["0", "0", "0", "1", "0", "0"]
-    counts = {
-        item["data-filter-area"]: item.select_one(".count").get_text()
-        for item in page.select("a.nav-item[data-filter-area]")
-    }
-    assert counts == {
+    assert rows["Bedrock"] == [0, 0, 0, 1, 0, 0]
+    assert rows["By Service total"] == [0, 0, 0, 1, 0, 0]
+    assert _nav_counts(page) == {
         "bedrock": "1",
         "sagemaker": NOT_COUNTED,
         "agentcore": "0",
         "agent-registry": "0",
     }
-    assert [li.get_text() for li in page.select("#notes li")] == [
+    assert _notes(page) == [
         "Not compared (not selected in both runs): SageMaker (previous run only)",
         OMITTED_SAGEMAKER_AISF,
     ]
@@ -653,23 +594,16 @@ def test_a_service_selected_again_is_not_shown_as_zero_either():
         previous={"modules": WITHOUT_SAGEMAKER},
     )
     page = _page(comparison)
-    assert [row["data-service"] for row in page.select("#findingsTable tbody tr")] == [
-        "bedrock"
-    ]
+    assert [row["service"] for row in page["rows"]] == ["bedrock"]
     assert _area_rows(page)["SageMaker"] == ["Not selected in both runs"]
-    sagemaker = page.select_one('a.nav-item[data-filter-area="sagemaker"] .count')
-    assert sagemaker.get_text() == NOT_COUNTED
-    assert [li.get_text() for li in page.select("#notes li")] == [
+    assert _nav_counts(page)["sagemaker"] == NOT_COUNTED
+    assert _notes(page) == [
         "Not compared (not selected in both runs): SageMaker (current run only)",
         OMITTED_SAGEMAKER_AISF,
     ]
-    assert (
-        page.select_one(".tile-note")
-        .get_text()
-        .startswith(
-            "Counts are for Bedrock, AgentCore, and AWS Agent Registry. SageMaker "
-            "was not selected in both runs, so it isn't counted."
-        )
+    assert page["tileNote"].startswith(
+        "Counts are for Bedrock, AgentCore, and AWS Agent Registry. SageMaker "
+        "was not selected in both runs, so it isn't counted."
     )
 
 
@@ -695,8 +629,7 @@ def test_a_service_selected_again_is_not_shown_as_zero_either():
 )
 def test_the_tile_note_names_the_services_left_out(current_modules, note):
     _comparison_result, page = _deselected_page(current_modules)
-    text = page.select_one(".tile-note").get_text()
-    assert text.startswith(note + " Agentic AI Security")
+    assert page["tileNote"].startswith(note + " Agentic AI Security")
 
 
 def test_with_no_service_selected_in_both_runs_there_are_no_headline_counts():
@@ -709,40 +642,31 @@ def test_with_no_service_selected_in_both_runs_there_are_no_headline_counts():
             current=governance,
         )
     )
-    values = [
-        tile.select_one(".metric-value").get_text()
-        for tile in page.select(".metrics .metric")
-    ]
-    assert values == [NOT_COUNTED] * 6
-    assert (
-        page.select_one(".tile-note")
-        .get_text()
-        .startswith(
-            "None of Bedrock, SageMaker, AgentCore, and AWS Agent Registry was selected "
-            "in both runs, so there are no headline counts."
-        )
+    assert [tile["value"] for tile in page["tiles"]] == [NOT_COUNTED] * 6
+    assert page["tileNote"].startswith(
+        "None of Bedrock, SageMaker, AgentCore, and AWS Agent Registry was selected "
+        "in both runs, so there are no headline counts."
     )
     rows = _area_rows(page)
     for service in ("Bedrock", "SageMaker", "AgentCore", "AWS Agent Registry"):
         assert rows[service] == ["Not selected in both runs"], service
     assert rows["By Service total"] == [NOT_COUNTED]
-    assert page.select_one("#notes li").get_text() == (
+    assert _notes(page)[0] == (
         "Not compared (not selected in both runs): Bedrock (neither run), "
         "SageMaker (neither run), AgentCore (neither run), "
         "AWS Agent Registry (neither run)"
     )
 
 
-def test_no_notes_card_when_there_is_nothing_to_note():
+def test_no_notes_when_there_is_nothing_to_note():
     comparison = _comparison([make_finding("BR-01", "Passed")], [make_finding("BR-01")])
-    assert _page(comparison).select_one("#notes") is None
+    assert _notes(_page(comparison)) == []
 
 
-def test_an_empty_comparison_says_no_findings():
+def test_an_empty_comparison_has_no_rows():
     page = _page(_comparison([], []))
-    assert page.select_one("#findingsTable tbody").get_text(strip=True) == (
-        "No findings to display"
-    )
+    assert page["rows"] == []
+    assert page["changedCount"] == 0
 
 
 def test_optional_areas_appear_under_their_headings():
@@ -751,10 +675,16 @@ def test_optional_areas_appear_under_their_headings():
         [make_finding("FS-01", "Passed"), make_finding("OW-03")],
     )
     page = _page(comparison)
-    assert page.select_one(".governance-nav h3").get_text() == "By Governance Framework"
-    assert page.select_one(".compliance-nav a")["data-filter-area"] == "owasp"
-    groups = [row.get_text() for row in page.select(".area-table tr.group")]
-    assert groups == ["By Service", "By Governance Framework", "By Compliance Standard"]
+    groups = {group["heading"]: group["areas"] for group in page["navGroups"]}
+    assert [a["slug"] for a in groups["By Governance Framework"]] == [
+        "responsible-ai-grc"
+    ]
+    assert [a["slug"] for a in groups["By Compliance Standard"]] == ["owasp"]
+    assert [row["label"] for row in _table_rows(page) if row["type"] == "group"] == [
+        "By Service",
+        "By Governance Framework",
+        "By Compliance Standard",
+    ]
 
 
 def test_both_saved_times_are_required():
@@ -767,17 +697,17 @@ def test_both_saved_times_are_required():
 
 def test_generated_time_defaults_to_now():
     html = render_changes_page(_comparison([], []), csv_name=CSV_NAME)
-    assert f"Generated: {format_time(datetime.now(UTC))[:12]}" in html
+    generated = report_data(html)["generated"]
+    assert generated[:12] == format_time(datetime.now(UTC))[:12]
 
 
 def test_methodology_explains_every_change_state():
     page = _page(_every_state())
-    labels = [
-        cell.get_text()[2:] for cell in page.select("#methodology table td:first-child")
-    ]
-    assert labels == [change.value for change in ROW_ORDER]
+    states = page["methodology"]["states"]
+    assert [state["change"] for state in states] == [c.value for c in ROW_ORDER]
+    assert [state["tone"] for state in states] == [TONES[c] for c in ROW_ORDER]
     # One item per matching step, in order (compare.py; review item F1).
-    steps = [item.get_text() for item in page.select("#methodology .note-list li")]
+    steps = page["methodology"]["matching"]
     assert len(steps) == 5
     assert "Region, and Check ID" in steps[0]
     assert "Finding title isn't part of the group" in steps[0]
@@ -785,19 +715,8 @@ def test_methodology_explains_every_change_state():
     assert "its run's only row" in steps[2] and "details changed" in steps[2]
     assert "several Failed rows" in steps[3] and "Passed summary" in steps[3]
     assert "unpaired" in steps[4]
+    assert "docs/ASSESSMENT_HISTORY.md" in page["methodology"]["previousRun"]
 
 
-def test_every_icon_has_a_size():
-    # An inline SVG with no size of its own stretches to fill its container.
-    # Icons are sized by width/height attributes or by a CSS rule for where
-    # they sit (sidebar items, buttons, service icons, the dark-mode button).
-    page = _page(_every_state(), main_report_name=MAIN_REPORT)
-    sized_by_css = ".nav-item, .btn, .service-icon, .theme-toggle, .reference-btn"
-    for svg in page.find_all("svg"):
-        if svg.find_parent(
-            class_=["nav-item", "btn", "service-icon", "theme-toggle", "reference-btn"]
-        ):
-            continue
-        assert svg.get("width") and svg.get("height"), (sized_by_css, str(svg)[:120])
-    for svg in page.select(".section-title > svg"):
-        assert (svg["width"], svg["height"]) == ("24", "24")
+def test_the_footer_is_the_main_reports():
+    assert _page(_every_state())["footer"] == page_parts().footer

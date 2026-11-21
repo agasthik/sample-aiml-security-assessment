@@ -501,32 +501,19 @@ def test_infeasible_full_name_candidates_are_recorded_as_infeasible():
 
 
 # ---------------------------------------------------------------------------
-# Report DOM: slug, anchor, data attributes, and CSS class names. The visible
-# text above these may change; these strings may not. The rebrand replaced
-# the legacy "finserv" slug and industry-* CSS classes with
-# "responsible-ai-grc" and governance-* everywhere -- there is no dual-write
-# and no additive alias; the values below are the only ones this report ever
-# emits now.
+# Report model: slug, section anchor, filter value, row service, and grouping.
+# The visible text above these may change; these values may not. The rebrand
+# replaced the legacy "finserv" slug and industry-* grouping with
+# "responsible-ai-grc" and the governance grouping everywhere -- there is no
+# dual-write and no additive alias.
+#
+# The report is now drawn by the Cloudscape UI from an embedded JSON model, so
+# the old DOM selectors (id=, data-service=, <option value=>) and governance-*
+# CSS classes no longer exist. Their contracts are frozen as the model fields
+# the UI turns into the section anchor, filter, and navigation grouping.
 # ---------------------------------------------------------------------------
 
 SERVICE_SLUG = "responsible-ai-grc"
-
-FROZEN_SELECTORS = [
-    'id="responsible-ai-grc"',
-    'data-service="responsible-ai-grc"',
-    'data-filter-service="responsible-ai-grc"',
-    'data-scope-service="responsible-ai-grc"',
-    '<option value="responsible-ai-grc">',
-    'href="#responsible-ai-grc"',
-]
-
-FROZEN_CSS_CLASSES = [
-    "governance-item",
-    "governance-nav",
-    "governance-chip",
-    "scope-governance",
-    "scope-governance-label",
-]
 
 
 def _render_with_responsible_ai_grc() -> str:
@@ -559,37 +546,40 @@ def rendered_html():
     return _render_with_responsible_ai_grc()
 
 
-@pytest.mark.parametrize("selector", FROZEN_SELECTORS)
-def test_report_selectors_are_frozen(rendered_html, selector):
-    assert selector in rendered_html
+@pytest.fixture(scope="module")
+def rendered_data(rendered_html):
+    return report_template.extract_report_data(rendered_html)
 
 
-@pytest.mark.parametrize("css_class", FROZEN_CSS_CLASSES)
-def test_report_css_classes_are_frozen(rendered_html, css_class):
-    assert css_class in rendered_html
+def test_report_slug_fields_are_frozen(rendered_data):
+    """Section anchor id, area filter value, and finding row service."""
+    slugs = [a["slug"] for a in rendered_data["areas"]]
+    assert SERVICE_SLUG in slugs
+    assert SERVICE_SLUG in [o["value"] for o in rendered_data["filters"]["areas"]]
+    assert [f["service"] for f in rendered_data["findings"]] == [SERVICE_SLUG]
 
 
-def test_legacy_finserv_selectors_are_fully_retired(rendered_html):
+def test_report_governance_grouping_is_frozen(rendered_data):
+    """Replaces the frozen governance-* CSS classes with the model fields."""
+    assert {
+        "heading": report_template.RESPONSIBLE_AI_GRC_NAV_HEADING,
+        "areas": [SERVICE_SLUG],
+    } in rendered_data["navGroups"]
+    assert report_template.RESPONSIBLE_AI_GRC_SCOPE_LABEL in [
+        g["label"] for g in rendered_data["methodology"]["scopeGroups"]
+    ]
+
+
+def test_legacy_finserv_selectors_are_fully_retired(rendered_data):
     """The rebrand is a hard rename, not an alias: the legacy "finserv" slug
-    and industry-* CSS classes must not appear anywhere in rendered output.
+    and industry grouping must not appear anywhere in the report model.
     """
-    for legacy_selector in (
-        'id="finserv"',
-        'data-service="finserv"',
-        'data-filter-service="finserv"',
-        'data-scope-service="finserv"',
-        '<option value="finserv">',
-        'href="#finserv"',
-    ):
-        assert legacy_selector not in rendered_html
-    for legacy_css_class in (
-        "industry-item",
-        "industry-nav",
-        "industry-chip",
-        "scope-industry",
-        "scope-industry-label",
-    ):
-        assert legacy_css_class not in rendered_html
+    text = json.dumps(rendered_data)
+    assert '"finserv"' not in text
+    assert "#finserv" not in text
+    for legacy in ("industry-item", "industry-nav", "industry-chip", "scope-industry"):
+        assert legacy not in text
+    assert "By Industry" not in [g["heading"] for g in rendered_data["navGroups"]]
 
 
 def test_service_slug_is_frozen():

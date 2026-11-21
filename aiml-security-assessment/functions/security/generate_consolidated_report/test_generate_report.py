@@ -39,6 +39,35 @@ generate_html_report = generate_report_app.generate_html_report
 generate_report_direct = generate_report_template.generate_html_report
 
 
+def _data(html):
+    """The data model the Cloudscape UI renders, embedded in the page."""
+    return generate_report_template.extract_report_data(html)
+
+
+def _nav(html):
+    """Navigation heading -> area slugs, in order."""
+    return {g["heading"]: g["areas"] for g in _data(html)["navGroups"]}
+
+
+def _area(html, slug):
+    return next((a for a in _data(html)["areas"] if a["slug"] == slug), None)
+
+
+def _scope_groups(html):
+    return {
+        g["label"]: [c["label"] for c in g["chips"]]
+        for g in _data(html)["methodology"]["scopeGroups"]
+    }
+
+
+def _scope_links(html):
+    return [
+        segment
+        for segment in _data(html)["methodology"]["source"]
+        if isinstance(segment, dict) and "link" in segment
+    ]
+
+
 class TestHtmlReportGeneration(unittest.TestCase):
     def setUp(self):
         self.test_dir = "test_reports"
@@ -291,20 +320,22 @@ class TestHtmlReportGeneration(unittest.TestCase):
             self.assertIn("AgentCore IAM Identity Center Check", content)
             self.assertIn("Agent Registry Publication Approval Governance", content)
             self.assertIn("Agent Registry Discovery Authorization", content)
-            # The summary tile and scope chip both carry a service icon, so the
-            # label is preceded by an icon span rather than opening the element.
-            self.assertIn(
-                '<div class="metric-label">'
-                f"{generate_report_template.AGENT_REGISTRY_ICON_SMALL} "
-                "AWS Agent Registry</div>",
-                content,
+            # The area card and scope chip both carry the service icon.
+            registry = _area(content, "agent-registry")
+            self.assertEqual(registry["name"], "AWS Agent Registry")
+            self.assertEqual(
+                registry["icon"],
+                generate_report_template.svg_data_uri(
+                    generate_report_template.AGENT_REGISTRY_ICON
+                ),
             )
-            self.assertIn(
-                f"{generate_report_template.AGENT_REGISTRY_ICON_SCOPE}"
-                '<span style="font-size: 13px; font-weight: 500;">'
-                "AWS Agent Registry</span>",
-                content,
+            registry_chip = next(
+                chip
+                for group in _data(content)["methodology"]["scopeGroups"]
+                for chip in group["chips"]
+                if chip["label"] == "AWS Agent Registry"
             )
+            self.assertEqual(registry_chip["icon"], registry["icon"])
             self.assertIn(
                 "Agentic AI Registry Publication Approval Governance", content
             )
@@ -314,36 +345,33 @@ class TestHtmlReportGeneration(unittest.TestCase):
             self.assertIn("High", content)
             self.assertIn("Medium", content)
 
-            # New design elements
-            self.assertIn("sidebar", content)
-            self.assertIn("service-icon", content)
-            self.assertIn("theme-toggle", content)
-            self.assertIn("Assessment Area", content)
-            self.assertIn("All Assessment Areas", content)
+            # The page is the self-contained Cloudscape UI plus its data.
+            data = _data(content)
+            self.assertEqual(data["kind"], "assessment")
+            self.assertEqual(data["mode"], "single")
+            self.assertIn('<div id="root">', content)
+            self.assertIn('<link rel="icon" type="image/svg+xml"', content)
+            self.assertNotIn("fonts.googleapis.com", content)
+            self.assertIn("awsui", content)  # Cloudscape component styles
+            self.assertEqual(
+                [f["label"] for f in data["filters"]["areas"]][:4],
+                ["Bedrock", "SageMaker", "AgentCore", "AWS Agent Registry"],
+            )
 
-            # Verify new features from consolidation
-            self.assertIn("Methodology", content)
-            self.assertIn("Severity Legend", content)
-            self.assertIn("sortable", content)
-            self.assertIn("Direct failed service rows", content)
-            self.assertIn("Lens / Compliance Rows", content)
-            self.assertIn('<option value="failed" selected>Failed</option>', content)
-            self.assertIn('class="single-account-report"', content)
+            # Overview, legend and default filter.
+            labels = [m["label"] for m in data["overview"]]
+            self.assertIn("Lens / Compliance Rows", labels)
             self.assertIn(
-                ".main { padding: 32px 40px; max-width: 1400px; min-width: 0; }",
-                content,
+                "Direct failed service rows",
+                [m["description"] for m in data["overview"]],
             )
-            self.assertIn(
-                ".metrics, .assessment-summary-grid { grid-template-columns: 1fr; }",
-                content,
+            self.assertEqual(
+                [row["severity"] for row in data["severityLegend"]],
+                ["High", "Medium", "Low", "Informational"],
             )
-            self.assertIn("Details and remediation", content)
-            self.assertLess(content.index('id="risk"'), content.index('id="findings"'))
-            self.assertIn(
-                "const status = this.hasAttribute('data-filter-status')",
-                content,
-            )
-            self.assertNotIn("this.dataset.filterStatus || 'failed'", content)
+            self.assertEqual(data["filters"]["defaultStatus"], "failed")
+            # Single-account reports offer no account filter.
+            self.assertIsNone(data["filters"]["accounts"])
 
     def test_generate_multi_account_report(self):
         """Test multi-account report generation using shared template directly"""
@@ -454,21 +482,21 @@ class TestHtmlReportGeneration(unittest.TestCase):
             # Multi-account specific
             self.assertIn("Multi-Account", content)
             self.assertIn("2 Accounts", content)
-            self.assertIn("accountFilter", content)
-            self.assertIn("111122223333", content)
-            self.assertIn("444455556666", content)
-            self.assertIn("<h3>By Governance Framework</h3>", content)
-            self.assertIn("<h3>By Lens</h3>", content)
-            self.assertIn("Agentic AI Security", content)
-            # governance-* CSS class names accompany the "By Governance
-            # Framework" heading (renamed from industry-*/"By Industry").
-            self.assertIn('class="nav-section governance-nav"', content)
-            self.assertIn("Responsible AI GRC", content)
-            self.assertIn('class="scope-governance"', content)
-            by_service_nav = content.split("<h3>By Service</h3>", 1)[1].split(
-                "<h3>By Governance Framework</h3>", 1
-            )[0]
-            self.assertNotIn("Responsible AI GRC", by_service_nav)
+            data = _data(content)
+            self.assertEqual(data["mode"], "multi")
+            self.assertEqual(
+                data["filters"]["accounts"], ["111122223333", "444455556666"]
+            )
+            self.assertEqual(
+                [card["label"] for card in data["risk"]["accounts"]],
+                ["111122223333", "444455556666"],
+            )
+            nav = _nav(content)
+            self.assertEqual(nav["By Governance Framework"], ["responsible-ai-grc"])
+            self.assertEqual(nav["By Lens"], ["agentic"])
+            self.assertEqual(_area(content, "agentic")["name"], "Agentic AI Security")
+            self.assertIn("Governance Framework", _scope_groups(content))
+            self.assertNotIn("responsible-ai-grc", nav["By Service"])
             self.assertNotIn("Financial Services", content)
 
     def test_multi_account_report_renders_compliance_standards(self):
@@ -527,11 +555,13 @@ class TestHtmlReportGeneration(unittest.TestCase):
             f.write(with_derived)
         print(f"\nMulti-account compliance report generated at: {report_path}")
 
-        self.assertNotIn("By Compliance Standard", without_derived)
-        self.assertNotIn('id="aisf"', without_derived)
+        self.assertNotIn("By Compliance Standard", _nav(without_derived))
+        self.assertIsNone(_area(without_derived, "aisf"))
         self.assertIn("2 Accounts", with_derived)
-        self.assertIn("By Compliance Standard", with_derived)
-        self.assertIn('id="aisf"', with_derived)
+        self.assertEqual(
+            _nav(with_derived)["By Compliance Standard"], ["owasp", "aisf"]
+        )
+        self.assertIsNotNone(_area(with_derived, "aisf"))
         self.assertIn("AWS AI Security Framework", with_derived)
         self.assertIn("AISF-05", with_derived)
         self.assertIn("OWASP Top 10", with_derived)
@@ -559,9 +589,31 @@ class TestHtmlReportGeneration(unittest.TestCase):
 
         print(f"\nIncomplete data report generated at: {os.path.abspath(report_path)}")
 
-        # Verify file exists and has content
-        self.assertTrue(os.path.exists(report_path))
-        self.assertTrue(os.path.getsize(report_path) > 0)
+        # The row is kept, with each missing field filled in, not dropped.
+        data = _data(html_content)
+        self.assertEqual(
+            data["findings"],
+            [
+                {
+                    "account": "",
+                    "region": "",
+                    "checkId": "",
+                    "finding": "Incomplete Bedrock Finding",
+                    "details": "",
+                    "resolution": "",
+                    "reference": None,
+                    "severity": "High",
+                    "status": "",
+                    "service": "bedrock",
+                }
+            ],
+        )
+        overview = {m["label"]: m["value"] for m in data["overview"]}
+        self.assertEqual(overview["Report Rows"], "1")
+        # A row with no status is not a failure: no action item or alert.
+        self.assertEqual(overview["Open Action Items"], "0")
+        self.assertEqual(overview["Failed High"], "0")
+        self.assertEqual(data["alerts"], [])
 
     def test_empty_findings(self):
         """Test handling of empty findings"""
@@ -578,7 +630,43 @@ class TestHtmlReportGeneration(unittest.TestCase):
             f.write(html_content)
 
         print(f"\nEmpty data report generated at: {os.path.abspath(report_path)}")
-        self.assertTrue(os.path.exists(report_path))
+        data = _data(html_content)
+        self.assertEqual(data["kind"], "assessment")
+        self.assertEqual(data["findings"], [])
+        self.assertEqual(data["alerts"], [])
+        self.assertEqual(data["filters"]["defaultStatus"], "failed")
+        # The core service areas are still shown, selected, with zero counts.
+        core = ["bedrock", "sagemaker", "agentcore", "agent-registry"]
+        self.assertEqual(_nav(html_content), {"By Service": core})
+        self.assertEqual([o["value"] for o in data["filters"]["areas"]], core)
+        self.assertEqual(
+            [
+                (
+                    a["slug"],
+                    a["selected"],
+                    a["failed"],
+                    a["passed"],
+                    a["na"],
+                    a["total"],
+                )
+                for a in data["areas"]
+            ],
+            [(slug, True, 0, 0, 0, 0) for slug in core],
+        )
+        self.assertEqual(
+            {m["label"]: m["value"] for m in data["overview"]},
+            {
+                "Unique Check IDs": "0",
+                "Report Rows": "0",
+                "Open Action Items": "0",
+                "Lens / Compliance Rows": "0",
+                "Failed High": "0",
+                "Failed Medium / Low": "0/0",
+            },
+        )
+        self.assertEqual(
+            data["risk"]["overall"]["description"], "0 of 0 scored controls passed"
+        )
 
     def test_finserv_renders_when_present(self):
         """REQ-1: Responsible AI GRC findings render as a first-class service
@@ -611,21 +699,23 @@ class TestHtmlReportGeneration(unittest.TestCase):
             ]
         }
         html = generate_html_report(data)
-        self.assertIn('id="responsible-ai-grc"', html)
-        self.assertIn('id="findingsTable"', html)
-        self.assertNotIn('id="finservTable"', html)
-        self.assertIn('<option value="responsible-ai-grc">', html)
-        self.assertIn("FS-01", html)
-        self.assertIn('data-service="responsible-ai-grc"', html)
-        self.assertIn('data-filter-service="responsible-ai-grc"', html)
-        self.assertIn("View failed findings", html)
-        self.assertIn('data-scope-service="responsible-ai-grc"', html)
-        self.assertIn('class="scope-governance"', html)
-        self.assertIn('class="scope-chip governance-chip"', html)
-        self.assertIn('class="nav-section governance-nav"', html)
-        self.assertIn("Responsible AI GRC", html)
-        self.assertIn("Assessment Area", html)
-        self.assertIn("All Assessment Areas", html)
+        report = _data(html)
+        grc = _area(html, "responsible-ai-grc")
+        self.assertEqual(grc["name"], "Responsible AI GRC")
+        self.assertEqual(grc["sectionTitle"], "Responsible AI GRC Findings")
+        self.assertIn(
+            {"value": "responsible-ai-grc", "label": "Responsible AI GRC"},
+            report["filters"]["areas"],
+        )
+        # GRC rows share the one findings table, keyed by their area.
+        self.assertIn(
+            ("FS-01", "responsible-ai-grc"),
+            [(f["checkId"], f["service"]) for f in report["findings"]],
+        )
+        self.assertEqual(
+            _scope_groups(html)["Governance Framework"], ["Responsible AI GRC"]
+        )
+        self.assertEqual(_nav(html)["By Governance Framework"], ["responsible-ai-grc"])
         self.assertIn(
             "wellarchitected/latest/generative-ai-lens/generative-ai-lens.html", html
         )
@@ -634,19 +724,14 @@ class TestHtmlReportGeneration(unittest.TestCase):
             html,
         )
         self.assertNotIn("global-FinServ-ComplianceGuide-GenAIRisks-public.pdf", html)
-        self.assertIn("<h3>By Governance Framework</h3>", html)
-        by_service_nav = html.split("<h3>By Service</h3>", 1)[1].split(
-            "<h3>By Governance Framework</h3>", 1
-        )[0]
-        self.assertNotIn("Responsible AI GRC", by_service_nav)
+        self.assertNotIn("responsible-ai-grc", _nav(html)["By Service"])
         # The rebrand retires every "Financial Services" capability label,
         # and every legacy "finserv"/industry-* machine identity.
         self.assertNotIn("Financial Services Risk", html)
         self.assertNotIn("Financial Services GenAI Risk", html)
-        self.assertNotIn('id="finserv"', html)
-        self.assertNotIn('data-service="finserv"', html)
-        self.assertNotIn("industry-nav", html)
-        self.assertNotIn("scope-industry", html)
+        self.assertNotIn("finserv", [a["slug"] for a in report["areas"]])
+        self.assertNotIn("finserv", {f["service"] for f in report["findings"]})
+        self.assertNotIn("By Industry", _nav(html))
         # Required non-Lens disambiguation must accompany the name.
         self.assertIn("is not the", html)
         self.assertIn("Responsible AI Lens", html)
@@ -656,21 +741,17 @@ class TestHtmlReportGeneration(unittest.TestCase):
         """REQ-1/REQ-7: with no Responsible AI GRC data the section is
         omitted cleanly."""
         html = generate_html_report(self.test_assessment_results)
-        self.assertNotIn('id="responsible-ai-grc"', html)
-        self.assertNotIn("<h3>By Governance Framework</h3>", html)
-        self.assertNotIn('<option value="responsible-ai-grc">', html)
-        self.assertNotIn('data-scope-service="responsible-ai-grc"', html)
-        # scope-governance is the shared class for three scope groups: agentic,
-        # Responsible AI GRC, and compliance standards. This test is about the
-        # Responsible AI GRC one, so it asserts on that group specifically. The
-        # bare class is no longer absent here: the fixture carries SM-01 and
-        # SM-03, two of the three source checks AISF control AIR-SGM-TRN-05
-        # derives from, so the derived AISF standard reports incomplete coverage
-        # and renders the compliance scope group.
+        self.assertIsNone(_area(html, "responsible-ai-grc"))
+        self.assertNotIn("By Governance Framework", _nav(html))
         self.assertNotIn(
-            '<div class="scope-governance" data-scope-service="responsible-ai-grc">',
-            html,
+            "responsible-ai-grc",
+            [o["value"] for o in _data(html)["filters"]["areas"]],
         )
+        # Only the Responsible AI GRC scope group is absent. The fixture carries
+        # SM-01 and SM-03, two of the three source checks AISF control
+        # AIR-SGM-TRN-05 derives from, so the derived AISF standard reports
+        # incomplete coverage and renders the compliance scope group.
+        self.assertNotIn("Governance Framework", _scope_groups(html))
         self.assertNotIn("Responsible AI GRC", html)
         self.assertIn(
             "wellarchitected/latest/generative-ai-lens/generative-ai-lens.html", html
@@ -681,7 +762,7 @@ class TestHtmlReportGeneration(unittest.TestCase):
         )
         self.assertNotIn("global-FinServ-ComplianceGuide-GenAIRisks-public.pdf", html)
         # Other services still render (regression check).
-        self.assertIn('id="bedrock"', html)
+        self.assertIsNotNone(_area(html, "bedrock"))
 
     def test_agentic_security_renders_when_present(self):
         """Agentic AI Security AG-* rows render as a first-class assessment area."""
@@ -715,42 +796,46 @@ class TestHtmlReportGeneration(unittest.TestCase):
 
         html = generate_html_report(data)
 
-        self.assertIn('id="agentic"', html)
-        self.assertIn('id="findingsTable"', html)
-        self.assertNotIn('id="agenticTable"', html)
-        self.assertIn('<option value="agentic">Agentic AI Security</option>', html)
-        self.assertIn("<h3>By Lens</h3>", html)
-        self.assertIn('class="nav-section lens-nav"', html)
-        self.assertIn("AG-01", html)
-        self.assertIn('data-service="agentic"', html)
-        self.assertIn('data-filter-service="agentic"', html)
-        self.assertIn("Agentic AI Security Findings", html)
+        report = _data(html)
+        agentic = _area(html, "agentic")
+        self.assertEqual(agentic["sectionTitle"], "Agentic AI Security Findings")
+        self.assertIn(
+            {"value": "agentic", "label": "Agentic AI Security"},
+            report["filters"]["areas"],
+        )
+        self.assertEqual(_nav(html)["By Lens"], ["agentic"])
+        self.assertIn(
+            ("AG-01", "agentic"),
+            [(f["checkId"], f["service"]) for f in report["findings"]],
+        )
         self.assertIn(
             "wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html", html
         )
         # The Agentic AI Lens hyperlink in the methodology must appear exactly
         # once even when agentic findings are present (no duplicate link).
         self.assertEqual(
-            html.count('target="_blank">AWS Well-Architected Agentic AI Lens</a>'),
-            1,
+            [
+                link["link"]
+                for link in _scope_links(html)
+                if link["link"] == "AWS Well-Architected Agentic AI Lens"
+            ],
+            ["AWS Well-Architected Agentic AI Lens"],
         )
-        self.assertIn("Human-in-the-loop governance", html)
-        by_service_nav = html.split("<h3>By Service</h3>", 1)[1].split(
-            "<h3>By Lens</h3>", 1
-        )[0]
-        self.assertNotIn("Agentic AI Security", by_service_nav)
-        by_lens_nav = html.split("<h3>By Lens</h3>", 1)[1].split("</nav>", 1)[0]
-        self.assertIn("Agentic AI Security", by_lens_nav)
+        self.assertIn(
+            "Human-in-the-loop governance",
+            generate_report_template.rich_text(agentic["scope"]),
+        )
+        self.assertNotIn("agentic", _nav(html)["By Service"])
 
     def test_agentic_security_omitted_when_absent(self):
         """With no AG-* data the Agentic section is omitted cleanly."""
         html = generate_html_report(self.test_assessment_results)
 
-        self.assertNotIn('id="agentic"', html)
-        self.assertNotIn('id="agenticTable"', html)
-        self.assertNotIn('<option value="agentic">Agentic AI Security</option>', html)
-        self.assertNotIn("<h3>By Lens</h3>", html)
-        self.assertNotIn('class="nav-section lens-nav"', html)
+        self.assertIsNone(_area(html, "agentic"))
+        self.assertNotIn(
+            "agentic", [o["value"] for o in _data(html)["filters"]["areas"]]
+        )
+        self.assertNotIn("By Lens", _nav(html))
         self.assertNotIn(
             "wellarchitected/latest/agentic-ai-lens/agentic-ai-lens.html", html
         )
@@ -811,17 +896,20 @@ class TestHtmlReportGeneration(unittest.TestCase):
             regions=["eu-west-1", "us-east-1", "us-west-2"],
         )
 
-        self.assertIn("Direct Failed Rows by Region / Scope", html)
-        self.assertIn('>eu-west-1</div><div class="metric-value">0</div>', html)
-        self.assertIn('>us-east-1</div><div class="metric-value">0</div>', html)
-        self.assertIn('>us-west-2</div><div class="metric-value">0</div>', html)
-        self.assertIn('>Global</div><div class="metric-value">2</div>', html)
-        self.assertIn(
-            '<span style="color: var(--danger);">1 High</span> · '
-            '<span style="color: var(--warning);">1 Med</span> · '
-            '<span style="color: var(--accent);">0 Low</span>',
-            html,
+        self.assertEqual(
+            _data(html)["risk"]["regions"],
+            [
+                {"label": "eu-west-1", "total": 0, "high": 0, "medium": 0, "low": 0},
+                {"label": "us-east-1", "total": 0, "high": 0, "medium": 0, "low": 0},
+                {"label": "us-west-2", "total": 0, "high": 0, "medium": 0, "low": 0},
+                {"label": "Global", "total": 2, "high": 1, "medium": 1, "low": 0},
+            ],
         )
+        # Global does not inflate the scanned region count.
+        report_rows = next(
+            m for m in _data(html)["overview"] if m["label"] == "Report Rows"
+        )
+        self.assertEqual(report_rows["description"], "Visible rows across 3 regions")
 
     def test_unique_control_scoring_does_not_weight_resource_rows(self):
         """Repeated resource passes count once while any control failure remains."""
@@ -867,12 +955,9 @@ class TestHtmlReportGeneration(unittest.TestCase):
             account_id="123456789012",
         )
 
-        self.assertIn(
-            '<div class="metric-label">Overall</div>'
-            '<div class="metric-value">50.0%</div>'
-            '<div class="metric-sub">1 of 2 scored controls passed</div>',
-            html,
-        )
+        overall = _data(html)["risk"]["overall"]
+        self.assertEqual(overall["passRateText"], "50.0%")
+        self.assertEqual(overall["description"], "1 of 2 scored controls passed")
         self.assertNotIn("99.5%", html)
 
     def tearDown(self):

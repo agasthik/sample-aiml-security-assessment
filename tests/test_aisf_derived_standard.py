@@ -67,7 +67,6 @@ REQUIRED_REGISTRY_KEYS = {
     "name",
     "prefix",
     "icon",
-    "icon_small",
     "reference_url",
     "section_title",
     "scope_text",
@@ -174,7 +173,7 @@ def _all_mappings_derived(status):
 
 
 class TestRegistryEntry(unittest.TestCase):
-    def test_entry_carries_the_eight_required_keys_plus_its_optional_keys(self):
+    def test_entry_carries_the_seven_required_keys_plus_its_optional_keys(self):
         entry = _entry("aisf")
         self.assertEqual(
             set(entry),
@@ -410,8 +409,24 @@ class TestSectionRendering(unittest.TestCase):
 
     def test_no_aisf_rows_renders_no_aisf_ui(self):
         html = report_template.generate_html_report(**self._kwargs())
-        self.assertNotIn('id="aisf"', html)
-        self.assertNotIn('value="aisf"', html)
+        data = report_template.extract_report_data(html)
+        # No navigation entry, filter option, area card or section, or scope chip.
+        self.assertNotIn(
+            "aisf", [slug for g in data["navGroups"] for slug in g["areas"]]
+        )
+        self.assertNotIn(
+            "By Compliance Standard", [g["heading"] for g in data["navGroups"]]
+        )
+        self.assertNotIn("aisf", [o["value"] for o in data["filters"]["areas"]])
+        self.assertNotIn("aisf", [a["slug"] for a in data["areas"]])
+        self.assertNotIn(
+            "AWS AI Security Framework",
+            [
+                chip["label"]
+                for group in data["methodology"]["scopeGroups"]
+                for chip in group["chips"]
+            ],
+        )
         self.assertNotIn("AWS AI Security Framework", html)
 
     def test_one_derived_row_renders_nav_item_card_and_section(self):
@@ -429,15 +444,23 @@ class TestSectionRendering(unittest.TestCase):
 
         html = report_template.generate_html_report(**kwargs)
 
-        # Sidebar nav item, filter option, service card, section.
-        self.assertIn('class="nav-section compliance-nav"', html)
-        self.assertIn('value="aisf"', html)
-        self.assertIn('id="aisf"', html)
-        self.assertIn("AWS AI Security Framework Findings", html)
-        self.assertIn('data-filter-service="aisf"', html)
-        self.assertIn('data-scope-service="aisf"', html)
-        # The scope text is injected unescaped so the emphasis renders.
-        self.assertIn("<strong>not</strong> counted", html)
+        data = report_template.extract_report_data(html)
+        # Navigation entry, filter option, area card and section, scope chip.
+        nav = {g["heading"]: g["areas"] for g in data["navGroups"]}
+        self.assertEqual(nav["By Compliance Standard"], ["aisf"])
+        self.assertIn(
+            {"value": "aisf", "label": "AWS AI Security Framework"},
+            data["filters"]["areas"],
+        )
+        area = next(a for a in data["areas"] if a["slug"] == "aisf")
+        self.assertEqual(area["sectionTitle"], "AWS AI Security Framework Findings")
+        chips = [
+            c["label"] for g in data["methodology"]["scopeGroups"] for c in g["chips"]
+        ]
+        self.assertIn("AWS AI Security Framework", chips)
+        # The scope text keeps its emphasis as a bold segment.
+        self.assertIn({"strong": ["not"]}, area["scope"])
+        self.assertIn("are not counted", report_template.rich_text(area["scope"]))
         # The row itself reaches the findings table.
         self.assertIn("AIR-BDR-KB-03", html)
 
@@ -462,11 +485,11 @@ class TestSectionRendering(unittest.TestCase):
 
         html = report_template.generate_html_report(**kwargs)
 
-        self.assertIn(
-            '<div class="metric danger"><div class="metric-label">Open Action Items</div>'
-            '<div class="metric-value">1</div>',
-            html,
+        data = report_template.extract_report_data(html)
+        open_items = next(
+            m for m in data["overview"] if m["label"] == "Open Action Items"
         )
+        self.assertEqual(open_items["value"], "1")
 
 
 class TestDerivedRowShape(unittest.TestCase):
@@ -1033,7 +1056,14 @@ class TestScopeTextNamesOmittedControls(unittest.TestCase):
         html = self._html({})
         self.assertNotIn("are omitted because", html)
         self.assertNotIn("is omitted because", html)
-        self.assertIn(_entry("aisf")["scope_text"], html)
+        data = report_template.extract_report_data(html)
+        area = next(a for a in data["areas"] if a["slug"] == "aisf")
+        self.assertEqual(
+            report_template.rich_text(area["scope"]),
+            report_template.rich_text(
+                report_template.rich(_entry("aisf")["scope_text"])
+            ),
+        )
 
     def test_a_single_omitted_control_reads_in_the_singular(self):
         html = report_template.generate_html_report(

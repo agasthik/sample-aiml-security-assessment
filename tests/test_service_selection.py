@@ -9,7 +9,6 @@ import re
 import subprocess
 from unittest.mock import MagicMock, patch
 
-from bs4 import BeautifulSoup
 from botocore.exceptions import ClientError
 import pytest
 import yaml
@@ -17,6 +16,7 @@ import yaml
 from tests.test_consolidated_report import consolidated_app
 from tests.test_owasp_checks import owasp_app
 from tests.test_optional_policy_baseline_wiring import CfnLoader
+from tests.report_data import area, report_data, rich_text, scope_text
 import consolidate_html_reports as multi_report
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -283,22 +283,26 @@ def test_report_distinguishes_not_selected_from_assessed_na_and_filters_unselect
     results = _results(dict.fromkeys(SERVICES, "true"))
     selection = {service: service == "bedrock" for service in SERVICES}
     html = consolidated_app.generate_html_report(results, service_selection=selection)
-    soup = BeautifulSoup(html, "html.parser")
-    assert "Not selected" in soup.select_one("#service-selection").get_text()
+    data = report_data(html)
+    assert data["selectionNotice"]["notSelected"] == [
+        "Amazon SageMaker AI",
+        "Amazon Bedrock AgentCore",
+        "AWS Agent Registry",
+    ]
     for service in SERVICES:
-        section = soup.select_one(f"#{service}")
+        section = area(data, service)
         assert section is not None
-        assert ("Not selected" in section.get_text()) == (service != "bedrock")
+        assert section["selected"] == (service == "bedrock")
     assert '"SM-00"' not in html
-    cards = soup.select("#risk .metric")
-    for label in ("SageMaker", "AgentCore", "AWS Agent Registry"):
-        card = next(card for card in cards if label in card.get_text())
-        assert "Not selected" in card.get_text()
-        assert "0 Passed" not in card.get_text()
-    assert "Agentic AI Security is not included" in html
-    default_html = consolidated_app.generate_html_report(results)
-    assert "assessment-not-selected" not in default_html
-    assert 'id="service-selection"' not in default_html
+    for service in ("sagemaker", "agentcore", "agent-registry"):
+        card = area(data, service)
+        assert card["cardStatus"] == "Not selected"
+        assert card["countText"] == "—"
+        assert "0 Passed" not in card["cardStatus"]
+    assert "Agentic AI Security is not included" in data["selectionNotice"]["text"]
+    default_data = report_data(consolidated_app.generate_html_report(results))
+    assert all(a["selected"] for a in default_data["areas"])
+    assert default_data["selectionNotice"] is None
 
 
 def test_empty_selection_generates_an_explicit_scope_report_without_artifacts():
@@ -321,9 +325,7 @@ def test_empty_selection_generates_an_explicit_scope_report_without_artifacts():
     ):
         response = consolidated_app.lambda_handler(event, None)
     assert response["statusCode"] == 200
-    assert BeautifulSoup(write.call_args.args[0], "html.parser").select_one(
-        "#service-selection"
-    )
+    assert report_data(write.call_args.args[0])["selectionNotice"] is not None
 
 
 @pytest.mark.parametrize("empty", [False, True])
@@ -356,9 +358,10 @@ def test_multi_account_scope_matches_single_account_and_ignores_deselected_csvs(
         multi_report.consolidate_html_reports()
     client.put_object.assert_called_once()
     html = client.put_object.call_args.kwargs["Body"]
-    soup = BeautifulSoup(html, "html.parser")
-    assert soup.select_one("#service-selection")
-    assert "Not selected" in soup.select_one("#sagemaker").get_text()
+    data = report_data(html)
+    assert data["selectionNotice"] is not None
+    assert not area(data, "sagemaker")["selected"]
+    assert area(data, "sagemaker")["cardStatus"] == "Not selected"
     assert '"SM-00"' not in html
 
 
@@ -375,15 +378,15 @@ def test_selection_notice_and_scope_match_actual_agentic_sources(mode, values):
         kwargs["all_findings"] = [row]
         kwargs["service_findings"]["agentic"] = [row]
         kwargs["service_stats"]["agentic"]["na"] = 1
-    soup = BeautifulSoup(
+    data = report_data(
         report_template.generate_html_report(
             **{**kwargs, "mode": mode, "service_selection": selection}
-        ),
-        "html.parser",
+        )
     )
-    notice = soup.select_one("#service-selection")
+    notice = data["selectionNotice"]
+    assert (notice is None) == all(values)
     if not all(values):
-        text = notice.get_text(" ", strip=True)
+        text = notice["text"]
         assert "Responsible AI GRC still assesses deselected services" in text
         assert "Agent Registry is not an OWASP source" in text
         if sources:
@@ -393,7 +396,7 @@ def test_selection_notice_and_scope_match_actual_agentic_sources(mode, values):
             )
         else:
             assert "Agentic AI Security is not included" in text
-    scope = soup.select_one("#methodology").get_text(" ", strip=True)
+    scope = scope_text(data) + rich_text(data["methodology"]["notes"])
     assert ("Agentic AI Security references" in scope) == bool(sources)
     assert (
         "checks are based on the AWS Well-Architected Framework Generative AI Lens"
