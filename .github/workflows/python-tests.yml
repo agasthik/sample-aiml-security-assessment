@@ -7,6 +7,8 @@ on:
       - "aiml-security-assessment/functions/security/**"
       - "tests/**"
       - "assessment_history/**"
+      # test_report_ui_bundle.py hashes this source to catch a missing rebuild.
+      - "report-ui/**"
       # The changes-report wiring tests read these, and the sample report tests
       # read the sample reports, so a change to any of them must run the tests.
       - "buildspec.yml"
@@ -21,6 +23,8 @@ on:
       - "aiml-security-assessment/functions/security/**"
       - "tests/**"
       - "assessment_history/**"
+      # test_report_ui_bundle.py hashes this source to catch a missing rebuild.
+      - "report-ui/**"
       # The changes-report wiring tests read these, and the sample report tests
       # read the sample reports, so a change to any of them must run the tests.
       - "buildspec.yml"

@@ -15,6 +15,7 @@ report:
     - any-glob-to-any-file:
       - 'aiml-security-assessment/functions/security/generate_consolidated_report/**'
       - 'consolidate_html_reports.py'
+      - 'report-ui/**'
 
 deployment:
   - changed-files:
