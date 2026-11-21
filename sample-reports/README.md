@@ -48,7 +48,7 @@ Screenshots used in the main README to showcase report features:
 |------|-------------|
 | `dashboard-overview-light.png` | Executive dashboard in light mode |
 | `dashboard-overview-dark.png` | Executive dashboard in dark mode |
-| `findings-table.png` | Interactive findings table with filters |
+| `findings-table.png` | Interactive findings table with filters and an open finding details panel |
 | `multi-account-summary.png` | Multi-account consolidated view |
 | `changes-overview.png` | Changes since last assessment (captured by `scripts/capture_changes_screenshot.py`) |
 
@@ -109,5 +109,5 @@ When updating the report template (`aiml-security-assessment/functions/security/
 
 - The main reports and the changes page are anonymized results from real runs; the selection examples use fictional findings
 - Actual assessment results will vary based on your AWS environment
-- Reports are single HTML files with inline CSS and JavaScript; the only external resource is the Google Fonts stylesheet, and the report falls back to system fonts offline
+- Reports are single, self-contained HTML files built with the [Cloudscape Design System](https://cloudscape.design/); the Cloudscape UI bundle, its fonts, and the report data are inlined, so the reports open offline. They need a browser with JavaScript enabled; without it, the page points to the run's CSV files, which hold the same findings
 - Screenshots are automatically optimized to keep file sizes small

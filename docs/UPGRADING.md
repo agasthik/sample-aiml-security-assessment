@@ -35,6 +35,7 @@ Each changed path maps to one deployment action:
 | `aiml-security-assessment/template.yaml` or `template-multi-account.yaml` | Run CodeBuild to update the corresponding AWS SAM assessment stack |
 | `buildspec.yml` | Run CodeBuild so the build uses the updated orchestration |
 | `consolidate_html_reports.py` | Run multi-account CodeBuild to apply the updated consolidator |
+| `report-ui/**` | Nothing on its own: the committed build under `aiml-security-assessment/functions/security/generate_consolidated_report/report_ui/` is what deploys (see that row) |
 | `assessment_history/**` | Run CodeBuild; the changes-since-last-assessment report runs from this package in the post-build phase |
 | `deployment/aiml-security-single-account.yaml` | Update the single-account infrastructure stack |
 | `deployment/1-aiml-security-member-roles.yaml` | Update the multi-account member-role StackSet before running CodeBuild |

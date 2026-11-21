@@ -26,7 +26,7 @@ from the configured repository.
 
 ## See It In Action
 
-The framework generates interactive security assessment reports with filtering, search, and dark mode support.
+The framework generates interactive security assessment reports, built with the [Cloudscape Design System](https://cloudscape.design/), with filtering, search, and dark mode support.
 
 **Sample reports:** [Single Account](https://aws-samples.github.io/sample-aiml-security-assessment/sample-reports/security_assessment_single_account.html) | [Multi-Account](https://aws-samples.github.io/sample-aiml-security-assessment/sample-reports/security_assessment_multi_account.html)
 
@@ -44,7 +44,7 @@ The framework generates interactive security assessment reports with filtering, 
   <tr>
     <td colspan="2">
       <img src="sample-reports/findings-table.png" alt="Detailed Findings Table"/>
-      <p align="center"><em>Interactive Findings Table with Filtering</em></p>
+      <p align="center"><em>Interactive Findings Table with Filtering and the Finding Details Panel</em></p>
     </td>
   </tr>
 </table>
@@ -56,7 +56,9 @@ The framework generates interactive security assessment reports with filtering, 
 - **Service, lens, and compliance views** for Amazon Bedrock, Amazon SageMaker AI, Amazon Bedrock AgentCore, AWS Agent Registry, Agentic AI Security, Responsible AI GRC, and OWASP Top 10 for LLM
 - **Multi-Region Support** within the standard AWS commercial partition, with a per-region risk breakdown
 - **Interactive Filtering** by account, region, service, severity, and status, plus real-time text search
-- **Light/Dark Mode Toggle** with a persistent preference
+- **Light/Dark Mode Toggle** in the top navigation, with a persistent preference
+- **Self-contained Cloudscape reports** that open offline as single HTML files in a browser with JavaScript enabled; without JavaScript, use the run's CSV files
+- **Finding details panel**: select a finding to see its details, remediation, and AWS documentation link beside the table
 - **Direct AWS Documentation Links** with remediation guidance for each finding
 - **Multi-Account Support** with consolidated reporting across your organization
 - **[Changes Since Last Assessment](docs/ASSESSMENT_HISTORY.md)** after every run: what was resolved, regressed, is new, or no longer appears since the account's previous run

@@ -209,6 +209,7 @@ sample-aiml-security-assessment/
 │   └── testfile.json                 # Test event for local invocation
 ├── assessment_history/               # Changes-since-last-assessment report (CodeBuild post-build)
 ├── deployment/                       # Top-level AWS CloudFormation templates
+├── report-ui/                        # Cloudscape report UI source (React, npm); build committed under generate_consolidated_report/report_ui/
 ├── docs/
 │   ├── ASSESSMENT_HISTORY.md         # Changes since last assessment report
 │   ├── CLEANUP.md                    # Resource removal guide
@@ -426,7 +427,7 @@ never fails the build. User-facing behavior is in
 | `assessment_history/compare.py` | Pairs two runs' rows and labels each; no AWS calls |
 | `assessment_history/derived.py` | Derives AISF rows from each run's compared findings with the main report's `aisf_mappings.py`; records mapping and unreadable-row notes without losing other controls |
 | `assessment_history/discover.py` | Groups an account folder's CSVs into runs (S3 or local folder), picks the previous usable run (complete files, and a run record that does not say it failed), and reads the CSVs |
-| `assessment_history/render_common.py`, `render_changes.py` | The HTML page, reusing `report_template.py`'s CSS, escaping, names, and icons |
+| `assessment_history/render_common.py`, `render_changes.py` | The changes page's data model, drawn by the main report's Cloudscape UI through `report_template.render_page()`; reuses its names, icons, and link check |
 | `assessment_history/__main__.py` | `python3 -m assessment_history compare`: S3 mode for the build, local-folder mode for people |
 | `tests/test_assessment_history_*.py` | Tests; `tests/assessment_history_helpers.py` builds test data |
 | `tests/fixtures/assessment_history/` | A hand-written example account folder |
@@ -447,8 +448,8 @@ never fails the build. User-facing behavior is in
   `aisf_mappings.py` by file path and derives both runs with the current
   mapping. Preserve `Global` pairing, selected-service coverage, and visible
   notes for skipped mappings and unreadable derived rows.
-- **`report_template.py`:** the changes page reuses its styling and helpers;
-  guard tests fail if something it relies on moves.
+- **`report_template.py`:** the changes page reuses its page writer, names,
+  and helpers; guard tests fail if something it relies on moves.
 - **A changes page change:** replace and anonymize the changes sample (below)
   and review the diff.
 
@@ -519,17 +520,29 @@ themselves with `.venv/bin/python`.
 
 ### Shared Template Module
 
-Report generation uses a single shared template (`report_template.py`) for both
-deployment modes:
+Report generation uses a single shared builder (`report_template.py`) for both
+deployment modes. Reports are drawn with real [Cloudscape Design
+System](https://cloudscape.design/) React components (AppLayout,
+TopNavigation, SideNavigation, Table with collection hooks, Cards,
+StatusIndicator, Badge, ProgressBar):
 
 ```text
+report-ui/                    # React + Cloudscape source (TypeScript, Vite)
 aiml-security-assessment/functions/security/generate_consolidated_report/
-├── app.py              # Lambda handler (single-account)
-├── report_template.py  # Shared HTML/CSS/JS template
+├── app.py                    # Lambda handler (single-account)
+├── report_template.py        # Builds the report data model and the page
+├── report_ui/                # Committed build of report-ui/ (JS, CSS, manifest)
 └── ...
 
-consolidate_html_reports.py  # CodeBuild script (multi-account)
+consolidate_html_reports.py   # CodeBuild script (multi-account)
 ```
+
+Python owns every figure, label, and sentence: `build_report_data()` returns a
+JSON model (its shape is `report-ui/src/types.ts`), and `render_page()` writes
+one self-contained HTML file with the model in a
+`<script type="application/json" id="report-data">` element and the bundle
+inlined. Reports need no network access. Neither the Lambda nor CodeBuild runs
+Node: the bundle is built once and committed.
 
 ### How It Works
 
@@ -545,12 +558,21 @@ section.
 
 ### Modifying the Report Template
 
-1. Edit `report_template.py` only; changes apply to both single- and multi-account reports.
-2. Key functions:
-   - `get_html_template()`: HTML/CSS/JS structure.
-   - `generate_table_rows()`: finding row generation.
+1. Content (counts, labels, scope text, which areas appear) lives in `report_template.py`; changes apply to both single- and multi-account reports. Key functions:
+   - `build_report_data()`: the report data model.
+   - `finding_rows()`: finding rows; text stays raw and the UI renders it as text, never as markup.
+   - `rich()`: turns the module's own trusted markup (`<strong>` and HTTPS `<a>` only) into rich-text segments. Finding text never passes through it.
    - `generate_html_report()`: main entry point with the `mode` parameter (`'single'` or `'multi'`).
-3. The Assessment Scope block is patched after rendering with exact `str.replace()` anchors. If you change the markup an anchor targets, update the anchor too; a missed match fails silently.
+2. Layout lives in `report-ui/src/`. Use Cloudscape components and design tokens rather than custom colors. After changing anything under `report-ui/`, rebuild and commit the bundle:
+
+   ```bash
+   cd report-ui
+   npm ci
+   npm run build   # type-checks, writes generate_consolidated_report/report_ui/
+   ```
+
+   `tests/test_report_ui_bundle.py` fails when `report-ui/` changed without a rebuild, and renders a report in a local Chrome or Chromium when one is available.
+3. Keep `report-ui/src/types.ts` and the Python models in step. Tests assert on the embedded model through `tests/report_data.py`.
 4. Run the report-pipeline tests from the report package directory: `../../../../.venv/bin/python -m pytest test_generate_report.py -v`.
 5. Generate and inspect both report modes (see [Report Verification](#4-report-verification-required-before-opening-a-pr)).
 
@@ -965,12 +987,12 @@ In `aiml-security-assessment/statemachine/assessments.asl.json`:
 <summary>Details</summary>
 
 Append a dict to `COMPLIANCE_STANDARDS` in `report_template.py` with `slug`,
-`name`, `prefix`, `icon`, `icon_small`, `reference_url`, `section_title`, and
-truthful `scope_text`. The `slug` and prefix must be unique; choose an icon
-color distinct from the existing navigation colors.
+`name`, `prefix`, `icon` (a standalone SVG), `reference_url`, `section_title`,
+and truthful `scope_text`. The `slug` and prefix must be unique; choose an icon
+color distinct from the existing icons.
 
-- The shared loop in `generate_html_report()` builds the sidebar entry, filter option, dashboard card, findings section and summary, Assessment Scope chip, and source link when the standard has rows. Extend the registry instead of copying OWASP-specific HTML.
-- If the HTML structure must change, edit the shared loop and the affected `get_html_template()` placeholders together. Keep one `slug` across the section `id`, finding-row `data-service`, filter option value, summary `data-filter-service`, and scope-chip `data-scope-service`, and review affected CSS/JavaScript selectors. Update any Assessment Scope `str.replace()` anchors whose source markup changes.
+- The shared loop in `build_report_data()` adds the navigation link, filter option, area card, findings section and summary, Assessment Scope chip, and source link when the standard has rows. Extend the registry instead of copying OWASP-specific code.
+- One `slug` is the area's section anchor, the finding rows' `service`, and the Assessment Area filter value. The UI needs no change for a new standard.
 
 </details>
 
@@ -1034,8 +1056,7 @@ This is mandatory before opening a PR. Follow
 In single- and multi-account output, check sidebar navigation, filtering, card
 and section counts, severity and status, Assessment Scope chips and source text,
 and desktop/mobile and light/dark rendering. Test enabled, disabled, and
-empty-result cases. When changing the Assessment Scope markup, confirm the
-post-render insertion is present in the generated HTML.
+empty-result cases.
 
 </details>
 
@@ -1125,14 +1146,15 @@ The reports are written under
 (git-ignored). Open the single- and multi-account HTML files in a browser at
 desktop and mobile widths and verify:
 
-- The new `Check_ID` (for example, BR-41, SM-31, AR-09, AG-39, OW-13, or NR-01) appears with the expected Finding name, Severity badge, Status, Region, and Resolution text.
+- The new `Check_ID` (for example, BR-41, SM-31, AR-09, AG-39, OW-13, or NR-01) appears in the findings table with the expected Finding name, Severity badge, Status, and Region.
+- Selecting the row's radio button opens the finding details panel (`[data-testid="finding-details"]`) with the expected Details, Resolution, and AWS documentation link.
 - The row is routed into the right sidebar group:
   - Core service checks (`BR-*`, `SM-*`, `AC-*`, `AR-*`) appear under "By Service".
   - `AG-*` findings appear under "By Lens" → Agentic AI Security.
   - `OW-*` and any new `NR-*`/`EU-*` standards appear under "By Compliance Standard".
 - A new compliance standard's sidebar link, filter option, dashboard card, findings section, Assessment Scope chip, and source link use the same slug and show the right counts and scope. A disabled standard does not appear as an empty or clean assessment.
 - Filters (region, severity, status, and search) work for existing and new rows.
-- Long finding details or remediation text do not break the table layout.
+- Long finding details or remediation text read correctly in the details panel, both beside the table and moved to the bottom.
 - Dark mode, responsive layout, and the executive dashboard reflect the new content accurately.
 
 ## Documentation and Screenshots
@@ -1176,7 +1198,7 @@ screenshots to `sample-reports/`:
 
 - `dashboard-overview-light.png`: executive dashboard in light mode
 - `dashboard-overview-dark.png`: executive dashboard in dark mode
-- `findings-table.png`: findings table with filters
+- `findings-table.png`: findings table with filters and an open finding details panel
 - `multi-account-summary.png`: multi-account consolidated view
 
 The changes-page screenshot, `changes-overview.png`, comes from
@@ -1364,6 +1386,10 @@ export AWS_SECRET_ACCESS_KEY=testing
 # 4. Report pipeline: runs from the report package directory
 (cd aiml-security-assessment/functions/security/generate_consolidated_report \
   && ../../../../.venv/bin/python -m pytest test_generate_report.py -v --tb=short)
+
+# Report UI bundle (when changing report-ui/); commit the rebuilt
+# generate_consolidated_report/report_ui/, which tests/test_report_ui_bundle.py checks
+(cd report-ui && npm ci && npm run build)
 
 # Responsible AI GRC provenance (when changing its app.py or catalog)
 .venv/bin/python generate_provenance.py --check

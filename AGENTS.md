@@ -38,6 +38,12 @@ Run everything under `tests/` in one pytest session. Test modules load each asse
 separate session and `generate_consolidated_report/test_generate_report.py` from its own directory.
 Keep `assessment_history/` at 100% line and branch coverage.
 
+Reports are drawn with real Cloudscape components from `report-ui/` (React, built with npm); its
+build is committed under `generate_consolidated_report/report_ui/` and inlined into every report.
+Python builds the data model (`report_template.build_report_data()`, `render_changes.changes_page_data()`);
+tests assert on that model through `tests/report_data.py`. After changing `report-ui/`, run
+`npm ci && npm run build` there and commit the bundle; `tests/test_report_ui_bundle.py` checks it.
+
 Use the guide's whole-repository `.venv/bin/ruff check .` and `.venv/bin/ruff format --check .`
 commands before delivery. Run the relevant pytest sessions, cfn-lint for changed templates, and
 SAM validation/build when deployment wiring changes. Generate and inspect both report modes when

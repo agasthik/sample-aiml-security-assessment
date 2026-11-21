@@ -244,6 +244,37 @@ section.
 
 ### Changed
 
+- **Reports use the Cloudscape Design System.** The single-account,
+  multi-account, and "Changes since last assessment" HTML reports are now
+  drawn with real Cloudscape components (top navigation with the light/dark
+  toggle, side navigation, paginated findings tables with search, filters, and
+  sorting, status indicators, and severity badges) instead of hand-written
+  HTML and CSS. Figures, labels, scope text, and Not selected states are
+  unchanged. Each report is still one HTML file: the report data and the
+  prebuilt Cloudscape bundle are inlined, so reports open offline and no
+  longer load Google Fonts. The inlined bundle is about 2.3 MB, so a report
+  with no findings is about 2.4 MB. Findings are now stored as JSON instead of
+  HTML rows, so a large report can be smaller than before: the sample
+  multi-account report went from 9.8 MB to 6.6 MB.
+  The Cloudscape source is in `report-ui/` and its build is committed under
+  `generate_consolidated_report/report_ui/`; neither the Lambda nor CodeBuild
+  needs Node. Reports need JavaScript to display. Links to a section
+  (for example `#findings` or `#responsible-ai-grc`) still open at that
+  section, and following the side navigation puts the section's link in the
+  address bar. Finding details now open in a side panel: each row in the
+  findings table of the main reports and the changes page has a radio button,
+  and choosing one opens the finding's severity, status, check, area, account, Region, details,
+  resolution, and AWS reference in a Cloudscape split panel on the right (on
+  the changes page, the change state and both runs' details). Readers can
+  resize the panel, move it to the bottom, and choose and order the table's
+  columns; the panel position and size are remembered in the browser. The
+  inline "Details and remediation" expander in each row is removed. Details
+  that list resources ("6 AI workload(s) run outside a private network
+  boundary: ...; ...") show each resource as a bullet, and AWS identifiers in
+  finding text (quoted resource names, ARNs, resource IDs, IAM actions and
+  condition keys, VPC endpoint service names, account IDs) are shown as inline
+  code; the text is unchanged.
+
 Existing checks judge the values they read and the whole population they
 cover, where many used to pass on the presence of a field or on a partial
 read. Rows that passed before can fail after the upgrade. Each row that holds
@@ -549,6 +580,13 @@ back `Passed` names what it could not read.
   link now goes to that page.
 
 ### Deployment impact
+
+- **Cloudscape reports:** Run CodeBuild using this revision. Single-account
+  and multi-account deployments repackage the report Lambda
+  (`generate_consolidated_report/`). In the post-build phase, the unchanged
+  `consolidate_html_reports.py` picks up the new report template, and the
+  updated `assessment_history/` package writes the new changes page. No template parameter, IAM, or member-role StackSet change is
+  required. Reports written before the upgrade are not changed.
 
 - **Service selection:** Update `deployment/aiml-security-single-account.yaml`
   for single-account deployments or `deployment/2-aiml-security-codebuild.yaml`
