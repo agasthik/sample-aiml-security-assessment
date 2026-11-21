@@ -8,38 +8,120 @@ tests/test_sample_reports.py uses them to check that none is left.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import html
+import importlib.util
+import json
 import re
 import string
 from dataclasses import dataclass
-
-# Rows the report derives itself from other rows; parse_report leaves them out.
-REPORT_DERIVED_PREFIXES = ("AISF",)
+from pathlib import Path
 
 # --- reading a sample report ----------------------------------------------------
 
-_TABLE_BODY = re.compile(
-    r'<table id="findingsTable"[^>]*>.*?<tbody>(.*?)</tbody>', re.S
+# Reports are written by report_template.render_page(): the page's data is a
+# JSON model in one <script type="application/json" id="report-data"> element,
+# drawn by the inlined Cloudscape bundle. All report text lives in that model
+# and in the page <title>; the bundle's script and styles hold none.
+_TEMPLATE_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "aiml-security-assessment"
+    / "functions"
+    / "security"
+    / "generate_consolidated_report"
+    / "report_template.py"
 )
-_ROW = re.compile(r"<tr ([^>]*)>(.*?)</tr>", re.S)
-_ATTRIBUTE = re.compile(r'data-(\w+)="([^"]*)"')
-_CODE_CELL = re.compile(r"<td><code>(.*?)</code></td>", re.S)
-_FINDING = re.compile(r'<div class="col-domain">(.*?)</div>', re.S)
-# A part's label: "Details", or on a changes page "Details (previous run)",
-# "Details (current run)" and "Note".
-_PART = re.compile(r"<div><strong>([^<]+)</strong><p>(.*?)</p></div>", re.S)
-_DETAIL_PARTS = ("Details", "Details (previous run)", "Details (current run)", "Note")
-_LINK = re.compile(r'<a href="([^"]*)"')
-_SEVERITY = re.compile(r'<span class="severity [^"]*">(.*?)</span>', re.S)
-_STATUS = re.compile(r'<span class="status [^"]*">(.*?)</span>', re.S)
+_REPORT_DATA = re.compile(
+    r'(<script type="application/json" id="report-data">)(.*?)(</script>)', re.S
+)
+_TITLE = re.compile(r"(<title>)(.*?)(</title>)", re.S)
+# Area icons travel in the model as data URIs; they are page artwork, not text.
+_ARTWORK_PREFIX = "data:image/"
+
+
+@functools.lru_cache(maxsize=1)
+def _template():
+    spec = importlib.util.spec_from_file_location(
+        "sample_report_template", _TEMPLATE_PATH
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def is_report_page(text: str) -> bool:
+    """Whether text is a page written by report_template.render_page()."""
+    return _REPORT_DATA.search(text) is not None
+
+
+def _is_text(value) -> bool:
+    return isinstance(value, str) and not value.startswith(_ARTWORK_PREFIX)
+
+
+def _map_strings(value, function):
+    """value with function applied to every text string (not to keys)."""
+    if isinstance(value, dict):
+        return {key: _map_strings(item, function) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_map_strings(item, function) for item in value]
+    return function(value) if _is_text(value) else value
+
+
+def report_text_units(text: str) -> list[str] | None:
+    """The report's text, as strings: the page title, then every text string
+    of the data model. None when text isn't a report page."""
+    data = _REPORT_DATA.search(text)
+    if data is None:
+        return None
+    # The page's own <title> comes first; the bundle may spell the tag too.
+    title = _TITLE.search(text, 0, data.start())
+    units = [html.unescape(title.group(2))] if title else []
+    _map_strings(json.loads(data.group(2)), lambda value: units.append(value) or value)
+    return units
+
+
+def map_report_text(text: str, function) -> str:
+    """The report page with function applied to each report_text_units() string.
+
+    The data model is written back exactly as report_template writes it, and
+    nothing else on the page, its script and styles included, is changed.
+    """
+    data = _REPORT_DATA.search(text)
+    if data is None:
+        raise ValueError("no report data in the page")
+    model = _map_strings(json.loads(data.group(2)), function)
+    rebuilt = (
+        text[: data.start(2)]
+        + _template()._json_for_script(model)
+        + text[data.end(2) :]
+    )
+    title = _TITLE.search(rebuilt, 0, data.start())
+    if title is None:
+        return rebuilt
+    return (
+        rebuilt[: title.start(2)]
+        + html.escape(function(html.unescape(title.group(2))), quote=False)
+        + rebuilt[title.end(2) :]
+    )
+
+
+def report_data(text: str) -> dict:
+    """The data model of a report page."""
+    return _template().extract_report_data(text)
+
+
+# Rows the report derives itself from other rows; parse_report leaves them out.
+REPORT_DERIVED_PREFIXES = ("AISF",)
 
 
 @dataclass(frozen=True)
 class SampleRow:
     """One row of a sample report's findings table.
 
-    ``area`` is the report's own assessment area for the row (data-service).
+    ``area`` is the report's own assessment area for the row. On a changes
+    page ``status`` holds the row's change ("Still open"), as its Change
+    column shows it.
     """
 
     area: str
@@ -54,43 +136,37 @@ class SampleRow:
     status: str
 
 
-def _text(value: str) -> str:
-    return html.unescape(value)
-
-
 def parse_report(text: str) -> list[SampleRow]:
-    """Read the findings table of a sample page.
+    """Read the findings rows of a sample page.
 
-    Reads a main report written by report_template.py and a changes page
-    written by assessment_history/render_changes.py, which share the table
-    layout. A changes row's previous-run and current-run details, and its
+    Reads a main report written by report_template.py (its ``findings``) and
+    a changes page written by assessment_history/render_changes.py (its
+    ``rows``). A changes row's previous-run and current-run details, and its
     note, are joined into ``details``. Rows the report derives itself
     (REPORT_DERIVED_PREFIXES) are left out.
     """
-    body = _TABLE_BODY.search(text)
-    if body is None:
-        raise ValueError("no findings table in the report")
+    data = report_data(text)
+    changes = data.get("kind") == "changes"
     rows = []
-    for attributes, cells in _ROW.findall(body.group(1)):
-        account_id, region, check_id = _CODE_CELL.findall(cells)[:3]
-        if _text(check_id).split("-", 1)[0].upper() in REPORT_DERIVED_PREFIXES:
+    for row in data["rows"] if changes else data["findings"]:
+        if row["checkId"].split("-", 1)[0].upper() in REPORT_DERIVED_PREFIXES:
             continue
-        parts = dict(_PART.findall(cells))
-        link = _LINK.search(parts.get("Reference", ""))
         rows.append(
             SampleRow(
-                area=_text(dict(_ATTRIBUTE.findall(attributes))["service"]),
-                account_id=_text(account_id),
-                region=_text(region),
-                check_id=_text(check_id),
-                finding=_text(_FINDING.search(cells).group(1)),
-                details="\n".join(
-                    _text(parts[label]) for label in _DETAIL_PARTS if label in parts
+                area=row["service"],
+                account_id=row["account"],
+                region=row["region"],
+                check_id=row["checkId"],
+                finding=row["finding"],
+                details=(
+                    "\n".join(part["text"] for part in row["details"])
+                    if changes
+                    else row["details"]
                 ),
-                resolution=_text(parts["Resolution"]),
-                reference=_text(link.group(1)) if link else "",
-                severity=_text(_SEVERITY.search(cells).group(1)),
-                status=_text(_STATUS.search(cells).group(1)),
+                resolution=row["resolution"],
+                reference=row["reference"] or "",
+                severity=row["severity"],
+                status=row["change"] if changes else row["status"],
             )
         )
     return rows

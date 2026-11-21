@@ -405,3 +405,106 @@ def test_changes_page_links_to_the_sample_report_and_drops_the_csv(tmp_path):
         '<p><a href="security_assessment_single_account.html">'
         "security_assessment_single_account.html</a></p>\n"
     )
+
+
+# --- Cloudscape report pages ------------------------------------------------------
+
+TEMPLATE_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "aiml-security-assessment"
+    / "functions"
+    / "security"
+    / "generate_consolidated_report"
+    / "report_template.py"
+)
+_TEMPLATE_SPEC = importlib.util.spec_from_file_location(
+    "capture_test_report_template", TEMPLATE_PATH
+)
+report_template = importlib.util.module_from_spec(_TEMPLATE_SPEC)
+_TEMPLATE_SPEC.loader.exec_module(report_template)
+
+
+def _cloudscape_page(details: str, account: str = "987654321098") -> str:
+    finding = {
+        "Check_ID": "BR-34",
+        "Finding": "GuardDuty detector",
+        "Finding_Details": details,
+        "Resolution": "No action required",
+        "Severity": "Informational",
+        "Status": "Passed",
+        "Region": "us-east-1",
+        "_service": "bedrock",
+    }
+    return report_template.generate_html_report(
+        [finding], {}, {"bedrock": {"passed": 1}}, account_id=account
+    )
+
+
+def _bundle_parts(page: str) -> tuple:
+    head, _, rest = page.partition("<style>")
+    styles, _, rest = rest.partition("</style>")
+    script = rest.rpartition("<script>")[2]
+    return styles, script
+
+
+def test_a_cloudscape_page_is_anonymized_in_its_title_and_data_only(tmp_path):
+    report = tmp_path / "report.html"
+    original = _cloudscape_page(
+        "Detector 1a2b3c4d5e6f70819a2b3c4d5e6f7081 in vpc-0a1b2c3d4e5f60718.\n"
+        "vpc-0a1b2c3d4e5f60718 again"
+    )
+    report.write_text(original, encoding="utf-8")
+
+    capture_screenshots.anonymize_account_ids([report])
+    replaced = capture_screenshots.anonymize_resource_ids([report])
+
+    cleaned = report.read_text(encoding="utf-8")
+    data = report_template.extract_report_data(cleaned)
+    details = data["findings"][0]["details"]
+    assert replaced == {"32-digit hex ID": 1, "AWS resource ID": 2}
+    # A value just after an escaped newline in the JSON is found too.
+    assert details == (
+        f"Detector {'a1'.rjust(32, '0')} in vpc-000000000000000a1.\nvpc-000000000000000a1 again"
+    )
+    assert data["accountInfo"] == "Account: 111122223333"
+    assert "987654321098" not in cleaned
+    assert _bundle_parts(cleaned) == _bundle_parts(original)  # bundle untouched
+    assert cleaned.startswith(
+        "<!DOCTYPE html>\n" + capture_screenshots.ANONYMIZED_MARKER + "\n"
+    )
+
+
+def test_the_page_title_of_a_cloudscape_page_is_anonymized(tmp_path):
+    report = tmp_path / "report.html"
+    page = _cloudscape_page("Nothing here.").replace(
+        "<title>AI/ML Security Assessment Report</title>",
+        "<title>Report for 987654321098 &amp; more</title>",
+    )
+    report.write_text(page, encoding="utf-8")
+
+    capture_screenshots.anonymize_account_ids([report])
+
+    assert "<title>Report for 111122223333 &amp; more</title>" in report.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_cloudscape_changes_page_links_to_the_sample_report(tmp_path):
+    data = {
+        "kind": "changes",
+        "title": "Changes",
+        "mainReport": "security_assessment_single_account_20260901_101112.html",
+        "csvName": "security_assessment_changes_20260901_101130.csv",
+        "rows": [],
+    }
+    page = tmp_path / "security_assessment_changes.html"
+    page.write_text(report_template.render_page(data, "Changes"), encoding="utf-8")
+
+    capture_screenshots.point_changes_links_at_samples(page)
+    linked = report_template.extract_report_data(page.read_text(encoding="utf-8"))
+
+    assert linked["mainReport"] == "security_assessment_single_account.html"
+    assert linked["csvName"] is None
+    before = page.read_text(encoding="utf-8")
+    capture_screenshots.point_changes_links_at_samples(page)
+    assert page.read_text(encoding="utf-8") == before

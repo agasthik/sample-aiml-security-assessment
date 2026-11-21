@@ -89,6 +89,22 @@ ANONYMIZED_ORGANIZATION_IDS = ["f6g7h8i9j0", "a1b2c3d4e5"]
 
 CHANGES_PAGE = "security_assessment_changes.html"
 
+# Elements of the Cloudscape report UI the captures wait for or use. The UI
+# draws the page from its embedded data after load, so captures wait for it.
+OVERVIEW_READY = '[data-testid="overview-metrics"]'
+FINDINGS_READY = '[data-testid="findings-table"] tbody tr'
+CHANGES_READY = '[data-testid="change-tiles"]'
+# The light/dark toggle at the top right of the top navigation.
+# The top navigation also renders hidden copies for measuring, so pick the
+# visible element.
+THEME_TOGGLE = '#report-top-nav [aria-label^="Switch to"] >> visible=true'
+NAVIGATION = 'nav[aria-label="Report sections"] >> visible=true'
+# The first finding's radio button, which opens its details in the split panel.
+FIRST_FINDING_RADIO = (
+    '[data-testid="findings-table"] tbody tr:first-child input[type="radio"]'
+)
+DETAILS_PANEL = '[data-testid="finding-details"]'
+
 # Screenshots to capture
 SCREENSHOTS = [
     {
@@ -96,7 +112,7 @@ SCREENSHOTS = [
         "file": "security_assessment_single_account.html",
         "description": "Executive Dashboard (Light Mode)",
         "actions": [
-            {"type": "wait", "selector": ".metrics", "timeout": 2000},
+            {"type": "wait", "selector": OVERVIEW_READY, "timeout": 10000},
             {"type": "scroll", "position": 0},
         ],
         "clip": {"x": 0, "y": 0, "width": VIEWPORT_WIDTH, "height": 800},
@@ -106,8 +122,8 @@ SCREENSHOTS = [
         "file": "security_assessment_single_account.html",
         "description": "Executive Dashboard (Dark Mode)",
         "actions": [
-            {"type": "wait", "selector": ".metrics", "timeout": 2000},
-            {"type": "click", "selector": ".theme-toggle"},
+            {"type": "wait", "selector": OVERVIEW_READY, "timeout": 10000},
+            {"type": "click", "selector": THEME_TOGGLE},
             {"type": "wait_time", "ms": 500},
             {"type": "scroll", "position": 0},
         ],
@@ -116,10 +132,14 @@ SCREENSHOTS = [
     {
         "name": "findings-table",
         "file": "security_assessment_single_account.html",
-        "description": "Detailed Findings Table with Filters",
+        "description": "Findings Table with Filters and the Details Panel",
         "actions": [
-            {"type": "wait", "selector": "table", "timeout": 2000},
-            {"type": "scroll", "position": 800},
+            {"type": "wait", "selector": FINDINGS_READY, "timeout": 10000},
+            {"type": "scroll_to", "selector": "#findings"},
+            {"type": "click", "selector": FIRST_FINDING_RADIO, "force": True},
+            {"type": "wait", "selector": DETAILS_PANEL, "timeout": 5000},
+            {"type": "wait_time", "ms": 500},
+            {"type": "scroll_to", "selector": "#findings"},
             {"type": "wait_time", "ms": 300},
         ],
         "clip": {"x": 0, "y": 0, "width": VIEWPORT_WIDTH, "height": 900},
@@ -129,7 +149,7 @@ SCREENSHOTS = [
         "file": "security_assessment_multi_account.html",
         "description": "Multi-Account Consolidated View",
         "actions": [
-            {"type": "wait", "selector": ".metrics", "timeout": 2000},
+            {"type": "wait", "selector": OVERVIEW_READY, "timeout": 10000},
             {"type": "scroll", "position": 0},
         ],
         "clip": {"x": 0, "y": 0, "width": VIEWPORT_WIDTH, "height": 800},
@@ -280,9 +300,10 @@ def anonymize_account_ids(html_files: list) -> None:
             continue
         content = html_file.read_text(encoding="utf-8")
         file_contents[html_file] = content
-        for account_id in account_id_pattern.findall(content):
-            if account_id not in discovered:
-                discovered.append(account_id)
+        for text, _in_code in _page_texts(content):
+            for account_id in account_id_pattern.findall(text):
+                if account_id not in discovered:
+                    discovered.append(account_id)
 
     if not discovered:
         print("  No account IDs found to anonymize.")
@@ -306,7 +327,9 @@ def anonymize_account_ids(html_files: list) -> None:
         return mapping.get(match.group(0), match.group(0))
 
     for html_file, content in file_contents.items():
-        updated = account_id_pattern.sub(_replace, content)
+        updated = _map_page_text(
+            content, lambda text: account_id_pattern.sub(_replace, text)
+        )
         if updated != content:
             html_file.write_text(updated, encoding="utf-8")
             print(f"  Updated: {html_file.name}")
@@ -365,6 +388,41 @@ def _page_code_test(content: str):
     return in_code
 
 
+def _never(_position: int) -> bool:
+    return False
+
+
+def _page_texts(content: str) -> list:
+    """(text, in_code) pairs holding a page's report text.
+
+    A report page (report_template.render_page) keeps its text in the page
+    title and its data model; each string is one text and holds no page code,
+    and the inlined Cloudscape script and styles are never read. Any other
+    HTML is one text, with its styles, scripts and inline code marked.
+    """
+    units = _patterns().report_text_units(content)
+    if units is None:
+        return [(content, _page_code_test(content))]
+    return [(unit, _never) for unit in units]
+
+
+def _map_page_text(content: str, function) -> str:
+    """content with function applied to each text of _page_texts()."""
+    if _patterns().is_report_page(content):
+        return _patterns().map_report_text(content, function)
+    return function(content)
+
+
+_PATTERNS = None
+
+
+def _patterns():
+    global _PATTERNS
+    if _PATTERNS is None:
+        _PATTERNS = _load_generated_value_kinds()
+    return _PATTERNS
+
+
 def point_changes_links_at_samples(changes_page: Path) -> None:
     """Link the changes page to the sample report instead of a run's files.
 
@@ -377,11 +435,39 @@ def point_changes_links_at_samples(changes_page: Path) -> None:
         print(f"  WARNING: {changes_page} not found, skipping...")
         return
     content = changes_page.read_text(encoding="utf-8")
-    updated = _RUN_CSV_LINK.sub("", content)
-    updated = _RUN_REPORT_LINK.sub(r'<a href="\1.html">\1.html</a>', updated)
+    if _patterns().is_report_page(content):
+        updated = _point_model_links_at_samples(content)
+    else:
+        updated = _RUN_CSV_LINK.sub("", content)
+        updated = _RUN_REPORT_LINK.sub(r'<a href="\1.html">\1.html</a>', updated)
     if updated != content:
         changes_page.write_text(updated, encoding="utf-8")
         print(f"  Linked {changes_page.name} to the sample files")
+
+
+_RUN_REPORT_NAME = re.compile(r"(security_assessment_single_account)_\d{8}_\d{6}\.html")
+_RUN_CSV_NAME = re.compile(r"security_assessment_changes_\d{8}_\d{6}\.csv")
+
+
+def _point_model_links_at_samples(content: str) -> str:
+    """The changes page's data model, linked to the sample report, no CSV."""
+    patterns = _patterns()
+    data = patterns.report_data(content)
+    main_report = data.get("mainReport")
+    csv_name = data.get("csvName")
+    if main_report:
+        main_report = _RUN_REPORT_NAME.sub(r"\1.html", main_report)
+    if csv_name and _RUN_CSV_NAME.fullmatch(csv_name):
+        csv_name = None
+    if main_report == data.get("mainReport") and csv_name == data.get("csvName"):
+        return content
+    data = {**data, "mainReport": main_report, "csvName": csv_name}
+    match = patterns._REPORT_DATA.search(content)
+    return (
+        content[: match.start(2)]
+        + patterns._template()._json_for_script(data)
+        + content[match.end(2) :]
+    )
 
 
 def _synthetic_value(kinds, value: str, kind: str, index: int, taken: set) -> str:
@@ -480,24 +566,27 @@ def anonymize_resource_ids(html_files: list, *, names_only: bool = False) -> dic
         content = html_file.read_text(encoding="utf-8")
         if marker in content:
             print(f"  Already anonymized: {html_file.name}")
-            if names_only and kinds.source_account_names(content):
+            texts = _page_texts(content)
+            if names_only and any(
+                kinds.source_account_names(text) for text, _in_code in texts
+            ):
                 print(f"  ERROR: {html_file.name} still holds a source account name")
                 print("  No file was changed.")
                 sys.exit(1)
-            in_code = _page_code_test(content)
-            for start, end, kind in values(content):
-                if not in_code(start):
-                    used.setdefault(content[start:end], kind)
+            for text, in_code in texts:
+                for start, end, kind in values(text):
+                    if not in_code(start):
+                        used.setdefault(text[start:end], kind)
             continue
         contents[html_file] = content
 
     # Number the distinct values in the order they first appear, file by file.
     kind_of: dict = {}
     for content in contents.values():
-        in_code = _page_code_test(content)
-        for start, end, kind in values(content):
-            if not in_code(start):
-                kind_of.setdefault(content[start:end], kind)
+        for text, in_code in _page_texts(content):
+            for start, end, kind in values(text):
+                if not in_code(start):
+                    kind_of.setdefault(text[start:end], kind)
     mapping: dict = {}
     counters: collections.Counter = collections.Counter(used.values())
     taken = set(kind_of) | set(used)
@@ -545,12 +634,9 @@ def anonymize_resource_ids(html_files: list, *, names_only: bool = False) -> dic
         if plain_values
         else None
     )
-    replaced: collections.Counter = collections.Counter()
-    updates = {}
-    for html_file, content in contents.items():
-        # The page's own styles and scripts hold no report data: nothing in
-        # them is replaced.
-        in_code = _page_code_test(content)
+
+    def replace(content, in_code):
+        """(content with the mapped values replaced, kinds of values left)."""
         spans = [
             (*match.span("v"), match.group("v"))
             for kind, pattern in kinds._GENERATED
@@ -588,21 +674,38 @@ def anonymize_resource_ids(html_files: list, *, names_only: bool = False) -> dic
         # inside longer, unrelated text.
         # Styles and scripts included: a value there stops the run rather
         # than being left in place.
-        left = sorted(
+        left = (
             {kind_of[match.group()] for match in tokens.finditer(updated)}
             if tokens
             else set()
         )
-        if plain_tokens:
+        if plain_tokens and in_code is not _never:
             updated_in_code = _page_code_test(updated)
-            left = sorted(
-                set(left)
-                | {
-                    kind_of[match.group()]
-                    for match in plain_tokens.finditer(updated)
-                    if updated_in_code(match.start())
-                }
-            )
+            left |= {
+                kind_of[match.group()]
+                for match in plain_tokens.finditer(updated)
+                if updated_in_code(match.start())
+            }
+        return updated, left
+
+    replaced: collections.Counter = collections.Counter()
+    updates = {}
+    for html_file, content in contents.items():
+        # The page's own styles and scripts hold no report data: nothing in
+        # them is replaced. On a report page only its title and data model
+        # are read and written (see _page_texts).
+        left: set = set()
+        if kinds.is_report_page(content):
+
+            def replace_text(text):
+                updated_text, text_left = replace(text, _never)
+                left.update(text_left)
+                return updated_text
+
+            updated = kinds.map_report_text(content, replace_text)
+        else:
+            updated, left = replace(content, _page_code_test(content))
+        left = sorted(left)
         if left:
             print(f"  ERROR: {html_file.name} still holds values of kind(s) {left}")
             print("  No file was changed.")
@@ -668,31 +771,36 @@ def optimize_png(image_path: Path, max_size_kb: int = 300) -> None:
 
 def fit_viewport_to_sidebar(page, minimum_height: int) -> int:
     """
-    Expand the viewport until the entire left navigation fits without scrolling.
+    Expand the viewport until the entire side navigation fits without scrolling.
 
-    The report sidebar uses ``height: 100vh`` with its own vertical overflow.
-    A fixed screenshot height can therefore hide lower navigation sections even
-    when the main page has enough content. Measuring ``scrollHeight`` makes the
-    capture resilient to additional lenses, governance frameworks, and
-    compliance standards.
+    The report's Cloudscape side navigation is a fixed-height panel with its
+    own vertical overflow. A fixed screenshot height can therefore hide lower
+    navigation sections even when the main page has enough content. Measuring
+    its ``scrollHeight`` makes the capture resilient to additional lenses,
+    governance frameworks, and compliance standards.
 
     Args:
         page: Playwright page instance.
         minimum_height: Minimum capture height requested by the screenshot.
 
     Returns:
-        The viewport height required to include the full sidebar.
+        The viewport height required to include the full navigation.
     """
-    sidebar = page.query_selector(".sidebar")
-    if sidebar is None:
+    try:
+        page.wait_for_selector(NAVIGATION, timeout=10000)
+    except Exception:
         return minimum_height
+    measure = """element => {
+        let panel = element;
+        for (let node = element; node && node !== document.body; node = node.parentElement) {
+            if (node.scrollHeight > node.clientHeight + 1) { panel = node; break; }
+        }
+        return Math.ceil(panel.getBoundingClientRect().top + panel.scrollHeight);
+    }"""
 
     target_height = minimum_height
     for _ in range(3):
-        sidebar_height = page.eval_on_selector(
-            ".sidebar", "element => element.scrollHeight"
-        )
-        target_height = max(target_height, sidebar_height)
+        target_height = max(target_height, page.eval_on_selector(NAVIGATION, measure))
         viewport = page.viewport_size or {
             "width": VIEWPORT_WIDTH,
             "height": VIEWPORT_HEIGHT,
@@ -700,47 +808,37 @@ def fit_viewport_to_sidebar(page, minimum_height: int) -> int:
         if viewport["height"] >= target_height:
             break
         page.set_viewport_size({"width": viewport["width"], "height": target_height})
-        page.wait_for_timeout(100)
+        page.wait_for_timeout(200)
 
-    final_sidebar_height = page.eval_on_selector(
-        ".sidebar", "element => element.scrollHeight"
-    )
-    target_height = max(target_height, final_sidebar_height)
-    viewport = page.viewport_size or {
-        "width": VIEWPORT_WIDTH,
-        "height": VIEWPORT_HEIGHT,
-    }
-    if viewport["height"] < target_height:
-        page.set_viewport_size({"width": viewport["width"], "height": target_height})
-        page.wait_for_timeout(100)
-
-    sidebar_visibility = page.eval_on_selector(
-        ".sidebar",
+    navigation = page.eval_on_selector(
+        NAVIGATION,
         """element => {
-            const sidebarRect = element.getBoundingClientRect();
-            const hiddenItems = [...element.querySelectorAll(".nav-item")]
-                .filter(item => {
-                    const rect = item.getBoundingClientRect();
-                    return rect.top < sidebarRect.top || rect.bottom > sidebarRect.bottom;
-                })
-                .map(item => item.textContent.trim().replace(/\\s+/g, " "));
-            return {
-                clientHeight: element.clientHeight,
-                scrollHeight: element.scrollHeight,
-                navItemCount: element.querySelectorAll(".nav-item").length,
-                hiddenItems,
-            };
+            const bottom = window.innerHeight;
+            const links = [...element.querySelectorAll("a[href]")];
+            const hiddenItems = links
+                .filter(link => link.getBoundingClientRect().bottom > bottom)
+                .map(link => link.textContent.trim().replace(/\\s+/g, " "));
+            return { navItemCount: links.length, hiddenItems };
         }""",
     )
-    if sidebar_visibility["hiddenItems"]:
-        hidden = ", ".join(sidebar_visibility["hiddenItems"])
+    if navigation["hiddenItems"]:
+        hidden = ", ".join(navigation["hiddenItems"])
         raise RuntimeError(f"Sidebar navigation remains clipped: {hidden}")
 
     print(
         f"  Full sidebar capture height: {target_height}px "
-        f"({sidebar_visibility['navItemCount']} navigation items visible)"
+        f"({navigation['navItemCount']} navigation items visible)"
     )
     return target_height
+
+
+def launch_chromium(playwright):
+    """Playwright's Chromium, or the installed Google Chrome when it's missing."""
+    try:
+        return playwright.chromium.launch(headless=True)
+    except Exception as error:
+        print(f"  Playwright Chromium unavailable ({error}); trying Google Chrome")
+        return playwright.chromium.launch(headless=True, channel="chrome")
 
 
 def capture_screenshot(browser, screenshot_config: dict) -> Path:
@@ -784,9 +882,15 @@ def capture_screenshot(browser, screenshot_config: dict) -> Path:
                 action["selector"], timeout=action.get("timeout", 5000)
             )
         elif action["type"] == "click":
-            page.click(action["selector"])
+            # Cloudscape draws its own radio buttons over the real inputs, so
+            # a row's input needs force=True.
+            page.click(action["selector"], force=action.get("force", False))
         elif action["type"] == "scroll":
             page.evaluate(f"window.scrollTo(0, {action['position']})")
+        elif action["type"] == "scroll_to":
+            page.eval_on_selector(
+                action["selector"], "element => element.scrollIntoView()"
+            )
         elif action["type"] == "wait_time":
             time.sleep(action["ms"] / 1000)
 
@@ -868,8 +972,8 @@ def main():
     try:
         with sync_playwright() as p:
             print("Verifying Playwright Chromium launch...")
-            browser = p.chromium.launch(headless=True)
-            print(f"Verified Playwright Chromium: {p.chromium.executable_path}")
+            browser = launch_chromium(p)
+            print(f"Verified browser: {browser.browser_type.name} {browser.version}")
 
             if check_dependencies_only:
                 browser.close()

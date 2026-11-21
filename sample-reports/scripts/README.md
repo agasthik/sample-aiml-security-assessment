@@ -111,12 +111,14 @@ SCREENSHOTS = [
         "file": "security_assessment_single_account.html",
         "description": "Executive Dashboard (Light Mode)",
         "actions": [
-            {"type": "wait", "selector": ".metrics", "timeout": 2000},
+            # The Cloudscape UI draws the page after load; wait for it.
+            {"type": "wait", "selector": OVERVIEW_READY, "timeout": 10000},
             {"type": "scroll", "position": 0},
         ],
         "clip": {"x": 0, "y": 0, "width": 1440, "height": 800},
     },
-    # Add more screenshots...
+    # Add more screenshots. Actions: wait, click, scroll, scroll_to
+    # (a selector such as "#findings"), and wait_time.
 ]
 ```
 

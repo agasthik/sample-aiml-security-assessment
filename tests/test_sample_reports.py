@@ -52,7 +52,12 @@ def test_samples_are_anonymized_with_placeholder_account_ids(report_name):
         capture.ANONYMIZED_ACCOUNT_IDS
     )
     assert not unexpected_ids, f"{len(unexpected_ids)} unrecognized account IDs"
-    assert ":root {" in report  # the page's CSS is intact
+    # The page is a Cloudscape report: its data model reads, and the inlined
+    # Cloudscape styles and script are intact.
+    assert patterns.report_data(report)["kind"] in {"assessment", "changes"}
+    styles = re.search(r"<style>(.*?)</style>", report, re.S).group(1)
+    assert "awsui_" in styles and "@font-face" in styles
+    assert report.rstrip().endswith("</script>\n</body>\n</html>")
 
 
 @pytest.mark.parametrize("report_name", MAIN_REPORTS)
@@ -68,9 +73,11 @@ def test_bedrock_na_rows_are_informational(report_name):
 
 
 def test_changes_page_links_to_the_sample_files():
-    page = (SAMPLES / CHANGES_PAGE).read_text(encoding="utf-8")
-    links = set(re.findall(r'href="(security_assessment_[^"]*)"', page))
-    assert links
+    data = patterns.report_data((SAMPLES / CHANGES_PAGE).read_text(encoding="utf-8"))
+    # The sample links to the sample report, and publishes no changes CSV.
+    assert data["mainReport"] == MAIN_REPORTS[0]
+    assert data["csvName"] is None
+    links = {data["mainReport"]}
     assert all((SAMPLES / link).is_file() for link in links), links
 
 
@@ -125,6 +132,10 @@ def test_sample_report_tree_has_no_source_account_names():
         if not path.is_file() or path.suffix not in {".html", ".md", ".py", ".txt"}:
             continue
         text = path.read_text(encoding="utf-8")
+        # A report page's own text is its title and data model; the inlined
+        # Cloudscape bundle is third-party code and holds no report text.
+        if path.suffix == ".html":
+            text = "\n".join(patterns.report_text_units(text) or [text])
         counts = Counter(
             {
                 "source-specific name": len(patterns.source_account_names(text)),
@@ -159,11 +170,12 @@ def test_sample_pages_match_reviewed_generated_value_inventory():
     }
     actual = {}
     for path in sorted(SAMPLES.glob("*.html")):
-        text = path.read_text(encoding="utf-8")
-        in_code = capture._page_code_test(text)
         values = sorted(
             {
                 (kind, text[start:end])
+                for text, in_code in capture._page_texts(
+                    path.read_text(encoding="utf-8")
+                )
                 for start, end, kind in patterns.generated_values(text)
                 if not in_code(start)
             }

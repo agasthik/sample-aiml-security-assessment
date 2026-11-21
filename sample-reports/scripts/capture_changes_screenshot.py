@@ -48,7 +48,7 @@ SCREENSHOTS = [
         "file": CHANGES_PAGE,
         "description": "Changes Since Last Assessment (Light Mode)",
         "actions": [
-            {"type": "wait", "selector": ".metrics", "timeout": 2000},
+            {"type": "wait", "selector": shared.CHANGES_READY, "timeout": 10000},
             {"type": "scroll", "position": 0},
         ],
         "clip": {"x": 0, "y": 0, "width": shared.VIEWPORT_WIDTH, "height": 900},
@@ -118,7 +118,7 @@ def main(argv=None) -> int:
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = shared.launch_chromium(playwright)
         try:
             if check_dependencies_only:
                 print("Screenshot environment is ready.")
