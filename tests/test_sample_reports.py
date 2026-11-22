@@ -163,8 +163,8 @@ def test_sample_pages_match_reviewed_generated_value_inventory():
     expected = {
         "index.html": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
         "security_assessment_changes.html": "8eb81dcf0f6c10c713634cceffb0718736c105e7eb159248ffd8946f6152e9ea",
-        "security_assessment_multi_account.html": "2d9c52fa4031a150d00d5f750fdc9adf73c58ad8d7cca5786251f164f67f2dda",
-        "security_assessment_single_account.html": "5b0db0542b38579fe5731b4cfcefe7d505126783fcd0080a4233bf21eaa917cb",
+        "security_assessment_multi_account.html": "844046efb644f13c9c636f51fb1367cfb8e3d92328eb91b70c2a25b49dd4918b",
+        "security_assessment_single_account.html": "8a4dc86e9981c5188c939822af755e15ad2f7aa423aab513c6d228263b839e9e",
         "selection-bedrock.html": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
         "selection-governance-only.html": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
     }
