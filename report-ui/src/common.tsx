@@ -171,7 +171,7 @@ export function ReportShell(props: {
     <>
       <div id="report-top-nav" className="report-top-nav">
         <TopNavigation
-          identity={{ href: '#overview', title: 'AI/ML Security', logo: { src: SHIELD_LOGO, alt: '' } }}
+          identity={{ href: '#overview', title: 'AI/ML Security Assessment', logo: { src: SHIELD_LOGO, alt: '' } }}
           utilities={[
             {
               type: 'button',

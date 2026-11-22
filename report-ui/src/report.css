@@ -77,9 +77,20 @@
 /*
  * The product title is short and the bar has room; Chrome sizes the
  * identity link before the inlined font is applied, which clips the title.
+ * Wider than a phone, the link keeps the title's full width; on a phone it
+ * keeps a minimum and Cloudscape truncates the rest.
  */
 .report-top-nav [class*='awsui_identity-link_'] {
   min-inline-size: 220px;
+}
+
+@media (min-width: 689px) {
+  .report-top-nav [class*='awsui_identity_'],
+  .report-top-nav [class*='awsui_identity-link_'],
+  .report-top-nav [class*='awsui_identity-link_'] [class*='awsui_title_'] {
+    flex-shrink: 0;
+    min-inline-size: max-content;
+  }
 }
 
 /* AWS identifiers in finding text, drawn with Cloudscape's inline-code style.
