@@ -284,6 +284,10 @@ def anonymize_account_ids(html_files: list) -> None:
     across all provided files, so an account that appears in multiple reports
     is anonymized to the same placeholder everywhere.
 
+    IDs that are already placeholders are left as they are, and real IDs get
+    only the placeholders no file uses yet. Running this again, or on a mix of
+    anonymized and new reports, changes nothing in the anonymized ones.
+
     Args:
         html_files: List of Path objects pointing to HTML report files.
     """
@@ -305,19 +309,29 @@ def anonymize_account_ids(html_files: list) -> None:
                 if account_id not in discovered:
                     discovered.append(account_id)
 
-    if not discovered:
+    placeholders = set(ANONYMIZED_ACCOUNT_IDS)
+    real_ids = [
+        account_id for account_id in discovered if account_id not in placeholders
+    ]
+    available = [
+        placeholder
+        for placeholder in ANONYMIZED_ACCOUNT_IDS
+        if placeholder not in discovered
+    ]
+
+    if not real_ids:
         print("  No account IDs found to anonymize.")
         return
 
-    if len(discovered) > len(ANONYMIZED_ACCOUNT_IDS):
+    if len(real_ids) > len(available):
         print(
-            f"  ERROR: Found {len(discovered)} distinct account IDs but only "
-            f"{len(ANONYMIZED_ACCOUNT_IDS)} placeholders are defined. "
+            f"  ERROR: Found {len(real_ids)} distinct account IDs to anonymize but "
+            f"only {len(available)} placeholders are unused. "
             "Add more entries to ANONYMIZED_ACCOUNT_IDS."
         )
         sys.exit(1)
 
-    mapping = dict(zip(discovered, ANONYMIZED_ACCOUNT_IDS))
+    mapping = dict(zip(real_ids, available))
     for real_id, placeholder in mapping.items():
         print(f"  {real_id} -> {placeholder}")
 

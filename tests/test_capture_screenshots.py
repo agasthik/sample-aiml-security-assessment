@@ -76,6 +76,23 @@ def test_account_ids_next_to_letters_and_underscores_are_anonymized(tmp_path):
     )
 
 
+def test_placeholder_account_ids_are_kept_and_not_reused(tmp_path):
+    first, second = capture_screenshots.ANONYMIZED_ACCOUNT_IDS[:2]
+    anonymized = tmp_path / "anonymized.html"
+    anonymized.write_text(f"Account {second} and {first}", encoding="utf-8")
+    new = tmp_path / "new.html"
+    new.write_text("Account 987654321098", encoding="utf-8")
+
+    capture_screenshots.anonymize_account_ids([anonymized, new])
+    capture_screenshots.anonymize_account_ids([anonymized, new])
+
+    # The anonymized page is unchanged; the real ID gets the first unused
+    # placeholder, and a second run changes nothing.
+    assert anonymized.read_text(encoding="utf-8") == f"Account {second} and {first}"
+    third = capture_screenshots.ANONYMIZED_ACCOUNT_IDS[2]
+    assert new.read_text(encoding="utf-8") == f"Account {third}"
+
+
 def _report(details: str) -> str:
     row = (
         '<tr data-service="bedrock"><td><code>111122223333</code></td>'
