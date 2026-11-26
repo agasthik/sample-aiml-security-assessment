@@ -434,6 +434,13 @@ back `Passed` names what it could not read.
 
 ### Fixed
 
+- In accounts with many Amazon Bedrock resources, the Bedrock assessment step
+  no longer fails with `States.DataLimitExceeded` and lands in
+  `Bedrock Assessment Incomplete`. The Bedrock and Responsible AI GRC Lambdas
+  returned every finding in their response, which could exceed the Step
+  Functions 256 KB task-result quota. They now return `report_url` and
+  `row_count`, like the SageMaker AI Lambda. Findings were never lost: they
+  are read from the S3 CSVs, which are unchanged.
 - BR-03 and BR-44 now link to the current Amazon Bedrock Marketplace access
   documentation section. Refreshed single-account, multi-account, and changes
   samples carry the corrected link.
@@ -605,6 +612,11 @@ back `Passed` names what it could not read.
   redeploy the Bedrock and Responsible AI GRC assessment Lambdas. No template
   or IAM changes, so no infrastructure update and no member-role StackSet
   update are required.
+- **Bedrock and Responsible AI GRC response size:** Run the single-account or
+  multi-account CodeBuild project with this revision to redeploy the Bedrock
+  and Responsible AI GRC assessment Lambdas. The state machine, templates, and
+  IAM are unchanged, so no infrastructure or member-role StackSet update is
+  required.
 - **SageMaker AI policy-variable parsing:** Run the single-account or
   multi-account CodeBuild project with this revision to redeploy the SageMaker
   AI assessment Lambda. No infrastructure template, member-role StackSet, or

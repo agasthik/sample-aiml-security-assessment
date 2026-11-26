@@ -686,10 +686,8 @@ class TestHandlerWithPartialInventory:
         mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
         mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/report.csv"
 
-        result = app.lambda_handler(lambda_event, None)
+        findings, _ = app.run_assessment(lambda_event)
 
-        assert result["statusCode"] == 200
-        findings = result["body"]["findings"]
         # All 65 registry entries must produce a result dict
         assert len(findings) == 65
 
@@ -752,7 +750,6 @@ class TestHandlerWithPartialInventory:
         mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
         mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/report.csv"
 
-        result = app.lambda_handler(lambda_event, None)
+        findings, _ = app.run_assessment(lambda_event)
 
-        assert result["statusCode"] == 200
-        assert len(result["body"]["findings"]) == 65
+        assert len(findings) == 65

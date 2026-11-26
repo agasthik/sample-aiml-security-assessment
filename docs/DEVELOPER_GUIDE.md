@@ -684,6 +684,7 @@ Checklist for the new package:
 - [ ] Every regional check handles unsupported regions and features with an `N/A`/`Informational` row, distinct from access-denied and unexpected errors.
 - [ ] Every list API paginates; per-resource detail calls are isolated; empty, denied, and partial inventories are distinguishable.
 - [ ] The handler always writes the CSV when it returns and raises when it cannot.
+- [ ] The handler response carries a summary (for example `report_url` and `row_count`), never the findings. Step Functions caps a task result at 256 KB and fails a larger one with `States.DataLimitExceeded`, which routes the branch to `Incomplete`. The report reads the findings from the S3 CSV.
 - [ ] Tests load the package through `importlib.util.spec_from_file_location` under a distinct module name (for example, `comprehend_app`), not a bare `import app`.
 
 <a id="step-2-update-aws-sam-template"></a>

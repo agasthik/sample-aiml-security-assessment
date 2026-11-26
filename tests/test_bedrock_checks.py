@@ -9962,8 +9962,14 @@ class TestBedrockHandlerMultiRegion:
                     else {"role_permissions": {}, "user_permissions": {}},
                 )
             )
+            self.csv_findings = []
+
+            def fake_csv(findings):
+                self.csv_findings = findings
+                return "csv"
+
             stack.enter_context(
-                patch.object(bedrock_app, "generate_csv_report", return_value="csv")
+                patch.object(bedrock_app, "generate_csv_report", side_effect=fake_csv)
             )
             stack.enter_context(
                 patch.object(bedrock_app, "write_to_s3", return_value="s3://b/r.csv")
@@ -9975,6 +9981,21 @@ class TestBedrockHandlerMultiRegion:
             resp = bedrock_app.lambda_handler(event, None)
 
         return resp, recorded
+
+    def test_the_response_carries_the_report_and_row_count_not_the_findings(self):
+        # The findings live in the S3 CSV. Returning them pushed the task result
+        # past the Step Functions 256 KB quota (States.DataLimitExceeded).
+        resp, _ = self._run_handler_with_check_spies(_bedrock_event())
+        rows = [r for f in self.csv_findings for r in f.get("csv_data", [])]
+        assert rows
+        assert resp == {
+            "statusCode": 200,
+            "body": {
+                "message": "Security checks completed successfully",
+                "report_url": "s3://b/r.csv",
+                "row_count": len(rows),
+            },
+        }
 
     def test_new_regional_checks_run_per_region_non_primary(self):
         # On a non-primary region, BR-26..32 must each run with region=<scanned>,

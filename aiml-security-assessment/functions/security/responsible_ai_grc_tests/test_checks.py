@@ -3578,8 +3578,7 @@ class TestFinservChecksRegistry:
 
         mock_build.return_value = [("FS-44", boom), ("FS-02", normal)]
 
-        resp = app.lambda_handler({"Execution": {"Name": "exec-1"}}, None)
-        findings = resp["body"]["findings"]
+        findings, _ = app.run_assessment({"Execution": {"Name": "exec-1"}})
         # Errored check now contributes exactly one row, not zero (no silent drop).
         boom_result = next(f for f in findings if f["check_name"] == "Boom Check")
         assert len(boom_result["csv_data"]) == 1
@@ -3612,8 +3611,7 @@ class TestFinservChecksRegistry:
 
         mock_build.return_value = [("FS-13", empty_pass)]
 
-        resp = app.lambda_handler({"Execution": {"Name": "exec-3"}}, None)
-        findings = resp["body"]["findings"]
+        findings, _ = app.run_assessment({"Execution": {"Name": "exec-3"}})
         result = next(f for f in findings if f["check_name"] == "Empty Pass Check")
         assert len(result["csv_data"]) == 1
         row = result["csv_data"][0]
@@ -3633,8 +3631,7 @@ class TestFinservChecksRegistry:
         with patch(
             "finserv_app.boto3.client", side_effect=RuntimeError("AccessDenied")
         ):
-            resp = app.lambda_handler({"Execution": {"Name": "exec-2"}}, None)
-        findings = resp["body"]["findings"]
+            findings, _ = app.run_assessment({"Execution": {"Name": "exec-2"}})
         for f in findings:
             assert len(f["csv_data"]) >= 1, f"{f['check_name']} contributed zero rows"
 

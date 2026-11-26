@@ -114,6 +114,12 @@ roles in member accounts.
 - In multi-region scans, review each region's iteration of the `Scan Regions`
   Map state. One service branch can be marked incomplete while the state
   machine still generates a report for the remaining services and regions.
+- If a service task failed with `States.DataLimitExceeded`, its Lambda
+  returned more than the Step Functions 256 KB task-result quota. Earlier
+  releases did this for Bedrock and Responsible AI GRC in accounts with many
+  resources. Their CSVs were still written and reported, but the branch was
+  marked incomplete. Redeploy with the current revision, where those Lambdas
+  return only a summary.
 
 ### 5. EarlyValidation::ResourceExistenceCheck Error
 

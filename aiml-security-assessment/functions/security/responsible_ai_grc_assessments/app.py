@@ -482,7 +482,7 @@ class ResourceInventory:
     sentinel (carrying the original exception). Checks MUST NOT mutate the
     lists/dicts stored here; the equivalence tests catch any such mutation.
 
-    This is constructed once in ``lambda_handler`` and injected like
+    This is constructed once in ``run_assessment`` and injected like
     ``permission_cache`` (design DD-1, INV-6)."""
 
     lambda_functions: "list | _Unavailable"
@@ -8228,7 +8228,7 @@ def build_finserv_checks(permission_cache, inventory=None):
 
     ``inventory`` is optional (defaults to ``None``) so that existing one-arg
     call sites — e.g. tests/test_severity_register.py — continue to work
-    without modification (DD-2b).  ``lambda_handler`` always passes a real
+    without modification (DD-2b).  ``run_assessment`` always passes a real
     ``ResourceInventory``; consuming checks will be bound to it in Wave 3.
     FS-21 and FS-46 (S3-inventory consumers) are bound to ``inventory`` here.
     Guardrail consumers (FS-27a, 28, 36, 38, 45, 47, 50, 51, 59) are now
@@ -8351,13 +8351,14 @@ def build_finserv_checks(permission_cache, inventory=None):
     ]
 
 
-def lambda_handler(event, context):
-    """Main Lambda handler — runs all FinServ security checks.
+def run_assessment(event):
+    """Run all FinServ security checks and write the findings CSV to S3.
 
-    The registry in build_finserv_checks() contains 65 entries (64 standalone
-    FS checks plus the new FS-27 Automated Reasoning Policies check). Two
-    entries share the FS-27 check_id (contextual grounding + ARC policies),
-    both contributing rows to the report under the same check namespace.
+    Returns ``(all_findings, report_url)``. The registry in
+    build_finserv_checks() contains 65 entries (64 standalone FS checks plus
+    the new FS-27 Automated Reasoning Policies check). Two entries share the
+    FS-27 check_id (contextual grounding + ARC policies), both contributing
+    rows to the report under the same check namespace.
     """
     logger.info("Starting Responsible AI GRC security assessment")
     all_findings = []
@@ -8399,12 +8400,24 @@ def lambda_handler(event, context):
         raise ValueError("AIML_ASSESSMENT_BUCKET_NAME environment variable is not set")
 
     s3_url = write_to_s3(execution_id, csv_content, bucket_name)
+    return all_findings, s3_url
 
+
+def lambda_handler(event, context):
+    """Main Lambda handler — runs all FinServ security checks.
+
+    The findings live in the S3 CSV. Returning them would push the result
+    toward the Step Functions 256 KB task-result quota
+    (States.DataLimitExceeded), so the response carries only a summary.
+    """
+    all_findings, s3_url = run_assessment(event)
     return {
         "statusCode": 200,
         "body": {
             "message": "Responsible AI GRC security assessment completed",
-            "findings": all_findings,
             "report_url": s3_url,
+            "row_count": sum(
+                len(finding.get("csv_data", [])) for finding in all_findings
+            ),
         },
     }

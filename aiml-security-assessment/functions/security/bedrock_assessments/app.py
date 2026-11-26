@@ -48026,12 +48026,16 @@ def lambda_handler(event, context):
         logger.info("Writing report to S3")
         s3_url = write_to_s3(execution_id, csv_content, bucket_name, region=region)
 
+        # The findings live in the S3 CSV. Returning them would exceed the
+        # Step Functions 256 KB task-result quota (States.DataLimitExceeded).
         return {
             "statusCode": 200,
             "body": {
                 "message": "Security checks completed successfully",
-                "findings": all_findings,
                 "report_url": s3_url,
+                "row_count": sum(
+                    len(finding.get("csv_data", [])) for finding in all_findings
+                ),
             },
         }
 

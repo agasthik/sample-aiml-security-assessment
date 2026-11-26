@@ -570,10 +570,10 @@ def _run_handler_and_extract_tuples(mock_client_side_effect, event):
         mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
         mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/responsible_ai_grc_security_report_equivalence-test-001.csv"
 
-        result = app.lambda_handler(event, None)
+        findings, _ = app.run_assessment(event)
 
     tuples = []
-    for finding in result["body"]["findings"]:
+    for finding in findings:
         for row in finding.get("csv_data", []):
             tuples.append(
                 (
@@ -753,10 +753,8 @@ class TestGoldenEquivalenceBaseline:
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
             mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/report.csv"
 
-            result = app.lambda_handler(lambda_event, None)
+            findings, _ = app.run_assessment(lambda_event)
 
-        assert result["statusCode"] == 200
-        findings = result["body"]["findings"]
         assert len(findings) == 65, f"Expected 65 registry entries; got {len(findings)}"
 
     def test_all_findings_have_rows(self, account_state_mock, lambda_event):
@@ -770,9 +768,9 @@ class TestGoldenEquivalenceBaseline:
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
             mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/report.csv"
 
-            result = app.lambda_handler(lambda_event, None)
+            findings, _ = app.run_assessment(lambda_event)
 
-        for finding in result["body"]["findings"]:
+        for finding in findings:
             assert finding.get("csv_data"), (
                 f"Finding '{finding.get('check_name')}' produced no CSV rows"
             )
@@ -788,11 +786,9 @@ class TestGoldenEquivalenceBaseline:
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
             mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/report.csv"
 
-            result = app.lambda_handler(lambda_event, None)
+            findings, _ = app.run_assessment(lambda_event)
 
-        all_rows = [
-            row for f in result["body"]["findings"] for row in f.get("csv_data", [])
-        ]
+        all_rows = [row for f in findings for row in f.get("csv_data", [])]
         passed_ids = {r["Check_ID"] for r in all_rows if r.get("Status") == "Passed"}
 
         # These checks should produce PASS rows with our fixture
@@ -813,11 +809,9 @@ class TestGoldenEquivalenceBaseline:
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
             mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/report.csv"
 
-            result = app.lambda_handler(lambda_event, None)
+            findings, _ = app.run_assessment(lambda_event)
 
-        all_rows = [
-            row for f in result["body"]["findings"] for row in f.get("csv_data", [])
-        ]
+        all_rows = [row for f in findings for row in f.get("csv_data", [])]
         na_ids = {r["Check_ID"] for r in all_rows if r.get("Status") == "N/A"}
 
         # Advisory/N/A checks should appear
@@ -849,11 +843,9 @@ class TestGoldenEquivalenceBaseline:
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
             mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/report.csv"
 
-            result = app.lambda_handler(lambda_event, None)
+            findings, _ = app.run_assessment(lambda_event)
 
-        all_rows = [
-            row for f in result["body"]["findings"] for row in f.get("csv_data", [])
-        ]
+        all_rows = [row for f in findings for row in f.get("csv_data", [])]
         failed_ids = {r["Check_ID"] for r in all_rows if r.get("Status") == "Failed"}
         assert "FS-45" in failed_ids, (
             "Expected FS-45 FAIL when guardrail has no PII filters"
@@ -970,10 +962,10 @@ class TestPermittedMultiPageDeltas:
         ):
             mock_client.side_effect = mock_with_two_page_wafv2
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
-            result = app.lambda_handler(lambda_event, None)
+            findings, _ = app.run_assessment(lambda_event)
 
         actual = []
-        for finding in result["body"]["findings"]:
+        for finding in findings:
             for row in finding.get("csv_data", []):
                 actual.append(
                     (
@@ -1062,10 +1054,10 @@ class TestPermittedMultiPageDeltas:
         ):
             mock_client.side_effect = mock_with_two_page_s3
             mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
-            result = app.lambda_handler(lambda_event, None)
+            findings, _ = app.run_assessment(lambda_event)
 
         actual = []
-        for finding in result["body"]["findings"]:
+        for finding in findings:
             for row in finding.get("csv_data", []):
                 actual.append(
                     (

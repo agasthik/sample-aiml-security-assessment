@@ -301,20 +301,14 @@ class TestLargeEstatePerformance:
         tracemalloc.start()
         start = time.perf_counter()
 
-        result = app.lambda_handler(event, None)
+        findings, _ = app.run_assessment(event)
 
         elapsed = time.perf_counter() - start
         _, peak = tracemalloc.get_traced_memory()
         tracemalloc.stop()
 
-        # --- Correctness: handler must succeed ---
-        assert result["statusCode"] == 200, (
-            f"lambda_handler returned {result['statusCode']}"
-        )
-        assert "findings" in result["body"]
-        assert len(result["body"]["findings"]) == 65, (
-            f"Expected 65 findings, got {len(result['body']['findings'])}"
-        )
+        # --- Correctness: the assessment must return every registry entry ---
+        assert len(findings) == 65, f"Expected 65 findings, got {len(findings)}"
 
         # --- REQ-10.1 / REQ-10.2: Single enumeration per inventory ---
         # collect_resource_inventory is called exactly once per invocation.

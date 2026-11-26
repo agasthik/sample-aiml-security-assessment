@@ -3,19 +3,62 @@ Integration tests for the lambda_handler in responsible_ai_grc_assessments/app.p
 
 These tests verify:
   - lambda_handler runs end-to-end with all checks mocked
-  - Response structure (statusCode, body, findings, report_url)
+  - Response structure (statusCode, body, report_url, row_count; no findings)
   - All 59 standalone check functions are called (5 merged upstream)
   - CSV is written to S3
   - Error handling when AIML_ASSESSMENT_BUCKET_NAME is missing
   - Error handling when S3 write fails
 """
 
+import csv
+import io
 import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from .support import finserv_app as app
+
+
+def _generic_client():
+    """A MagicMock client whose list/describe calls return empty collections."""
+    generic = MagicMock()
+    paginator = MagicMock()
+    paginator.paginate.return_value = [{}]
+    generic.get_paginator.return_value = paginator
+    generic.list_web_acls.return_value = {"WebACLs": []}
+    generic.describe_subscription.side_effect = Exception("no shield")
+    generic.get_usage_plans.return_value = {"items": []}
+    generic.list_service_quotas.return_value = {"Quotas": []}
+    generic.get_anomaly_monitors.return_value = {"AnomalyMonitors": []}
+    generic.describe_budgets.return_value = {"Budgets": []}
+    generic.get_caller_identity.return_value = {"Account": "123456789012"}
+    generic.list_agents.return_value = {"agentSummaries": []}
+    generic.list_agent_runtimes.return_value = {"agentRuntimes": []}
+    generic.list_functions.return_value = {"Functions": []}
+    generic.list_state_machines.return_value = {"stateMachines": []}
+    generic.list_policies.return_value = {"Policies": []}
+    generic.list_custom_models.return_value = {"modelSummaries": []}
+    generic.list_models.return_value = {"Models": []}
+    generic.describe_config_rules.return_value = {"ConfigRules": []}
+    generic.list_evaluation_jobs.return_value = {"jobSummaries": []}
+    generic.describe_repositories.return_value = {"repositories": []}
+    generic.list_feature_groups.return_value = {"FeatureGroupSummaries": []}
+    generic.list_buckets.return_value = {"Buckets": []}
+    generic.list_knowledge_bases.return_value = {"knowledgeBaseSummaries": []}
+    generic.list_guardrails.return_value = {"guardrails": []}
+    generic.list_log_groups.return_value = {"logGroups": []}
+    generic.get_macie_session.side_effect = Exception("not enabled")
+    generic.list_foundation_models.return_value = {"modelSummaries": []}
+    generic.list_model_cards.return_value = {"ModelCardSummaries": []}
+    generic.list_rules.return_value = {"Rules": []}
+    generic.list_schedules.return_value = {"Schedules": []}
+    generic.get_rest_apis.return_value = {"items": []}
+    generic.list_processing_jobs.return_value = {"ProcessingJobSummaries": []}
+    generic.list_automated_reasoning_policies.return_value = {
+        "automatedReasoningPolicySummaries": []
+    }
+    return generic
 
 
 # =========================================================================
@@ -32,44 +75,7 @@ class TestLambdaHandler:
     def test_handler_returns_200(self, mock_client, mock_cache, mock_s3, lambda_event):
         """Smoke test: handler completes and returns 200."""
         # Return a generic mock for every boto3 client
-        generic = MagicMock()
-        # Make paginators return empty pages
-        paginator = MagicMock()
-        paginator.paginate.return_value = [{}]
-        generic.get_paginator.return_value = paginator
-        # Make list/describe calls return empty collections
-        generic.list_web_acls.return_value = {"WebACLs": []}
-        generic.describe_subscription.side_effect = Exception("no shield")
-        generic.get_usage_plans.return_value = {"items": []}
-        generic.list_service_quotas.return_value = {"Quotas": []}
-        generic.get_anomaly_monitors.return_value = {"AnomalyMonitors": []}
-        generic.describe_budgets.return_value = {"Budgets": []}
-        generic.get_caller_identity.return_value = {"Account": "123456789012"}
-        generic.list_agents.return_value = {"agentSummaries": []}
-        generic.list_agent_runtimes.return_value = {"agentRuntimes": []}
-        generic.list_functions.return_value = {"Functions": []}
-        generic.list_state_machines.return_value = {"stateMachines": []}
-        generic.list_policies.return_value = {"Policies": []}
-        generic.list_custom_models.return_value = {"modelSummaries": []}
-        generic.list_models.return_value = {"Models": []}
-        generic.describe_config_rules.return_value = {"ConfigRules": []}
-        generic.list_evaluation_jobs.return_value = {"jobSummaries": []}
-        generic.describe_repositories.return_value = {"repositories": []}
-        generic.list_feature_groups.return_value = {"FeatureGroupSummaries": []}
-        generic.list_buckets.return_value = {"Buckets": []}
-        generic.list_knowledge_bases.return_value = {"knowledgeBaseSummaries": []}
-        generic.list_guardrails.return_value = {"guardrails": []}
-        generic.list_log_groups.return_value = {"logGroups": []}
-        generic.get_macie_session.side_effect = Exception("not enabled")
-        generic.list_foundation_models.return_value = {"modelSummaries": []}
-        generic.list_model_cards.return_value = {"ModelCardSummaries": []}
-        generic.list_rules.return_value = {"Rules": []}
-        generic.list_schedules.return_value = {"Schedules": []}
-        generic.get_rest_apis.return_value = {"items": []}
-        generic.list_processing_jobs.return_value = {"ProcessingJobSummaries": []}
-        generic.list_automated_reasoning_policies.return_value = {
-            "automatedReasoningPolicySummaries": []
-        }
+        generic = _generic_client()
 
         mock_client.return_value = generic
         mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
@@ -78,12 +84,34 @@ class TestLambdaHandler:
         result = app.lambda_handler(lambda_event, None)
 
         assert result["statusCode"] == 200
-        assert "findings" in result["body"]
-        assert "report_url" in result["body"]
-        assert isinstance(result["body"]["findings"], list)
-        # The handler runs 65 registry entries (64 standalone checks + the new
-        # FS-27 ARC policies check that shares the FS-27 check_id).
-        assert len(result["body"]["findings"]) == 65
+        # The findings live in the S3 CSV. Returning them would push the task
+        # result toward the Step Functions 256 KB quota.
+        assert "findings" not in result["body"]
+        assert result["body"]["report_url"] == mock_s3.return_value
+        csv_content = mock_s3.call_args.args[1]
+        data_rows = list(csv.DictReader(io.StringIO(csv_content)))
+        assert data_rows
+        assert result["body"]["row_count"] == len(data_rows)
+        assert len(json.dumps(result)) < 4096
+
+    @patch("finserv_app.write_to_s3")
+    @patch("finserv_app.get_permissions_cache")
+    @patch("finserv_app.boto3.client")
+    def test_run_assessment_returns_every_registry_entry(
+        self, mock_client, mock_cache, mock_s3, lambda_event
+    ):
+        """run_assessment returns all 65 registry entries and the report URL."""
+        mock_client.return_value = _generic_client()
+        mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
+        mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/report.csv"
+
+        findings, report_url = app.run_assessment(lambda_event)
+
+        assert report_url == mock_s3.return_value
+        # 65 registry entries (64 standalone checks + the new FS-27 ARC
+        # policies check that shares the FS-27 check_id).
+        assert isinstance(findings, list)
+        assert len(findings) == 65
 
     @patch("finserv_app.write_to_s3")
     @patch("finserv_app.get_permissions_cache")
@@ -92,50 +120,15 @@ class TestLambdaHandler:
         self, mock_client, mock_cache, mock_s3, lambda_event
     ):
         """Every finding dict should have check_name and status keys."""
-        generic = MagicMock()
-        paginator = MagicMock()
-        paginator.paginate.return_value = [{}]
-        generic.get_paginator.return_value = paginator
-        generic.list_web_acls.return_value = {"WebACLs": []}
-        generic.describe_subscription.side_effect = Exception("no shield")
-        generic.get_usage_plans.return_value = {"items": []}
-        generic.list_service_quotas.return_value = {"Quotas": []}
-        generic.get_anomaly_monitors.return_value = {"AnomalyMonitors": []}
-        generic.describe_budgets.return_value = {"Budgets": []}
-        generic.get_caller_identity.return_value = {"Account": "123456789012"}
-        generic.list_agents.return_value = {"agentSummaries": []}
-        generic.list_agent_runtimes.return_value = {"agentRuntimes": []}
-        generic.list_functions.return_value = {"Functions": []}
-        generic.list_state_machines.return_value = {"stateMachines": []}
-        generic.list_policies.return_value = {"Policies": []}
-        generic.list_custom_models.return_value = {"modelSummaries": []}
-        generic.list_models.return_value = {"Models": []}
-        generic.describe_config_rules.return_value = {"ConfigRules": []}
-        generic.list_evaluation_jobs.return_value = {"jobSummaries": []}
-        generic.describe_repositories.return_value = {"repositories": []}
-        generic.list_feature_groups.return_value = {"FeatureGroupSummaries": []}
-        generic.list_buckets.return_value = {"Buckets": []}
-        generic.list_knowledge_bases.return_value = {"knowledgeBaseSummaries": []}
-        generic.list_guardrails.return_value = {"guardrails": []}
-        generic.list_log_groups.return_value = {"logGroups": []}
-        generic.get_macie_session.side_effect = Exception("not enabled")
-        generic.list_foundation_models.return_value = {"modelSummaries": []}
-        generic.list_model_cards.return_value = {"ModelCardSummaries": []}
-        generic.list_rules.return_value = {"Rules": []}
-        generic.list_schedules.return_value = {"Schedules": []}
-        generic.get_rest_apis.return_value = {"items": []}
-        generic.list_processing_jobs.return_value = {"ProcessingJobSummaries": []}
-        generic.list_automated_reasoning_policies.return_value = {
-            "automatedReasoningPolicySummaries": []
-        }
+        generic = _generic_client()
 
         mock_client.return_value = generic
         mock_cache.return_value = {"role_permissions": {}, "user_permissions": {}}
         mock_s3.return_value = "https://test-bucket.s3.amazonaws.com/report.csv"
 
-        result = app.lambda_handler(lambda_event, None)
+        findings, _ = app.run_assessment(lambda_event)
 
-        for finding in result["body"]["findings"]:
+        for finding in findings:
             assert "check_name" in finding, f"Missing check_name in {finding}"
             assert "status" in finding, f"Missing status in {finding}"
             assert finding["status"] in ("PASS", "WARN", "ERROR"), (
